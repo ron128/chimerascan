@@ -13,7 +13,7 @@ from config import PipelineConfig, JobConfig, JOB_SUCCESS, JOB_ERROR
 
 def copy_file(input_file, output_file, remote=False, remote_ip=None):
     if remote:
-        input_file = ":".join(remote_ip, input_file)
+        input_file = ":".join([remote_ip, input_file])
         args = ["scp", input_file, output_file]
     else:
         args = ["cp", input_file, output_file]
