@@ -357,7 +357,7 @@ def setup_segment_align(output_sam_file, fastq_file, fastq_format, seed_length,
     read_length = get_read_length(fastq_file)
     trim3 = read_length - seed_length
     args = [bowtie_bin, "-q", "-S", 
-            "-u", "50000",
+            #"-u", "50000",
             #"--shmem", 
             "-p", str(num_threads),
             "--tryhard",
