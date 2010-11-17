@@ -18,7 +18,7 @@ EXPRESSION_FILE = "expression.txt"
 
 translate_quals = {'solexa': 'solexa-quals',
                    'illumina': 'solexa1.3-quals',
-                   'sanger': None}
+                   'sanger': 'phred33-quals'}
 
 class JobError(Exception):
     def __init__(self, msg):

@@ -62,6 +62,7 @@ def run_chimerascan_pipeline(task):
         return job_file, JOB_ERROR    
     return job_file, JOB_SUCCESS
     # nominate chimeras
+    
     # convert chimeras to fasta file
     # build bowtie index from fasta file
     # map reads to the new index
