@@ -42,6 +42,7 @@ def run_chimerascan_pipeline(task):
     args = [sys.executable, py_script,
             "--bowtie-bin", config.bowtie_bin,
             "--bowtie-index", config.bowtie_index,
+            "--bowtie-threads", config.bowtie_threads,
             "--multihits", config.multihits,
             "--mismatches", config.mismatches,
             "--seed-length", config.seed_length,
