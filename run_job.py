@@ -20,6 +20,9 @@ def run_chimerascan_pipeline(task):
     config = PipelineConfig.from_xml(config_file)    
     job = JobConfig.from_xml(job_file, config.output_dir)
     # setup job
+    if not os.path.exists(job.output_dir):
+        os.makedirs(job.output_dir)
+        logging.info("%s: created output directory %s" % (job.name, job.output_dir))    
     logging.info("%s: Setting up job at output dir %s" % (job.name, job.output_dir))    
     py_script = os.path.join(_module_dir, "setup_job.py")
     args = [sys.executable, py_script, config_file, job_file]
