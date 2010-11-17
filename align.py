@@ -287,6 +287,10 @@ def write_discordant_reads(reads, num_hits, outfh):
 
 def write_exon_expr_data(exon_data, exon_gene_map, outfh):
     # need to write the exon coverage data to a file
+    print >>outfh, '\t'.join(["#gene_name", "exon_number", 
+                              "exon_start", "exon_end", "exon_strand",
+                              "num_reads", "num_ambiguous_reads",
+                              "weighted_cov", "weighted_ambiguous_cov"])
     for eobj in exon_data:
         for gene_name, exon_num in exon_gene_map[eobj.id]:
             print >>outfh, '\t'.join(map(str, [gene_name,
