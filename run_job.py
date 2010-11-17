@@ -19,7 +19,7 @@ def run_chimerascan_pipeline(task):
     logging.info("Job %s starting.." % (job_file))    
     config = PipelineConfig.from_xml(config_file)    
     job = JobConfig.from_xml(job_file, config.output_dir)
-    # setup job
+    # copy sequences
     if not os.path.exists(job.output_dir):
         os.makedirs(job.output_dir)
         logging.info("%s: created output directory %s" % (job.name, job.output_dir))    
@@ -32,6 +32,15 @@ def run_chimerascan_pipeline(task):
     if retcode != 0:
         logging.error("%s: error setting up job" % (job.name))    
         return job_file, JOB_ERROR
+    # uncompress
+    py_script = os.path.join(_module_dir, "setup_job.py")
+    args = [sys.executable, py_script, "--uncompress", config_file, job_file]
+    fout = open(os.path.join(job.output_dir, "setup.log"), "w")
+    retcode = subprocess.call(args, stderr=fout)
+    fout.close()
+    if retcode != 0:
+        logging.error("%s: error uncompressing file" % (job.name))    
+        return job_file, JOB_ERROR    
     # make output directory
     if not os.path.exists(job.chimerascan_dir):
         os.makedirs(job.chimerascan_dir)

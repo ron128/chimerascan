@@ -41,7 +41,7 @@ def copy_sequence_job(job_file, config_file):
     # make output directory
     if not os.path.exists(job.output_dir):
         os.makedirs(job.output_dir)
-        logging.info("%s: created output directory %s" % (job.name, job.output_dir))
+        logging.info("%s: Created output directory %s" % (job.name, job.output_dir))
     # copy fastq files    
     for mate in xrange(len(job.src_fastq_files)):
         src_fastq_file = job.src_fastq_files[mate]
@@ -57,13 +57,21 @@ def copy_sequence_job(job_file, config_file):
         if copy_file(src_fastq_file, dst_fastq_file, job.remote, job.remote_ip) != 0:
             logging.error("Error copying file %s" % dst_fastq_file)
             return JOB_ERROR
+    return JOB_SUCCESS
+
+def uncompress_job(job_file, config_file):
+    config = PipelineConfig.from_xml(config_file)    
+    job  = JobConfig.from_xml(job_file, config.output_dir)    
+    for mate in xrange(len(job.dst_fastq_files)):
+        dst_fastq_file = job.dst_fastq_files[mate]
+        fastq_file = job.fastq_files[mate]
         # uncompress if necessary
         logging.info("%s: Uncompressing file %s to %s" %
                      (job.name, dst_fastq_file, fastq_file)) 
         if decompress_file(dst_fastq_file, fastq_file) != 0:
             logging.error("Error decompressing file %s" % dst_fastq_file)
             return JOB_ERROR
-        # remote tmp fastq file intermediate
+        # remove tmp fastq file intermediate
         os.remove(dst_fastq_file)
     return JOB_SUCCESS
 
@@ -71,7 +79,11 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
+    parser.add_argument("--uncompress", dest="uncompress", action="store_true", default=False)
     parser.add_argument("config_file")
     parser.add_argument("job_file")
     options = parser.parse_args()
-    sys.exit(copy_sequence_job(options.job_file, options.config_file))
+    if options.uncompress:
+        sys.exit(uncompress_job(options.job_file, options.config_file))
+    else:
+        sys.exit(copy_sequence_job(options.job_file, options.config_file))

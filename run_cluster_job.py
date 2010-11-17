@@ -60,12 +60,20 @@ def run_job_on_cluster(job_file, config_file):
     #
     if not os.path.exists(job.output_dir):
         os.makedirs(job.output_dir)
-        logging.info("%s: created output directory %s" % (job.name, job.output_dir))    
-    logging.info("%s: setting up job at output dir %s" % (job.name, job.output_dir))    
+        logging.info("%s: Created output directory %s" % (job.name, job.output_dir))    
+    logging.info("%s: Setting up job at output dir %s" % (job.name, job.output_dir))    
     retcode = copy_sequence_job(job_file, config_file)
     if retcode != 0:
-        logging.error("%s: error setting up job" % (job.name))    
+        logging.error("%s: Error setting up job" % (job.name))    
         return JOB_ERROR
+    #
+    # Uncompress sequences
+    #
+    logging.info("%s: Uncompressing sequences" % (job.name))    
+    py_script = os.path.join(_module_dir, "setup_job.py")
+    args = [sys.executable, py_script, "--uncompress", config_file, job_file]
+    cmd = ' '.join(args)
+    job_id = qsub(job.name, cmd, 1, cwd=job.output_dir, walltime="10:00:00", stdout="uncompress.log", email=False)
     #
     # Discordant reads alignment 
     #
@@ -88,7 +96,7 @@ def run_job_on_cluster(job_file, config_file):
     args = map(str, args)
     cmd = ' '.join(args)
     num_processors = NODE_PROCESSORS
-    job_id = qsub(job.name, cmd, num_processors, cwd=job.output_dir, walltime="40:00:00", stdout="align.log", email=True)
+    job_id = qsub(job.name, cmd, num_processors, cwd=job.output_dir, walltime="40:00:00", deps=[job_id], stdout="align.log", email=True)
     return JOB_SUCCESS
 
 def main():
