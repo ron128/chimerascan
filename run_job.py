@@ -10,51 +10,59 @@ import multiprocessing
 import subprocess
 import logging
 
-from base import PipelineConfig, JobConfig, JOB_SUCCESS, JOB_ERROR
+from config import PipelineConfig, JobConfig, JOB_SUCCESS, JOB_ERROR
 
 _module_dir = os.path.abspath(os.path.dirname(__file__))
 
-def run_fusion_pipeline(task):
-    # align reads and find discordant mappings
-    
-    # cluster and find fusion coverage islands
-    
-    # splice coverage islands together and build fasta file
-    
-    # build a bowtie index
-
-    # map the initially unmapped reads to the new index
-    
-    # count fusion spanning reads and nominate fusions
-
+def run_chimerascan_pipeline(task):
     job_file, config_file = task
     logging.info("Job %s starting.." % (job_file))    
     config = PipelineConfig.from_xml(config_file)    
     job = JobConfig.from_xml(job_file, config.output_dir)
-    if not os.path.exists(job.output_dir):
-        logging.error("%s: missing output directory %s" % (job.name, job.output_dir))    
-        return job_file, 1
+    # setup job
+    py_script = os.path.join(_module_dir, "setup_job.py")
+    args = [sys.executable, py_script, config_file, job_file]
+    fout = open(os.path.join(job.output_dir, "setup.log"), "w")
+    retcode = subprocess.call(args, stderr=fout)
+    fout.close()
+    if retcode != 0:
+        logging.error("%s: error setting up job" % (job.name))    
+        return job_file, JOB_ERROR
+    # make output directory
+    if not os.path.exists(job.chimerascan_dir):
+        os.makedirs(job.chimerascan_dir)
+        logging.info("%s: created output directory %s" % (job.name, job.chimerascan_dir))
+    # align reads and find discordant mappings
+    logging.info("%s: Aligning reads" % (job.name))    
+    py_script = os.path.join(_module_dir, "align.py")
+    args = [sys.executable, py_script,
+            "--bowtie-bin", config.bowtie_bin,
+            "--bowtie-index", config.bowtie_index,
+            "--multihits", config.multihits,
+            "--mismatches", config.mismatches,
+            "--seed-length", config.seed_length,
+            "--gene-bed", config.gene_bed_file,
+            "--gene-fasta-prefix", config.gene_fasta_prefix,
+            "--quals", job.fastq_format,
+            job.fastq_files[0],
+            job.fastq_files[1],
+            job.discordant_bam_file,
+            job.expression_file]
+    args = map(str, args)
+    logging.debug("Running alignment with args: %s" % ' '.join(args))
+    fout = open(os.path.join(job.output_dir, "align.log"), "w")
+    retcode = subprocess.call(args, stderr=fout)
+    fout.close()
+    if retcode != 0:
+        logging.error("%s: error aligning reads" % (job.name))    
+        return job_file, JOB_ERROR    
+    return job_file, JOB_SUCCESS
+    # nominate chimeras
+    # convert chimeras to fasta file
+    # build bowtie index from fasta file
+    # map reads to the new index
+    # integrate spanning and encompassing reads
 
-    logging.info("%s: Creating UCSC tracks" % (job.name))    
-    py_script = os.path.join(_module_dir, "make_ucsc_tracks.py")
-    args = [sys.executable, py_script, job_file, config_file]
-    fout = open(os.path.join(job.output_dir, "ucsc.out"), "w")
-    retcode = subprocess.call(args, stderr=fout)
-    fout.close()
-    if retcode != 0:
-        logging.error("%s: error creating UCSC tracks" % (job.name))    
-        return job_file, 1
-    
-    logging.info("%s: Creating pileup tracks" % (job.name))    
-    py_script = os.path.join(_module_dir, "make_pileup_track.py")
-    args = [sys.executable, py_script, job_file, config_file]
-    fout = open(os.path.join(job.output_dir, "pileup.out"), "w")
-    retcode = subprocess.call(args, stderr=fout)
-    fout.close()
-    if retcode != 0:
-        logging.error("%s: error creating pileup tracks" % (job.name))    
-        return job_file, 1
-    return job_file, 0
 
 def main():
     logging.basicConfig(level=logging.DEBUG,
@@ -69,7 +77,7 @@ def main():
         tasks.append((job_file, options.config_file))
     # start worker processes
     pool = multiprocessing.Pool(options.num_processors)
-    imap_unordered_it = pool.imap_unordered(run_job, tasks)
+    imap_unordered_it = pool.imap_unordered(run_chimerascan_pipeline, tasks)
     for res in imap_unordered_it:
         job_file, retcode = res
         logging.info("Job %s finished with code %d" % (job_file, retcode))
