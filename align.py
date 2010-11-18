@@ -405,7 +405,6 @@ def align(output_sam_file, output_expr_file,
           gene_bed_file, gene_fasta_prefix,
           insert_size_max):
     tmp_dir = os.path.dirname(output_sam_file)
-
     # build transcriptome -> genome mappings
     logging.info("Constructing table to convert transcriptome references to genome...")
     gene_to_genome_map = build_gene_to_genome_map(gene_bed_file, gene_fasta_prefix)

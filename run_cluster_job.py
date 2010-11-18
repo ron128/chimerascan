@@ -77,6 +77,10 @@ def run_job_on_cluster(job_file, config_file):
     #
     # Discordant reads alignment 
     #
+    # make output directory
+    if not os.path.exists(job.chimerascan_dir):
+        os.makedirs(job.chimerascan_dir)
+        logging.info("%s: created output directory %s" % (job.name, job.chimerascan_dir))
     logging.info("%s: Aligning reads" % (job.name))    
     py_script = os.path.join(_module_dir, "align.py")
     args = [sys.executable, py_script,
