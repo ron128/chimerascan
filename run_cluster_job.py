@@ -168,7 +168,7 @@ def run_job_on_cluster(job_file, config_file):
             job.spanning_chimera_file] + job.spanning_bowtie_output_files
     cmd = ' '.join(map(str, args))
     qsub(job.name, cmd, num_processors=1, cwd=job.output_dir, walltime="2:00:00", deps=job_ids, 
-         stdout="process_spanning_alignments.log" % mate, email=True)
+         stdout="process_spanning_alignments.log", email=True)
     return JOB_SUCCESS
 
 def main():
