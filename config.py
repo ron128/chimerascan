@@ -133,7 +133,7 @@ class JobConfig(object):
         # spanning bowtie index
         j.bowtie_chimera_index = os.path.splitext(j.chimera_fasta_file)[0]
         # spanning read output files
-        j.spanning_bowtie_output_files = ["mate%d_spanning_bowtie.txt" for mate in xrange(len(fastq_files))]
+        j.spanning_bowtie_output_files = ["mate%d_spanning_bowtie.txt" % (mate) for mate in xrange(len(fastq_files))]
         # chimera output file
         j.spanning_chimera_file = os.path.join(j.chimerascan_dir, "chimeras.bedpe.txt")
         return j
