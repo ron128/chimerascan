@@ -282,6 +282,7 @@ def write_discordant_reads(reads, num_hits, outfh):
         if r.is_unmapped and multihit:
             continue
         multihit = True
+        logging.debug("read: %s num_hits: %d" % (r.qname, num_hits))
         r.tags = r.tags + [("NH", num_hits)]
         outfh.write(r)
 
