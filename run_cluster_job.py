@@ -124,7 +124,7 @@ def run_job_on_cluster(job_file, config_file):
             "--rlen", job.read_length,
             "--gene-fasta-prefix", config.gene_fasta_prefix,
             job.chimera_bedpe_file,
-            job.ref_fasta_file,
+            config.ref_fasta_file,
             job.chimera_fasta_file,
             job.chimera_mapping_file]              
     args = map(str, args)
