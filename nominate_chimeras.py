@@ -25,37 +25,43 @@ def nominate_chimeras(job_name, bam_file, tmp_dir, output_file,
     # Step 1: Extract discordant mate pairs as BEDPE file
     #
     logging.info("%s: Nominate chimeras from BAM file" % (job_name))
-    perl_script = os.path.join(_module_dir, "discordant_reads_to_chimeras.pl")
-    args = ["perl", perl_script,
-            "-b", bam_file,
-            "-o", tmp_dir]
-    if subprocess.call(args) != JOB_SUCCESS:
-        logging.error("%s: Error nominating chimeras" % (job_name))    
-        return JOB_ERROR
-    prev_output_file = os.path.join(tmp_dir, "split_chimeras.bedpe.txt")
+    split_chimeras_file = os.path.join(tmp_dir, "split_chimeras.bedpe.txt")
+    if not os.path.exists(split_chimeras_file):
+        perl_script = os.path.join(_module_dir, "discordant_reads_to_chimeras.pl")
+        args = ["perl", perl_script,
+                "-b", bam_file,
+                "-o", tmp_dir]
+        if subprocess.call(args) != JOB_SUCCESS:
+            logging.error("%s: Error nominating chimeras" % (job_name))    
+            return JOB_ERROR
+    prev_output_file = split_chimeras_file
     #
     # Step 2: Compare BEDPE using BEDTools to all genes
     #
-    logging.info("%s: Finding overlapping genes" % (job_name))
-    args = [pairtobed_bin, "-type", "both", 
-            "-a", prev_output_file, "-b", gene_file]
-    bedpe_overlap_file = os.path.join(tmp_dir, "chimera_gene_overlap_bedpe.txt" % (job_name))
-    f = open(bedpe_overlap_file, "w")
-    if subprocess.call(args, stdout=f) != JOB_SUCCESS:
-        logging.error("%s: Error finding overlapping genes" % (job_name))    
-        return JOB_ERROR
-    f.close()
+    bedpe_overlap_file = os.path.join(tmp_dir, "chimera_gene_overlap_bedpe.txt")
+    if not os.path.exists(bedpe_overlap_file):
+        logging.info("%s: Finding overlapping genes" % (job_name))
+        args = [pairtobed_bin, "-type", "both", 
+                "-a", prev_output_file, "-b", gene_file]
+        logging.debug("%s: args=%s" % (job_name, ' '.join(args)))
+        f = open(bedpe_overlap_file, "w")
+        if subprocess.call(args, stdout=f) != JOB_SUCCESS:
+            logging.error("%s: Error finding overlapping genes" % (job_name))    
+            return JOB_ERROR
+        f.close()
     prev_output_file = bedpe_overlap_file
     #
     # Step 3: Remove unnecessary mate pairs
     #
-    logging.info("Removing unnecessary discordant pairs" % (job_name))
-    perl_script = os.path.join(_module_dir, "filter_overlapping_chimeras.pl")
-    filtered_bedpe_file = os.path.join(tmp_dir, "filtered_overlapping_genes_bedpe.txt" % (job_name))
-    args = ["perl", perl_script, "-i", prev_output_file, "-o", filtered_bedpe_file]
-    if subprocess.call(args, stdout=f) != JOB_SUCCESS:
-        logging.error("%s: Error filtering overlapping genes" % (job_name))    
-        return JOB_ERROR
+    filtered_bedpe_file = os.path.join(tmp_dir, "filtered_overlapping_genes_bedpe.txt")
+    if not os.path.exists(filtered_bedpe_file):
+        logging.info("Removing unnecessary discordant pairs")
+        perl_script = os.path.join(_module_dir, "filter_overlapping_chimeras.pl")
+        args = ["perl", perl_script, "-i", prev_output_file, "-o", filtered_bedpe_file]
+        logging.debug("%s: args=%s" % (job_name, ' '.join(args)))
+        if subprocess.call(args) != JOB_SUCCESS:
+            logging.error("%s: Error filtering overlapping genes" % (job_name))    
+            return JOB_ERROR
     prev_output_file = filtered_bedpe_file
     #
     # Step 4: Clean up unnecessary files

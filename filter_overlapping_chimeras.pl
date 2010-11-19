@@ -27,17 +27,17 @@ The input for this script is:
 \n\n";
 ########################################################################################
 my %option=();
-getopts("f:o:i:", \%option);
+getopts("o:i:", \%option);
 unless (defined $option{o}){die $usage}; my $outfile = $option{o};
 unless (defined $option{i}){die $usage}; my $infile = $option{i};
 #########################################################################################
 #
 # STEP 1: Import directories containing lanes to be analyzed
 #
-my $BEDPE_ISECT = $infile
+my $BEDPE_ISECT = $infile;
 
 # Print out 'chimeric' mate pairs to a BEDPE file
-my $OUT = $outfile
+my $OUT = $outfile;
 open OUT, ">$OUT" or die "Can't open file $OUT";
 
 my %FILTER;

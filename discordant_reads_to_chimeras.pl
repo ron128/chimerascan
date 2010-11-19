@@ -27,7 +27,7 @@ References
 
 ################################ VARIABLES AND SETTINGS #############################
 my %option=();
-getopts("b:f:o:", \%option);
+getopts("b:o:", \%option);
 unless (defined $option{b}){die $usage}; my $bamfile = $option{b};
 #unless (defined $option{f}){die $usage}; my $flowid = $option{f};
 unless (defined $option{o}){die $usage}; my $outdir = $option{o};
