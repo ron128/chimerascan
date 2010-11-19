@@ -65,6 +65,10 @@ def uncompress_job(job_file, config_file):
     for mate in xrange(len(job.dst_fastq_files)):
         dst_fastq_file = job.dst_fastq_files[mate]
         fastq_file = job.fastq_files[mate]
+        # do not uncompress if file exists
+        if os.path.exists(fastq_file):
+            logging.info("Local fastq file %s exists, do not need to uncompress" % fastq_file)
+            continue
         # uncompress if necessary
         logging.info("%s: Uncompressing file %s to %s" %
                      (job.name, dst_fastq_file, fastq_file)) 
