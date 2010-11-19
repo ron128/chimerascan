@@ -63,7 +63,7 @@ class PipelineConfig(object):
         # samtools
         config.samtools_bin = root.findtext('samtools_bin')
         # bedtools
-        config.bedtools_bin = root.findtext('bedtools_bin')
+        config.bedtools_path = root.findtext('bedtools_path')
         # bowtie
         bowtie_elem = root.find("bowtie")
         config.bowtie_path = bowtie_elem.get("path")
@@ -84,8 +84,7 @@ class PipelineConfig(object):
         # chimera detection thresholds
         config.anchor_min = root.findtext("anchor_min")
         config.anchor_max = root.findtext("anchor_max")
-        config.anchor_mismatches = root.findtext("anchor_mismatches")
-        
+        config.anchor_mismatches = root.findtext("anchor_mismatches")        
         return config
 
 class JobConfig(object):
