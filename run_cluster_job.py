@@ -121,7 +121,7 @@ def run_job_on_cluster(job_file, config_file):
     #
     py_script = os.path.join(_module_dir, "bedpe_to_fasta.py")
     args = [sys.executable, py_script,
-            "--rlen", config.read_length,
+            "--rlen", job.read_length,
             "--gene-fasta-prefix", config.gene_fasta_prefix,
             job.chimera_bedpe_file,
             job.ref_fasta_file,
@@ -160,7 +160,7 @@ def run_job_on_cluster(job_file, config_file):
     #
     py_script = os.path.join(_module_dir, "process_spanning_alignments.py")
     args = [sys.executable, py_script,
-            "--rlen", config.read_length,
+            "--rlen", job.read_length,
             "--anchor-min", config.anchor_min,
             "--anchor-max", config.anchor_max,
             "--anchor-mismatches", config.anchor_mismatches,
