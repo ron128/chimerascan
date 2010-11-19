@@ -6,7 +6,6 @@ use strict;
 my $usage = "Usage : extract_chimera_candidates.pl
 
 The input for this script is:
--f FlowID    [ mctp_30TUEAAXX_3 ]
 -o Outdir    [ /home/chrmaher/CHIMERASCAN_1.0/CANDIDATES/ ]
 -i Input     [ /home/chrmaher/CHIMERASCAN_1.0/FILTERED4GENES_BEDPE/30TUEAAXX_s_3_filtered_genes_BEDPE.txt ]
 -u UCSC      [ UCSC_genes_file.txt ]
@@ -18,7 +17,6 @@ The input for this script is:
 my %option=();
 getopts("f:o:i:u:", \%option);
 unless (defined $option{o}){die $usage}; my $outdir = $option{o};
-unless (defined $option{f}){die $usage}; my $flowid = $option{f};
 unless (defined $option{i}){die $usage}; my $IN = $option{i};
 unless (defined $option{u}){die $usage}; my $ucscfile = $option{u};
 #########################################################################################
@@ -28,15 +26,15 @@ unless (defined $option{u}){die $usage}; my $ucscfile = $option{u};
 my($UCSC_INFO,$UCSC2GENE,$UCSCID,$ORDER,$AORDER,$EXONS) = get_ucsc();
 
 # Print out 'chimeric' mate pairs to a tab delimited file
-my $OUT = $outdir.$flowid.'_filtered_chimeras.txt';
+my $OUT = $outdir.'/filtered_chimeras.txt';
 open OUT, ">$OUT" or die "Can't open file $OUT";
 
 # Print out 'chimeric' mate pairs to a BEDPE file
-my $OUTBEDPE = $outdir.$flowid.'_filtered_chimeras.bedpe.txt';
+my $OUTBEDPE = $outdir.'/filtered_chimeras.bedpe.txt';
 open OUTBEDPE, ">$OUTBEDPE" or die "Can't open file $OUTBEDPE";
 
 # Print out 'chimeric' nominations into FASTA file or reads
-my $READS = $outdir.$flowid.'_filtered_chimeras_reads.fa';
+my $READS = $outdir.'/filtered_chimeras_reads.fa';
 open READS, ">$READS" or die "Can't open file $READS";
 
 

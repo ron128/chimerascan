@@ -12,6 +12,7 @@ import lxml.etree as etree
 
 from config import PipelineConfig, JobConfig, JOB_SUCCESS, JOB_ERROR
 from setup_job import copy_sequence_job
+from align import get_read_length
 
 _module_dir = os.path.abspath(os.path.dirname(__file__))
 
@@ -55,6 +56,8 @@ def run_job_on_cluster(job_file, config_file):
     logging.info("Job %s starting.." % (job_file))    
     config = PipelineConfig.from_xml(config_file)    
     job = JobConfig.from_xml(job_file, config.output_dir)
+    # get read length (in case database is wrong)
+    read_length = get_read_length(job.fastq_files[0])
     #
     # Setup job by copying sequences and uncompressing them
     #
@@ -100,7 +103,74 @@ def run_job_on_cluster(job_file, config_file):
     args = map(str, args)
     cmd = ' '.join(args)
     num_processors = NODE_PROCESSORS
-    job_id = qsub(job.name, cmd, num_processors, cwd=job.output_dir, walltime="40:00:00", deps=[job_id], stdout="align.log", email=True)
+    job_id = qsub(job.name, cmd, num_processors, cwd=job.output_dir, walltime="40:00:00", deps=[job_id], stdout="align.log", email=False)
+    #
+    # Nominate chimeras
+    #
+    py_script = os.path.join(_module_dir, "nominate_chimeras.py")
+    args = [sys.executable, py_script,
+            "--bedtools-path", config.bedtools_path,
+            "--gene-file", config.gene_name_file,
+            job.name,
+            job.discordant_bam_file,
+            job.chimerascan_dir,
+            job.chimera_bedpe_file]
+    args = map(str, args)
+    cmd = ' '.join(args)
+    job_id = qsub(job.name, cmd, num_processors=1, cwd=job.output_dir, walltime="40:00:00", deps=[job_id], stdout="chimeras.log", email=False)
+    #
+    # Convert BEDPE to FASTA format
+    #
+    py_script = os.path.join(_module_dir, "bedpe_to_fasta.py")
+    args = [sys.executable, py_script,
+            "--rlen", read_length,
+            "--gene-fasta-prefix", config.gene_fasta_prefix,
+            job.chimera_bedpe_file,
+            job.ref_fasta_file,
+            job.chimera_fasta_file,
+            job.chimera_mapping_file]              
+    args = map(str, args)
+    cmd = ' '.join(args)
+    job_id = qsub(job.name, cmd, num_processors=1, cwd=job.output_dir, walltime="1:00:00", deps=[job_id], stdout="bedpe_to_fasta.log", email=False)
+    # 
+    # Build bowtie index
+    #    
+    args = [config.bowtie_build, job.chimera_fasta_file, job.bowtie_chimera_index]
+    cmd = ' '.join(args)
+    job_id = qsub(job.name, cmd, num_processors=1, cwd=job.output_dir, walltime="1:00:00", deps=[job_id], stdout="bowtie_build.log", email=False)
+    #
+    # Spanning read alignment
+    # 
+    py_script = os.path.join(_module_dir, "segmented_spanning_align.py")
+    job_ids = []
+    for mate,fq in enumerate(job.fastq_files):
+        args = [sys.executable, py_script,
+                "--bowtie-bin", config.bowtie_bin,
+                "--bowtie-index", config.bowtie_chimera_index,
+                "--bowtie-threads", 2,
+                "--segment-multihits", 2,
+                "--segment-mismatches", 2,
+                "--segment-length", 25,
+                "--quals", job.fastq_format,
+                fq,
+                job.spanning_bowtie_output_files[mate]]
+        cmd = ' '.join(map(str, args))
+        job_ids.append(qsub(job.name, cmd, num_processors=NODE_PROCESSORS, cwd=job.output_dir, walltime="20:00:00", deps=[job_id], 
+                            stdout="spanning_mate%d.log" % mate, email=False))
+    #
+    # Synthesis of spanning and encompassing reads
+    #
+    py_script = os.path.join(_module_dir, "process_spanning_alignments.py")
+    args = [sys.executable, py_script,
+            "--rlen", read_length,
+            "--anchor-min", config.anchor_min,
+            "--anchor-max", config.anchor_max,
+            "--anchor-mismatches", config.anchor_mismatches,
+            config.chimera_mapping_file,
+            config.spanning_chimera_file] + job.spanning_bowtie_output_files
+    cmd = ' '.join(map(str, args))
+    qsub(job.name, cmd, num_processors=1, cwd=job.output_dir, walltime="2:00:00", deps=job_ids, 
+         stdout="process_spanning_alignments.log" % mate, email=True)
     return JOB_SUCCESS
 
 def main():

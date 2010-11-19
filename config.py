@@ -66,17 +66,26 @@ class PipelineConfig(object):
         config.bedtools_bin = root.findtext('bedtools_bin')
         # bowtie
         bowtie_elem = root.find("bowtie")
-        config.bowtie_bin = bowtie_elem.get("bin")
+        config.bowtie_path = bowtie_elem.get("path")
+        config.bowtie_bin = os.path.join(config.bowtie_path, "bowtie")
+        config.bowtie_build = os.path.join(config.bowtie_path, "bowtie-build")
         config.bowtie_index = bowtie_elem.findtext("index")
         config.bowtie_threads = int(bowtie_elem.findtext("processes"))
         config.multihits = int(bowtie_elem.findtext("multihits"))
         config.mismatches = int(bowtie_elem.findtext("mismatches"))
         config.seed_length = int(bowtie_elem.findtext("seed_length"))
+        # genome reference
+        config.ref_fasta_file = root.findtext("ref_fasta_file")
         # gene alignments 
         config.gene_bed_file = root.findtext("gene_bed_file")
         config.gene_name_file = root.findtext("gene_name_file")        
         config.gene_fasta_prefix = root.findtext("gene_fasta_prefix")
         config.insert_size_max = int(root.findtext("insert_size_max"))
+        # chimera detection thresholds
+        config.anchor_min = root.findtext("anchor_min")
+        config.anchor_max = root.findtext("anchor_max")
+        config.anchor_mismatches = root.findtext("anchor_mismatches")
+        
         return config
 
 class JobConfig(object):
@@ -113,9 +122,19 @@ class JobConfig(object):
         j.src_fastq_files = [src_fastq_files[mate] for mate in xrange(len(src_fastq_files))]
         j.dst_fastq_files = [dst_fastq_files[mate] for mate in xrange(len(dst_fastq_files))]
         j.fastq_files = [fastq_files[mate] for mate in xrange(len(fastq_files))]
-        # chimera scan
+        # alignment step
         j.chimerascan_dir = os.path.join(j.output_dir, "chimerascan")
         j.discordant_bam_file = os.path.join(j.chimerascan_dir, DISCORDANT_READS_FILE)
         j.expression_file = os.path.join(j.chimerascan_dir, EXPRESSION_FILE)
+        # chimera nomination
+        j.chimera_bedpe_file = os.path.join(j.chimerascan_dir, "filtered_chimeras.bedpe.txt")
+        # chimera fasta file
+        j.chimera_fasta_file = os.path.join(j.chimerascan_dir, "chimericjuncs.txt")
+        j.chimera_mapping_file = os.path.join(j.chimerascan_dir, "chimericjunc_mapping.txt")
+        # spanning bowtie index
+        j.bowtie_chimera_index = os.path.splitext(j.chimera_fasta_file)[0]
+        # spanning read output files
+        j.spanning_bowtie_output_files = ["mate%d_spanning_bowtie.txt" for mate in xrange(len(fastq_files))]
+        # chimera output file
+        j.spanning_chimera_file = os.path.join(j.chimerascan_dir, "chimeras.bedpe.txt")
         return j
-    

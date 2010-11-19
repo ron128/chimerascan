@@ -130,16 +130,19 @@ def main():
     parser.add_argument("--anchor-max", type=int, dest="anchor_max", default=0)
     parser.add_argument("--anchor-mismatches", type=int, dest="anchor_mismatches", default=0)
     parser.add_argument("chimera_mapping_file")
+    parser.add_argument("spanning_chimera_file")
     parser.add_argument("bowtie_files", nargs="+")
     options = parser.parse_args()
     
     chimera_refs = read_chimera_mapping_file(options.chimera_mapping_file)
+    f = open(options.spanning_chimera_file, "w")
     for bedpe_fields in join_spanning_reads(options.bowtie_files, chimera_refs,
                                             options.read_length,
                                             options.anchor_min,
                                             options.anchor_max, 
                                             options.anchor_mismatches):
-        print '\t'.join(map(str, bedpe_fields))
+        print >>f, '\t'.join(map(str, bedpe_fields))
+    f.close()
 
 if __name__ == '__main__': main()
 

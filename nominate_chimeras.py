@@ -13,31 +13,33 @@ from config import JOB_SUCCESS, JOB_ERROR
 
 _module_dir = os.path.abspath(os.path.dirname(__file__))
 
-def nominate_chimeras(job_name, bam_file, output_dir,
+def nominate_chimeras(job_name, bam_file, tmp_dir, output_file,
                       gene_file, bedtools_path):
     pairtobed_bin = "pairToBed"
     if bedtools_path is not None:
-        pairtobed_bin = os.path.join(bedtools_path, pairtobed_bin)        
+        pairtobed_bin = os.path.join(bedtools_path, pairtobed_bin)    
+    if not os.path.exists(tmp_dir):
+        logging.info("%s: Creating dir %s" % (job_name, tmp_dir))
+        os.makedirs(tmp_dir)     
     #
     # Step 1: Extract discordant mate pairs as BEDPE file
     #
     logging.info("%s: Nominate chimeras from BAM file" % (job_name))
     perl_script = os.path.join(_module_dir, "discordant_reads_to_chimeras.pl")
     args = ["perl", perl_script,
-            "-f", job_name,
             "-b", bam_file,
-            "-o", output_dir]
+            "-o", tmp_dir]
     if subprocess.call(args) != JOB_SUCCESS:
         logging.error("%s: Error nominating chimeras" % (job_name))    
         return JOB_ERROR
-    prev_output_file = os.path.join(output_dir, "%s_split_chimeras.bedpe.txt" % (job_name))
+    prev_output_file = os.path.join(tmp_dir, "split_chimeras.bedpe.txt")
     #
     # Step 2: Compare BEDPE using BEDTools to all genes
     #
     logging.info("%s: Finding overlapping genes" % (job_name))
     args = [pairtobed_bin, "-type", "both", 
             "-a", prev_output_file, "-b", gene_file]
-    bedpe_overlap_file = os.path.join(output_dir, "%s_BEDPE_Gene.txt" % (job_name))
+    bedpe_overlap_file = os.path.join(tmp_dir, "chimera_gene_overlap_bedpe.txt" % (job_name))
     f = open(bedpe_overlap_file, "w")
     if subprocess.call(args, stdout=f) != JOB_SUCCESS:
         logging.error("%s: Error finding overlapping genes" % (job_name))    
@@ -49,8 +51,8 @@ def nominate_chimeras(job_name, bam_file, output_dir,
     #
     logging.info("Removing unnecessary discordant pairs" % (job_name))
     perl_script = os.path.join(_module_dir, "filter_overlapping_chimeras.pl")
-    filtered_bedpe_file = os.path.join(output_dir, "%s_filtered_genes_BEDPE.txt" % (job_name))
-    args = ["perl", perl_script, "-f", job_name, "-i", prev_output_file, "-o", filtered_bedpe_file]
+    filtered_bedpe_file = os.path.join(tmp_dir, "filtered_overlapping_genes_bedpe.txt" % (job_name))
+    args = ["perl", perl_script, "-i", prev_output_file, "-o", filtered_bedpe_file]
     if subprocess.call(args, stdout=f) != JOB_SUCCESS:
         logging.error("%s: Error filtering overlapping genes" % (job_name))    
         return JOB_ERROR
@@ -65,16 +67,15 @@ def nominate_chimeras(job_name, bam_file, output_dir,
     #
     logging.info("%s: Extracting chimeras" % (job_name))
     perl_script = os.path.join(_module_dir, "extract_chimera_candidates.pl")
-    candidates_dir = os.path.join(output_dir, "candidates")
+    candidates_dir = os.path.join(tmp_dir, "candidates")
     if not os.path.exists(candidates_dir):
         logging.info("%s: Creating dir %s for chimera candidates" % (job_name, candidates_dir))
         os.makedirs(candidates_dir)
-    chimeras_bedpe_file = os.path.join(candidates_dir, "%s_filtered_chimeras.bedpe.txt" % job_name)
-    args = ["perl", perl_script, "-f", job_name, 
+    args = ["perl", perl_script,
             "-i", prev_output_file, 
             "-o", candidates_dir,
             "-u", gene_file]
-    f = open(chimeras_bedpe_file, "w")
+    f = open(output_file, "w")
     if subprocess.call(args, stdout=f) != JOB_SUCCESS:
         logging.error("%s: Error extracting chimeras" % (job_name))    
         return JOB_ERROR
@@ -89,9 +90,11 @@ def main():
     parser.add_argument("--gene-file", dest="gene_file")
     parser.add_argument("job_name")
     parser.add_argument("bam_file")
-    parser.add_argument("output_dir")
+    parser.add_argument("tmp_dir")
+    parser.add_argument("output_file")
     options = parser.parse_args()
-    return nominate_chimeras(options.job_name, options.bam_file, options.output_dir,
+    return nominate_chimeras(options.job_name, options.bam_file, options.tmp_dir,
+                             options.output_file,
                              gene_file=options.gene_file,
                              bedtools_path=options.bedtools_path)
 

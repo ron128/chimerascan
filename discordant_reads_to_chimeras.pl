@@ -7,7 +7,6 @@ use strict;
 my $usage = "Usage : discordant_reads_to_chimeras.pl 
 
 -b | Bam input file
--f | Flow ID (ex. mctp_30TUEAAXX_3)
 -o | Output directory
 
 Input is a discordant set of mate pairs; therefore neither are labeled as 'is pair mapped'
@@ -30,7 +29,7 @@ References
 my %option=();
 getopts("b:f:o:", \%option);
 unless (defined $option{b}){die $usage}; my $bamfile = $option{b};
-unless (defined $option{f}){die $usage}; my $flowid = $option{f};
+#unless (defined $option{f}){die $usage}; my $flowid = $option{f};
 unless (defined $option{o}){die $usage}; my $outdir = $option{o};
 #####################################################################################
 #
@@ -44,19 +43,19 @@ my $bam = Bio::DB::Sam->new(-bam =>$bamfile);
 #
 
 # Print out 'Single Best Split' mate pairs to a BEDPE file
-my $OUTS = $outdir.$flowid.'_split_chimeras.bedpe.txt';
+my $OUTS = $outdir.'/split_chimeras.bedpe.txt';
 open OUTS, ">$OUTS" or die "Can't open file $OUTS";
 
 # Print out 'Multi-mapping split' mate pairs to a BEDPE file
-#my $OUTMM = $outdir.$flowid.'_multimap_split_chimeras.bedpe.txt';
+#my $OUTMM = $outdir.'/multimap_split_chimeras.bedpe.txt';
 #open OUTMM, ">$OUTMM" or die "Can't open file $OUTMM";
 
 # Print out 'One-mapper' mate pairs to a BEDPE file
-my $OUTONE = $outdir.$flowid.'_onemappers_chimeras.bedpe.txt';
+my $OUTONE = $outdir.'/onemappers_chimeras.bedpe.txt';
 open OUTONE, ">$OUTONE" or die "Can't open file $OUTONE";
 
 # Print out 'Non-mapper' mate pairs to a BEDPE file
-my $OUTNON = $outdir.$flowid.'_nonmappers_chimeras.bedpe.txt';
+my $OUTNON = $outdir.'/nonmappers_chimeras.bedpe.txt';
 open OUTNON, ">$OUTNON" or die "Can't open file $OUTNON";
 
 

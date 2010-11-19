@@ -21,7 +21,6 @@ usable by BEDTools. The BEDPE format is as follows:
   11. any number of user-defined fields. Ignored, but carried-through by BEDTools 
 
 The input for this script is:
--f FlowID    [ mctp_30TUEAAXX_3 ]
 -i Infile    [ mctp_30TUEAAXX_3_BEDPE_Gene.txt ]
 -o Outfile   [ mctp_30TUEAAXX_3_filtered_genes_BEDPE.txt ]
 
@@ -30,7 +29,6 @@ The input for this script is:
 my %option=();
 getopts("f:o:i:", \%option);
 unless (defined $option{o}){die $usage}; my $outfile = $option{o};
-unless (defined $option{f}){die $usage}; my $flowid = $option{f};
 unless (defined $option{i}){die $usage}; my $infile = $option{i};
 #########################################################################################
 #
