@@ -144,7 +144,7 @@ def run_job_on_cluster(job_file, config_file):
     for mate,fq in enumerate(job.fastq_files):
         args = [sys.executable, py_script,
                 "--bowtie-bin", config.bowtie_bin,
-                "--bowtie-index", config.bowtie_chimera_index,
+                "--bowtie-index", job.bowtie_chimera_index,
                 "--bowtie-threads", 2,
                 "--segment-multihits", 2,
                 "--segment-mismatches", 2,
