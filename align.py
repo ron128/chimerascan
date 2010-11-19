@@ -274,7 +274,7 @@ def parse_sam_files(samfhs, maxlen=100000):
         pass
     for buf_ind in xrange(buf_size):
         yield buf[buf_ind]
-            
+
 def write_discordant_reads(reads, num_hits, outfh):
     multihit = False
     for r in reads:
@@ -282,7 +282,7 @@ def write_discordant_reads(reads, num_hits, outfh):
         if r.is_unmapped and multihit:
             continue
         multihit = True
-        r.tags = r.tags + [('NH', num_hits)]
+        r.tags = r.tags + [("NH", num_hits)]
         outfh.write(r)
 
 def write_exon_expr_data(exon_data, exon_gene_map, outfh):
