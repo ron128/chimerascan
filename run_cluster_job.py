@@ -56,8 +56,6 @@ def run_job_on_cluster(job_file, config_file):
     logging.info("Job %s starting.." % (job_file))    
     config = PipelineConfig.from_xml(config_file)    
     job = JobConfig.from_xml(job_file, config.output_dir)
-    # get read length (in case database is wrong)
-    read_length = get_read_length(job.fastq_files[0])
     #
     # Setup job by copying sequences and uncompressing them
     #
@@ -123,7 +121,7 @@ def run_job_on_cluster(job_file, config_file):
     #
     py_script = os.path.join(_module_dir, "bedpe_to_fasta.py")
     args = [sys.executable, py_script,
-            "--rlen", read_length,
+            "--rlen", config.read_length,
             "--gene-fasta-prefix", config.gene_fasta_prefix,
             job.chimera_bedpe_file,
             job.ref_fasta_file,
@@ -162,7 +160,7 @@ def run_job_on_cluster(job_file, config_file):
     #
     py_script = os.path.join(_module_dir, "process_spanning_alignments.py")
     args = [sys.executable, py_script,
-            "--rlen", read_length,
+            "--rlen", config.read_length,
             "--anchor-min", config.anchor_min,
             "--anchor-max", config.anchor_max,
             "--anchor-mismatches", config.anchor_mismatches,
