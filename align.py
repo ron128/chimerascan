@@ -441,7 +441,9 @@ def align(output_sam_file, output_expr_file,
 def check_params(parser, options):
     read_lengths = []
     for fq in options.fastq_files:
+        logging.info("Checking read length for file %s" % (fq))
         read_lengths.append(get_read_length(fq))
+        logging.info("Read length for file %s: %d" % (fq, read_lengths[-1]))
     if any(options.seed_length > rlen for rlen in read_lengths):
         parser.error("seed length %d cannot be longer than read length" % (options.seed_length))
 
