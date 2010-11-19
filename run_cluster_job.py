@@ -164,8 +164,8 @@ def run_job_on_cluster(job_file, config_file):
             "--anchor-min", config.anchor_min,
             "--anchor-max", config.anchor_max,
             "--anchor-mismatches", config.anchor_mismatches,
-            config.chimera_mapping_file,
-            config.spanning_chimera_file] + job.spanning_bowtie_output_files
+            job.chimera_mapping_file,
+            job.spanning_chimera_file] + job.spanning_bowtie_output_files
     cmd = ' '.join(map(str, args))
     qsub(job.name, cmd, num_processors=1, cwd=job.output_dir, walltime="2:00:00", deps=job_ids, 
          stdout="process_spanning_alignments.log" % mate, email=True)
