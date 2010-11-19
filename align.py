@@ -282,8 +282,8 @@ def write_discordant_reads(reads, num_hits, outfh):
         if r.is_unmapped and multihit:
             continue
         multihit = True
-        logging.debug("read: %s num_hits: %d" % (r.qname, num_hits))
-        r.tags = r.tags + [("NH", num_hits)]
+        #logging.debug("read: %s num_hits: %d" % (r.qname, num_hits))
+        r.tags = r.tags + [('NH', num_hits)]
         outfh.write(r)
 
 def write_exon_expr_data(exon_data, exon_gene_map, outfh):
@@ -441,9 +441,9 @@ def align(output_sam_file, output_expr_file,
 def check_params(parser, options):
     read_lengths = []
     for fq in options.fastq_files:
-        logging.info("Checking read length for file %s" % (fq))
+        logging.debug("Checking read length for file %s" % (fq))
         read_lengths.append(get_read_length(fq))
-        logging.info("Read length for file %s: %d" % (fq, read_lengths[-1]))
+        logging.debug("Read length for file %s: %d" % (fq, read_lengths[-1]))
     if any(options.seed_length > rlen for rlen in read_lengths):
         parser.error("seed length %d cannot be longer than read length" % (options.seed_length))
 

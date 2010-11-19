@@ -62,6 +62,8 @@ class PipelineConfig(object):
         config.fastqc_bin = root.findtext('fastqc_bin')
         # samtools
         config.samtools_bin = root.findtext('samtools_bin')
+        # bedtools
+        config.bedtools_bin = root.findtext('bedtools_bin')
         # bowtie
         bowtie_elem = root.find("bowtie")
         config.bowtie_bin = bowtie_elem.get("bin")
@@ -72,6 +74,7 @@ class PipelineConfig(object):
         config.seed_length = int(bowtie_elem.findtext("seed_length"))
         # gene alignments 
         config.gene_bed_file = root.findtext("gene_bed_file")
+        config.gene_name_file = root.findtext("gene_name_file")        
         config.gene_fasta_prefix = root.findtext("gene_fasta_prefix")
         config.insert_size_max = int(root.findtext("insert_size_max"))
         return config
@@ -115,3 +118,4 @@ class JobConfig(object):
         j.discordant_bam_file = os.path.join(j.chimerascan_dir, DISCORDANT_READS_FILE)
         j.expression_file = os.path.join(j.chimerascan_dir, EXPRESSION_FILE)
         return j
+    
