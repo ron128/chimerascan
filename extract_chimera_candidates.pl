@@ -23,18 +23,21 @@ unless (defined $option{u}){die $usage}; my $ucscfile = $option{u};
 #
 # STEP 1: Extract UCSC gene positions
 #
-my($UCSC_INFO,$UCSC2GENE,$UCSCID,$ORDER,$AORDER,$EXONS) = get_ucsc();
+my($UCSC_INFO,$UCSC2GENE,$UCSCID,$ORDER,$AORDER,$EXONS) = get_ucsc($ucscfile);
 
 # Print out 'chimeric' mate pairs to a tab delimited file
-my $OUT = $outdir.'/filtered_chimeras.txt';
+my $OUT = $outdir.'filtered_chimeras.txt';
+print "OUT $OUT\n";
 open OUT, ">$OUT" or die "Can't open file $OUT";
 
 # Print out 'chimeric' mate pairs to a BEDPE file
-my $OUTBEDPE = $outdir.'/filtered_chimeras.bedpe.txt';
+my $OUTBEDPE = $outdir.'filtered_chimeras.bedpe.txt';
+print "OUTBEDPE $OUTBEDPE\n";
 open OUTBEDPE, ">$OUTBEDPE" or die "Can't open file $OUTBEDPE";
 
 # Print out 'chimeric' nominations into FASTA file or reads
-my $READS = $outdir.'/filtered_chimeras_reads.fa';
+my $READS = $outdir.'filtered_chimeras_reads.fa';
+print "READS $READS\n";
 open READS, ">$READS" or die "Can't open file $READS";
 
 
@@ -42,6 +45,7 @@ open READS, ">$READS" or die "Can't open file $READS";
 # STEP 2: PARSE FILE
 #
 my(%SEQS5P,%SEQS3P,%POS,%READS5P_TMP,%READS3P_TMP,%READS5P,%READS3P);
+print "$IN\n";
 open(IN, $IN);
 while(<IN>){
     chomp;
@@ -164,7 +168,7 @@ close(IN);
 my(%FINAL,%FPpositions,%TPpositions,%TPexons,%FPexons,%MP,%FPexonstarts,%TPexonstarts,%FPexonends,%TPexonends);
 my @mps = keys %SEQS5P;
 foreach my $mp (@mps){
-    
+
     #if($mp eq 'PATHBIO-SOLEXA2_30TUEAAXX:3:3:1614:1230'){
 #	print "WOOOO\t$mp\n";
 #    }
@@ -247,6 +251,7 @@ foreach my $mp (@mps){
 #
 my @chimeras = keys %FINAL;
 foreach my $chimera (@chimeras){
+#    print "$chimera\n";
     my($FPhugo,$TPhugo,$FPucsc,$TPucsc) = split(/\;/,$chimera); 
     #
     # Print those with greater than 2 reads
@@ -736,7 +741,8 @@ sub check_for_neighbors{
 }
     
 sub get_ucsc{
-    my $ucsc_table = @_;
+    my($ucsc_table) = @_;
+
     my(%UCSC,%UCSC2GENE,%UCSCID,%ORDER,%AORDER,%EXONS);
     open(UCSC, "<$ucsc_table");
     while(<UCSC>){

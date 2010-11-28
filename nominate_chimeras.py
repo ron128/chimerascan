@@ -14,7 +14,7 @@ from config import JOB_SUCCESS, JOB_ERROR
 _module_dir = os.path.abspath(os.path.dirname(__file__))
 
 def nominate_chimeras(job_name, bam_file, tmp_dir, output_file,
-                      gene_file, bedtools_path):
+                      gene_bed_file, gene_name_file, bedtools_path):
     pairtobed_bin = "pairToBed"
     if bedtools_path is not None:
         pairtobed_bin = os.path.join(bedtools_path, pairtobed_bin)    
@@ -42,7 +42,7 @@ def nominate_chimeras(job_name, bam_file, tmp_dir, output_file,
     if not os.path.exists(bedpe_overlap_file):
         logging.info("%s: Finding overlapping genes" % (job_name))
         args = [pairtobed_bin, "-type", "both", 
-                "-a", prev_output_file, "-b", gene_file]
+                "-a", prev_output_file, "-b", gene_bed_file]
         logging.debug("%s: args=%s" % (job_name, ' '.join(args)))
         f = open(bedpe_overlap_file, "w")
         if subprocess.call(args, stdout=f) != JOB_SUCCESS:
@@ -73,14 +73,15 @@ def nominate_chimeras(job_name, bam_file, tmp_dir, output_file,
     #
     logging.info("%s: Extracting chimeras" % (job_name))
     perl_script = os.path.join(_module_dir, "extract_chimera_candidates.pl")
-    candidates_dir = os.path.join(tmp_dir, "candidates")
+    candidates_dir = os.path.join(tmp_dir, "candidates/")
     if not os.path.exists(candidates_dir):
         logging.info("%s: Creating dir %s for chimera candidates" % (job_name, candidates_dir))
-        os.makedirs(candidates_dir)
+        os.makedirs(candidates_dir)    
     args = ["perl", perl_script,
-            "-i", prev_output_file, 
             "-o", candidates_dir,
-            "-u", gene_file]
+            "-i", prev_output_file, 
+            "-u", gene_name_file]
+    logging.debug("%s: args=%s" % (job_name, ' '.join(args)))
     f = open(output_file, "w")
     if subprocess.call(args, stdout=f) != JOB_SUCCESS:
         logging.error("%s: Error extracting chimeras" % (job_name))    
@@ -93,7 +94,8 @@ def main():
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--bedtools-path", dest="bedtools_path", default=None)
-    parser.add_argument("--gene-file", dest="gene_file")
+    parser.add_argument("--gene-bed", dest="gene_file")
+    parser.add_argument("--gene-name", dest="gene_file")
     parser.add_argument("job_name")
     parser.add_argument("bam_file")
     parser.add_argument("tmp_dir")
@@ -101,7 +103,8 @@ def main():
     options = parser.parse_args()
     return nominate_chimeras(options.job_name, options.bam_file, options.tmp_dir,
                              options.output_file,
-                             gene_file=options.gene_file,
+                             gene_bed_file=options.gene_file,
+                             gene_name_file=options.gene_file,
                              bedtools_path=options.bedtools_path)
 
 if __name__ == '__main__': sys.exit(main()) 
