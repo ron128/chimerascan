@@ -104,7 +104,7 @@ def main():
     return nominate_chimeras(options.job_name, options.bam_file, options.tmp_dir,
                              options.output_file,
                              gene_bed_file=options.gene_bed,
-                             gene_name_file=options.gene_mame,
+                             gene_name_file=options.gene_name,
                              bedtools_path=options.bedtools_path)
 
 if __name__ == '__main__': sys.exit(main()) 
