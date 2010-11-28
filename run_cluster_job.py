@@ -108,7 +108,8 @@ def run_job_on_cluster(job_file, config_file):
     py_script = os.path.join(_module_dir, "nominate_chimeras.py")
     args = [sys.executable, py_script,
             "--bedtools-path", config.bedtools_path,
-            "--gene-file", config.gene_name_file,
+            "--gene-bed", config.gene_bed_file,
+            "--gene-name", config.gene_name_file,
             job.name,
             job.discordant_bam_file,
             job.chimerascan_dir,

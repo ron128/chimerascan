@@ -94,8 +94,8 @@ def main():
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--bedtools-path", dest="bedtools_path", default=None)
-    parser.add_argument("--gene-bed", dest="gene_file")
-    parser.add_argument("--gene-name", dest="gene_file")
+    parser.add_argument("--gene-bed", dest="gene_bed")
+    parser.add_argument("--gene-name", dest="gene_name")
     parser.add_argument("job_name")
     parser.add_argument("bam_file")
     parser.add_argument("tmp_dir")
@@ -103,8 +103,8 @@ def main():
     options = parser.parse_args()
     return nominate_chimeras(options.job_name, options.bam_file, options.tmp_dir,
                              options.output_file,
-                             gene_bed_file=options.gene_file,
-                             gene_name_file=options.gene_file,
+                             gene_bed_file=options.gene_bed,
+                             gene_name_file=options.gene_mame,
                              bedtools_path=options.bedtools_path)
 
 if __name__ == '__main__': sys.exit(main()) 
