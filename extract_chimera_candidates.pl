@@ -59,10 +59,10 @@ while(<IN>){
     my($mp) = $v[6];
     my($str1) = $v[8]; if($str1 eq 'F' || $str1 eq '1'){ $str1 = '+'; } if($str1 eq 'R' || $str1 eq '-1'){$str1 = '-'; }
     my($str2) = $v[9]; if($str2 eq 'F' || $str2 eq '1'){ $str2 = '+'; } if($str2 eq 'R' || $str2 eq '-1'){$str2 = '-'; }
-    my($ch) = $v[12];
-    my($sh) = $v[13];
-    my($eh) = $v[14];
-    my($ucsc) = $v[15];
+    my($ch) = $v[11];
+    my($sh) = $v[12];
+    my($eh) = $v[13];
+    my($ucsc) = $v[14];
     my($ucscstr) = $v[16];
     my($exons) = $v[20];
     my(@exon_lengths) = split(/\,/,$v[21]); 
