@@ -68,6 +68,8 @@ while(<IN>){
     my(@exon_lengths) = split(/\,/,$v[22]); 
     my(@exon_starts) = split(/\,/,$v[23]);
 
+	print "$c1\t$ch\n";
+
     # If first mate matches hit
     if($c1 eq $ch){
 	
