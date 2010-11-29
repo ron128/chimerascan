@@ -74,6 +74,8 @@ while(<IN>){
 	# If first mate falls within boundaries of hit
 	if( ($s1 >= $sh && $s1 <= $eh) || ($s1 >= $sh && $s1 <= $eh) ){
 	    my $gene = $$UCSC2GENE{$ucsc}[0];
+		print "$gene\n";
+
 	    # Can determine if 5' or 3'
  	    my $partner;
 	    if($str1 eq $ucscstr){
@@ -159,7 +161,7 @@ close(IN);
 #die;
 
 
-
+print "Done processing BEDPE\n";
 #
 #
 # Filter each read
@@ -747,21 +749,21 @@ sub get_ucsc{
     open(UCSC, "<$ucsc_table");
     while(<UCSC>){
         chomp;
-	
-	if(/^\#/){
-	    next;
-	}else{
-	    #my($UCSC,$chr,$str,$tst,$tend,$cst,$cend,$exons,$gene)=split(/\t/);
-	    my(@v) = split(/\t/);
-	    my $id = $v[1].';'.$v[2].';'.$v[3].';'.$v[4];
-	    push @{$UCSC{$v[10]}}, $id; 
-	    $UCSC2GENE{$v[0]}[0] = $v[10];
-	    $UCSCID{$v[0]}[0] = $id;
-	    my $index = $v[1].'_'.$v[2];
-	    push @{$ORDER{$index}}, $v[10];
-	    push @{$AORDER{$v[1]}}, $v[10];
-	    push @{$EXONS{$v[0]}}, $v[1], $v[2], $v[7], $v[8], $v[9], $v[10]; # Chr, Str, exons, starts, ends, hugo 
-	}
+		
+		if(/^\#/){
+	    	next;
+		}else{
+	   	 #my($UCSC,$chr,$str,$tst,$tend,$cst,$cend,$exons,$gene)=split(/\t/);
+	   	 my(@v) = split(/\t/);
+	   	 my $id = $v[1].';'.$v[2].';'.$v[3].';'.$v[4];
+	   	 push @{$UCSC{$v[10]}}, $id; 
+	   	 $UCSC2GENE{$v[0]}[0] = $v[10];
+	   	 $UCSCID{$v[0]}[0] = $id;
+	   	 my $index = $v[1].'_'.$v[2];
+	   	 push @{$ORDER{$index}}, $v[10];
+	   	 push @{$AORDER{$v[1]}}, $v[10];
+	   	 push @{$EXONS{$v[0]}}, $v[1], $v[2], $v[7], $v[8], $v[9], $v[10]; # Chr, Str, exons, starts, ends, hugo 
+		}
     }
     close(UCSC);
     
