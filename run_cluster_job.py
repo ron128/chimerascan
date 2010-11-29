@@ -91,7 +91,7 @@ def run_job_on_cluster(job_file, config_file):
     if not os.path.exists(job.chimerascan_dir):
         os.makedirs(job.chimerascan_dir)
         logging.info("%s: created output directory %s" % (job.name, job.chimerascan_dir))
-    if up_to_date(job.chimera_bedpe_file, job.discordant_bam_file):
+    if all(up_to_date(job.discordant_bam_file, f) for f in job.fastq_files):
         logging.info("[SKIPPED] Discordant reads alignment %s is up to date" % (job.discordant_bam_file))
     else:
         logging.info("%s: Aligning reads" % (job.name))    
