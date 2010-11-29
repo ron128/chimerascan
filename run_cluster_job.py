@@ -11,7 +11,6 @@ import subprocess
 import lxml.etree as etree
 
 from config import PipelineConfig, JobConfig, JOB_SUCCESS, JOB_ERROR
-from config import file_newer
 from setup_job import copy_sequence_job
 from align import get_read_length
 
@@ -53,6 +52,13 @@ def qsub(job_name, cmd, num_processors, cwd=None, walltime="60:00:00", pmem=None
     job_id = p.communicate()[0]
     return job_id.strip()
 
+def up_to_date(outfile, infile):
+    if not os.path.exists(infile):
+        return False
+    if not os.path.exists(outfile):
+        return False
+    return os.path.getmtime(outfile) >= os.path.getmtime(infile)
+
 def run_job_on_cluster(job_file, config_file):
     logging.info("Job %s starting.." % (job_file))    
     config = PipelineConfig.from_xml(config_file)    
@@ -85,7 +91,7 @@ def run_job_on_cluster(job_file, config_file):
     if not os.path.exists(job.chimerascan_dir):
         os.makedirs(job.chimerascan_dir)
         logging.info("%s: created output directory %s" % (job.name, job.chimerascan_dir))
-    if file_newer(job.chimera_bedpe_file, job.discordant_bam_file):
+    if up_to_date(job.chimera_bedpe_file, job.discordant_bam_file):
         logging.info("[SKIPPED] Discordant reads alignment %s is up to date" % (job.discordant_bam_file))
     else:
         logging.info("%s: Aligning reads" % (job.name))    
@@ -112,7 +118,7 @@ def run_job_on_cluster(job_file, config_file):
     #
     # Nominate chimeras
     #
-    if file_newer(job.chimera_bedpe_file, job.discordant_bam_file):
+    if up_to_date(job.chimera_bedpe_file, job.discordant_bam_file):
         logging.info("[SKIPPED] Nominate chimeras file %s is up to date" % (job.chimera_bedpe_file))
     else:
         py_script = os.path.join(_module_dir, "nominate_chimeras.py")
@@ -131,7 +137,7 @@ def run_job_on_cluster(job_file, config_file):
     #
     # Convert BEDPE to FASTA format
     #
-    if file_newer(job.chimera_fasta_file, job.chimera_bedpe_file):
+    if up_to_date(job.chimera_fasta_file, job.chimera_bedpe_file):
         logging.info("[SKIPPED] BEDPE to FASTA conversion file %s is up to date" % (job.chimera_fasta_file))
     else:
         py_script = os.path.join(_module_dir, "bedpe_to_fasta.py")
@@ -150,7 +156,7 @@ def run_job_on_cluster(job_file, config_file):
     # Build bowtie index
     #
     bowtie_chimera_index_file = job.bowtie_chimera_index + ".1.ebwt"
-    if file_newer(bowtie_chimera_index_file, job.chimera_fasta_file):
+    if up_to_date(bowtie_chimera_index_file, job.chimera_fasta_file):
         logging.info("[SKIPPED] Bowtie index %s is up to date" % (job.bowtie_chimera_index))
     else:
         args = [config.bowtie_build, job.chimera_fasta_file, job.bowtie_chimera_index]
@@ -163,7 +169,7 @@ def run_job_on_cluster(job_file, config_file):
     py_script = os.path.join(_module_dir, "segmented_spanning_align.py")
     job_ids = []
     for mate,fq in enumerate(job.fastq_files):
-        if file_newer(job.spanning_bowtie_output_files[mate], bowtie_chimera_index_file):
+        if up_to_date(job.spanning_bowtie_output_files[mate], bowtie_chimera_index_file):
             logging.info("[SKIPPED] Spanning read alignment file %s is up to date" % (job.spanning_bowtie_output_files[mate]))
             continue
         args = [sys.executable, py_script,
@@ -182,7 +188,7 @@ def run_job_on_cluster(job_file, config_file):
     #
     # Synthesis of spanning and encompassing reads
     #
-    if all(file_newer(job.spanning_chimera_file, f) for f in job.spanning_bowtie_output_files):
+    if all(up_to_date(job.spanning_chimera_file, f) for f in job.spanning_bowtie_output_files):
         logging.info("[SKIPPED] Processed spanning alignment %s is up to date" % (job.spanning_chimera_file))
     else:
         py_script = os.path.join(_module_dir, "process_spanning_alignments.py")
