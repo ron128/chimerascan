@@ -128,7 +128,7 @@ class JobConfig(object):
         # chimera nomination
         j.chimera_bedpe_file = os.path.join(j.chimerascan_dir, "filtered_chimeras.bedpe.txt")
         # chimera fasta file
-        j.chimera_fasta_file = os.path.join(j.chimerascan_dir, "chimericjuncs.txt")
+        j.chimera_fasta_file = os.path.join(j.chimerascan_dir, "chimericjuncs.fa")
         j.chimera_mapping_file = os.path.join(j.chimerascan_dir, "chimericjunc_mapping.txt")
         # spanning bowtie index
         j.bowtie_chimera_index = os.path.splitext(j.chimera_fasta_file)[0]
