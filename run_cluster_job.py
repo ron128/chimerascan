@@ -57,6 +57,8 @@ def up_to_date(outfile, infile):
         return False
     if not os.path.exists(outfile):
         return False
+    if os.path.getsize(outfile) == 0:
+        return False    
     return os.path.getmtime(outfile) >= os.path.getmtime(infile)
 
 def run_job_on_cluster(job_file, config_file):
