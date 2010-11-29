@@ -78,12 +78,15 @@ def run_job_on_cluster(job_file, config_file):
     #
     # Uncompress sequences
     #
-    logging.info("%s: Uncompressing sequences" % (job.name))    
-    py_script = os.path.join(_module_dir, "setup_job.py")
-    args = [sys.executable, py_script, "--uncompress", config_file, job_file]
-    cmd = ' '.join(args)
-    job_id = qsub(job.name, cmd, 1, cwd=job.output_dir, walltime="10:00:00", stdout="uncompress.log", email=False)
-    deps = [job_id]
+    if all(up_to_date(job.fastq_files[mate], job.src_fastq_files[mate]) for mate in xrange(len(job.fastq_files))):
+        logging.info("[SKIPPED] Uncompressed sequence files %s are up to date" % (job.fastq_files))
+    else:
+        logging.info("%s: Uncompressing sequences" % (job.name))    
+        py_script = os.path.join(_module_dir, "setup_job.py")
+        args = [sys.executable, py_script, "--uncompress", config_file, job_file]
+        cmd = ' '.join(args)
+        job_id = qsub(job.name, cmd, 1, cwd=job.output_dir, walltime="10:00:00", stdout="uncompress.log", email=False)
+        deps = [job_id]
     #
     # Discordant reads alignment 
     #
