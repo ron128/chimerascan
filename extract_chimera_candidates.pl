@@ -74,7 +74,7 @@ while(<IN>){
 	# If first mate falls within boundaries of hit
 	if( ($s1 >= $sh && $s1 <= $eh) || ($s1 >= $sh && $s1 <= $eh) ){
 	    my $gene = $$UCSC2GENE{$ucsc}[0];
-		print "$gene\n";
+		#print "$gene\n";
 
 	    # Can determine if 5' or 3'
  	    my $partner;
