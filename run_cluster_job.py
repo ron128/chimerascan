@@ -11,6 +11,7 @@ import subprocess
 import lxml.etree as etree
 
 from config import PipelineConfig, JobConfig, JOB_SUCCESS, JOB_ERROR
+from config import file_newer
 from setup_job import copy_sequence_job
 from align import get_read_length
 
@@ -56,6 +57,7 @@ def run_job_on_cluster(job_file, config_file):
     logging.info("Job %s starting.." % (job_file))    
     config = PipelineConfig.from_xml(config_file)    
     job = JobConfig.from_xml(job_file, config.output_dir)
+    deps = []
     #
     # Setup job by copying sequences and uncompressing them
     #
@@ -75,6 +77,7 @@ def run_job_on_cluster(job_file, config_file):
     args = [sys.executable, py_script, "--uncompress", config_file, job_file]
     cmd = ' '.join(args)
     job_id = qsub(job.name, cmd, 1, cwd=job.output_dir, walltime="10:00:00", stdout="uncompress.log", email=False)
+    deps = [job_id]
     #
     # Discordant reads alignment 
     #
@@ -82,67 +85,87 @@ def run_job_on_cluster(job_file, config_file):
     if not os.path.exists(job.chimerascan_dir):
         os.makedirs(job.chimerascan_dir)
         logging.info("%s: created output directory %s" % (job.name, job.chimerascan_dir))
-    logging.info("%s: Aligning reads" % (job.name))    
-    py_script = os.path.join(_module_dir, "align.py")
-    args = [sys.executable, py_script,
-            "--bowtie-bin", config.bowtie_bin,
-            "--bowtie-index", config.bowtie_index,
-            "--bowtie-threads", config.bowtie_threads,
-            "--multihits", config.multihits,
-            "--mismatches", config.mismatches,
-            "--seed-length", config.seed_length,
-            "--gene-bed", config.gene_bed_file,
-            "--gene-fasta-prefix", config.gene_fasta_prefix,
-            "--quals", job.fastq_format,
-            job.fastq_files[0],
-            job.fastq_files[1],
-            job.discordant_bam_file,
-            job.expression_file]
-    args = map(str, args)
-    cmd = ' '.join(args)
-    num_processors = NODE_PROCESSORS
-    job_id = qsub(job.name, cmd, num_processors, cwd=job.output_dir, walltime="40:00:00", deps=[job_id], stdout="align.log", email=False)
+    if file_newer(job.chimera_bedpe_file, job.discordant_bam_file):
+        logging.info("[SKIPPED] Discordant reads alignment %s is up to date" % (job.discordant_bam_file))
+    else:
+        logging.info("%s: Aligning reads" % (job.name))    
+        py_script = os.path.join(_module_dir, "align.py")
+        args = [sys.executable, py_script,
+                "--bowtie-bin", config.bowtie_bin,
+                "--bowtie-index", config.bowtie_index,
+                "--bowtie-threads", config.bowtie_threads,
+                "--multihits", config.multihits,
+                "--mismatches", config.mismatches,
+                "--seed-length", config.seed_length,
+                "--gene-bed", config.gene_bed_file,
+                "--gene-fasta-prefix", config.gene_fasta_prefix,
+                "--quals", job.fastq_format,
+                job.fastq_files[0],
+                job.fastq_files[1],
+                job.discordant_bam_file,
+                job.expression_file]
+        args = map(str, args)
+        cmd = ' '.join(args)
+        num_processors = NODE_PROCESSORS
+        job_id = qsub(job.name, cmd, num_processors, cwd=job.output_dir, walltime="40:00:00", deps=deps, stdout="align.log", email=False)
+        deps = [job_id]
     #
     # Nominate chimeras
     #
-    py_script = os.path.join(_module_dir, "nominate_chimeras.py")
-    args = [sys.executable, py_script,
-            "--bedtools-path", config.bedtools_path,
-            "--gene-bed", config.gene_bed_file,
-            "--gene-name", config.gene_name_file,
-            job.name,
-            job.discordant_bam_file,
-            job.chimerascan_dir,
-            job.chimera_bedpe_file]
-    args = map(str, args)
-    cmd = ' '.join(args)
-    job_id = qsub(job.name, cmd, num_processors=1, cwd=job.output_dir, walltime="40:00:00", deps=[job_id], stdout="chimeras.log", email=False)
+    if file_newer(job.chimera_bedpe_file, job.discordant_bam_file):
+        logging.info("[SKIPPED] Nominate chimeras file %s is up to date" % (job.chimera_bedpe_file))
+    else:
+        py_script = os.path.join(_module_dir, "nominate_chimeras.py")
+        args = [sys.executable, py_script,
+                "--bedtools-path", config.bedtools_path,
+                "--gene-bed", config.gene_bed_file,
+                "--gene-name", config.gene_name_file,
+                job.name,
+                job.discordant_bam_file,
+                job.chimerascan_dir,
+                job.chimera_bedpe_file]
+        args = map(str, args)
+        cmd = ' '.join(args)
+        job_id = qsub(job.name, cmd, num_processors=1, cwd=job.output_dir, walltime="40:00:00", deps=deps, stdout="chimeras.log", email=False)
+        deps = [job_id]
     #
     # Convert BEDPE to FASTA format
     #
-    py_script = os.path.join(_module_dir, "bedpe_to_fasta.py")
-    args = [sys.executable, py_script,
-            "--rlen", job.read_length,
-            "--gene-fasta-prefix", config.gene_fasta_prefix,
-            job.chimera_bedpe_file,
-            config.ref_fasta_file,
-            job.chimera_fasta_file,
-            job.chimera_mapping_file]              
-    args = map(str, args)
-    cmd = ' '.join(args)
-    job_id = qsub(job.name, cmd, num_processors=1, cwd=job.output_dir, walltime="1:00:00", deps=[job_id], stdout="bedpe_to_fasta.log", email=False)
+    if file_newer(job.chimera_fasta_file, job.chimera_bedpe_file):
+        logging.info("[SKIPPED] BEDPE to FASTA conversion file %s is up to date" % (job.chimera_fasta_file))
+    else:
+        py_script = os.path.join(_module_dir, "bedpe_to_fasta.py")
+        args = [sys.executable, py_script,
+                "--rlen", job.read_length,
+                "--gene-fasta-prefix", config.gene_fasta_prefix,
+                job.chimera_bedpe_file,
+                config.ref_fasta_file,
+                job.chimera_fasta_file,
+                job.chimera_mapping_file]              
+        args = map(str, args)
+        cmd = ' '.join(args)
+        job_id = qsub(job.name, cmd, num_processors=1, cwd=job.output_dir, walltime="1:00:00", deps=deps, stdout="bedpe_to_fasta.log", email=False)
+        deps = [job_id]
     # 
     # Build bowtie index
-    #    
-    args = [config.bowtie_build, job.chimera_fasta_file, job.bowtie_chimera_index]
-    cmd = ' '.join(args)
-    job_id = qsub(job.name, cmd, num_processors=1, cwd=job.output_dir, walltime="1:00:00", deps=[job_id], stdout="bowtie_build.log", email=False)
+    #
+    bowtie_chimera_index_file = job.bowtie_chimera_index + ".1.ebwt"
+    if file_newer(bowtie_chimera_index_file, job.chimera_fasta_file):
+        logging.info("[SKIPPED] Bowtie index %s is up to date" % (job.bowtie_chimera_index))
+    else:
+        args = [config.bowtie_build, job.chimera_fasta_file, job.bowtie_chimera_index]
+        cmd = ' '.join(args)
+        job_id = qsub(job.name, cmd, num_processors=1, cwd=job.output_dir, walltime="1:00:00", deps=deps, stdout="bowtie_build.log", email=False)
+        deps = [job_id]
     #
     # Spanning read alignment
-    # 
+    #
     py_script = os.path.join(_module_dir, "segmented_spanning_align.py")
     job_ids = []
     for mate,fq in enumerate(job.fastq_files):
+        if file_newer(job.spanning_bowtie_output_files[mate], bowtie_chimera_index_file):
+            logging.info("[SKIPPED] Spanning read alignment file %s is up to date" % (job.spanning_bowtie_output_files[mate]))
+            continue
         args = [sys.executable, py_script,
                 "--bowtie-bin", config.bowtie_bin,
                 "--bowtie-index", job.bowtie_chimera_index,
@@ -154,7 +177,7 @@ def run_job_on_cluster(job_file, config_file):
                 fq,
                 job.spanning_bowtie_output_files[mate]]
         cmd = ' '.join(map(str, args))
-        job_ids.append(qsub(job.name, cmd, num_processors=NODE_PROCESSORS, cwd=job.output_dir, walltime="20:00:00", deps=[job_id], 
+        job_ids.append(qsub(job.name, cmd, num_processors=NODE_PROCESSORS, cwd=job.output_dir, walltime="20:00:00", deps=deps, 
                             stdout="spanning_mate%d.log" % mate, email=False))
     #
     # Synthesis of spanning and encompassing reads

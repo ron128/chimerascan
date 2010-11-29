@@ -170,9 +170,9 @@ my @mps = keys %SEQS5P;
 foreach my $mp (@mps){
 
     #if($mp eq 'PATHBIO-SOLEXA2_30TUEAAXX:3:3:1614:1230'){
-#	print "WOOOO\t$mp\n";
-#    }
-    
+	print "WOOOO\t$mp\n";
+	#    }
+
     if($READS5P{$mp}[0] eq '' || $READS3P{$mp}[0] eq ''){
 	next;
     }
