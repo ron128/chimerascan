@@ -27,17 +27,17 @@ my($UCSC_INFO,$UCSC2GENE,$UCSCID,$ORDER,$AORDER,$EXONS) = get_ucsc($ucscfile);
 
 # Print out 'chimeric' mate pairs to a tab delimited file
 my $OUT = $outdir.'filtered_chimeras.txt';
-print "OUT $OUT\n";
+#print "OUT $OUT\n";
 open OUT, ">$OUT" or die "Can't open file $OUT";
 
 # Print out 'chimeric' mate pairs to a BEDPE file
 my $OUTBEDPE = $outdir.'filtered_chimeras.bedpe.txt';
-print "OUTBEDPE $OUTBEDPE\n";
+#print "OUTBEDPE $OUTBEDPE\n";
 open OUTBEDPE, ">$OUTBEDPE" or die "Can't open file $OUTBEDPE";
 
 # Print out 'chimeric' nominations into FASTA file or reads
 my $READS = $outdir.'filtered_chimeras_reads.fa';
-print "READS $READS\n";
+#print "READS $READS\n";
 open READS, ">$READS" or die "Can't open file $READS";
 
 
@@ -45,7 +45,7 @@ open READS, ">$READS" or die "Can't open file $READS";
 # STEP 2: PARSE FILE
 #
 my(%SEQS5P,%SEQS3P,%POS,%READS5P_TMP,%READS3P_TMP,%READS5P,%READS3P);
-print "$IN\n";
+#print "$IN\n";
 open(IN, $IN);
 while(<IN>){
     chomp;
@@ -67,8 +67,6 @@ while(<IN>){
     my($exons) = $v[20];
     my(@exon_lengths) = split(/\,/,$v[21]); 
     my(@exon_starts) = split(/\,/,$v[22]);
-
-	print "$c1\t$ch\n";
 
     # If first mate matches hit
     if($c1 eq $ch){
@@ -163,7 +161,6 @@ close(IN);
 #die;
 
 
-print "Done processing BEDPE\n";
 #
 #
 # Filter each read
@@ -174,7 +171,7 @@ my @mps = keys %SEQS5P;
 foreach my $mp (@mps){
 
     #if($mp eq 'PATHBIO-SOLEXA2_30TUEAAXX:3:3:1614:1230'){
-	print "WOOOO\t$mp\n";
+	#print "WOOOO\t$mp\n";
 	#    }
 
     if($READS5P{$mp}[0] eq '' || $READS3P{$mp}[0] eq ''){
