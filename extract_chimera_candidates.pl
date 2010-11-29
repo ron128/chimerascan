@@ -63,10 +63,10 @@ while(<IN>){
     my($sh) = $v[13];
     my($eh) = $v[14];
     my($ucsc) = $v[15];
-    my($ucscstr) = $v[17];
-    my($exons) = $v[21];
-    my(@exon_lengths) = split(/\,/,$v[22]); 
-    my(@exon_starts) = split(/\,/,$v[23]);
+    my($ucscstr) = $v[16];
+    my($exons) = $v[20];
+    my(@exon_lengths) = split(/\,/,$v[21]); 
+    my(@exon_starts) = split(/\,/,$v[22]);
 
 	print "$c1\t$ch\n";
 
