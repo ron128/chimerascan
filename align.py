@@ -5,6 +5,7 @@ Created on Oct 22, 2010
 
 nohup time python /exds/users/mkiyer/sequel/sw/sequel2/tools/rnaseq/fusionpipeline/align.py --bowtie-bin /exds/users/mkiyer/sequel/sw/alignment/bowtie/bowtie-0.12.7/bowtie --bowtie-index /exds/users/mkiyer/sequel/alignment_indexes/bowtie/hg19_genome_knowngene_combined/hg19_genome_knowngene_combined --gene-bed /exds/users/mkiyer/sequel/reference_sequences/hg19/annotations/knownGene_2010_Oct_14.bed --gene-fasta-prefix hg19_knownGene_ --multihits 100 --mismatches 2 --seed-length 25 --quals solexa1.3-quals --bowtie-threads 3 s_3_1_sequence.txt s_3_2_sequence.txt discordant_reads.bam > align.log 2>&1 &
 
+test
 '''
 import argparse
 import tempfile
