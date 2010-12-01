@@ -44,7 +44,7 @@ def cleanup_job(job_file, config_file):
         return JOB_ERROR
     logging.info("%s: Copy successful" % (job.name))
     logging.info("%s: Deleting local files" % (job.name))
-    #shutil.rmtree(job.output_dir)
+    shutil.rmtree(job.output_dir)
     return JOB_SUCCESS
 
 if __name__ == '__main__':
