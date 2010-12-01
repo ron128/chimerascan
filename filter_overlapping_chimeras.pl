@@ -7,7 +7,7 @@ my $usage = "Usage : filter_overlapping_chimeras.pl
 
 The purpose of this file is to convert any eland multi-mapping alignment file into a BEDPE file
 usable by BEDTools. The BEDPE format is as follows:
- 
+ g 
    1. chrom1 (chrom for the first end of the pair)
    2. start1 (start for the first end of the pair)
    3. end1 (end for the first end of the pair)
@@ -19,7 +19,7 @@ usable by BEDTools. The BEDPE format is as follows:
    9. strand1 (orientation for the first end of the pair. +/-)
   10. strand2 (orientation for the second end of the pair. +/-)
   11. any number of user-defined fields. Ignored, but carried-through by BEDTools 
-
+ 
 The input for this script is:
 -i Infile    [ mctp_30TUEAAXX_3_BEDPE_Gene.txt ]
 -o Outfile   [ mctp_30TUEAAXX_3_filtered_genes_BEDPE.txt ]
