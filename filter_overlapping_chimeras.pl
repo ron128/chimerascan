@@ -7,7 +7,6 @@ my $usage = "Usage : filter_overlapping_chimeras.pl
 
 The purpose of this file is to convert any eland multi-mapping alignment file into a BEDPE file
 usable by BEDTools. The BEDPE format is as follows:
- g 
    1. chrom1 (chrom for the first end of the pair)
    2. start1 (start for the first end of the pair)
    3. end1 (end for the first end of the pair)
