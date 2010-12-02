@@ -220,6 +220,8 @@ foreach my $mp (@mps){
 	    $FINAL{$fusion}[0]++;
 	    $FINAL{$fusion}[1] = $$UCSC_INFO{$x[0]}[0];
 	    $FINAL{$fusion}[2] = $$UCSC_INFO{$y[0]}[0];
+	    $FINAL{$fusion}[3] = $rearrangement_type;
+	    $FINAL{$fusion}[4] = $distance;
 	    
 #	    print "$FINAL{$fusion}[0]\t$FINAL{$fusion}[1]\t$FINAL{$fusion}[2]\n";
 	    
@@ -304,7 +306,7 @@ foreach my $chimera (@chimeras){
 #	    print OUTBEDPE "$FPucsc\t$relstart\t$FPtranscript_length\t$TPucsc\t$relend\t$TPtranscript_length\t$FPhugo-$TPhugo\t$FINAL{$chimera}[0]\t$FPstr\t$TPstr\t";
 #	    if($FPucsc eq 'uc010gor.2' && $TPucsc eq 'uc010gnx.2'){
 		print "$FPucsc\t$relstart\t$FPtranscript_length\t$TPucsc\t$relend\t$TPtranscript_length\t$FPhugo-$TPhugo\t";
-		print "$FINAL{$chimera}[0]\t$FPstr\t$TPstr\t";
+		print "$FINAL{$chimera}[0]\t$FPstr\t$TPstr\t$FINAL{$chimera}[3]\t$FINAL{$chimera}[4]\t";
 #	    }
 
 	    
