@@ -119,8 +119,8 @@ def join_spanning_reads(bowtie_output_files, chimera_refs,
             #print cov, csq, pval
             #continue
             fields += [cov, both_cov, ','.join(map(str,anchors[chimera_id])),
-                       ','.join(['|'.join(read_tuple) for read_tuple in read_tuples])] 
-#                       ','.join(qnames)]
+                       ','.join([read_tuple[1] for read_tuple in read_tuples]),
+                       ','.join([read_tuple[0] for read_tuple in read_tuples])]
             yield fields
 
 def main():
