@@ -306,7 +306,7 @@ foreach my $chimera (@chimeras){
 #	    print OUTBEDPE "$FPucsc\t$relstart\t$FPtranscript_length\t$TPucsc\t$relend\t$TPtranscript_length\t$FPhugo-$TPhugo\t$FINAL{$chimera}[0]\t$FPstr\t$TPstr\t";
 #	    if($FPucsc eq 'uc010gor.2' && $TPucsc eq 'uc010gnx.2'){
 		print "$FPucsc\t$relstart\t$FPtranscript_length\t$TPucsc\t$relend\t$TPtranscript_length\t$FPhugo-$TPhugo\t";
-		print "$FINAL{$chimera}[0]\t$FPstr\t$TPstr\t$FINAL{$chimera}[3]\t$FINAL{$chimera}[4]\t";
+		print "$FINAL{$chimera}[0]\t$FPstr\t$TPstr\t$FINAL{$chimera}[3]\t$FINAL{$chimera}[4]\t$FPexon_range\t$TPexon_range\t";
 #	    }
 
 	    
