@@ -56,7 +56,7 @@ def join_spanning_reads(bowtie_output_files, chimera_refs,
                         anchor_min, anchor_max,
                         max_anchor_mismatches):
     chimera_counts = collections.defaultdict(lambda: 0)
-    chimera_qnames = collections.defaultdict(lambda: [])
+    chimera_reads = collections.defaultdict(lambda: [])
     anchors = {}
     junc_positions = {}
     max_anchor = int((original_read_length + 1)/2)
@@ -93,32 +93,34 @@ def join_spanning_reads(bowtie_output_files, chimera_refs,
                         read_ok = False
                 if read_ok:
                     filtered_reads.append(read)
-                #                else:
-#                    print read.qname, read.mate, read.strand, read.rname, read.pos, read.md
+                #else:
+                #    print read.qname, read.mate, read.strand, read.rname, read.pos, read.md
             # count reads that pass anchor filter
             if len(filtered_reads) == 0:
                 continue
             #weight = 1.0 / len(filtered_reads)
             for read in filtered_reads:
                 chimera_counts[read.rname] += 1
-                chimera_qnames[read.rname].append(read.qname)
+                chimera_reads[read.rname].append((read.qname,read.seq))
     # assign junction coverage to chimera candidates
     for chimera_id,bedpe_records in chimera_refs.iteritems():
         cov = chimera_counts[chimera_id]
-        qnames = chimera_qnames[chimera_id]
-        if len(qnames) == 0:
-            qnames = ["None"]
+        read_tuples = chimera_reads[chimera_id]
+        if len(read_tuples) == 0:
+            read_tuples = [("None", "None")]
         for fields in bedpe_records:
-            # intersection encompassing with spanning reads to see overlap
-            encompassing_qnames = fields[10].split(',')[:-1]
+            # intersect encompassing with spanning reads to see overlap
+            encompassing_qnames = fields[16].split(',')[:-1]
             #both_qnames = set(qnames).intersection(encompassing_qnames)
-            both_cov = sum(1 for x in qnames if x in set(encompassing_qnames))
+            both_cov = sum(1 for read_tuple in read_tuples if read_tuple[0] in set(encompassing_qnames))
             #print '\t'.join(map(str, fields))
             #print observed_arr
             #print expected_arr
             #print cov, csq, pval
             #continue
-            fields += [cov, both_cov, ','.join(map(str,anchors[chimera_id])), ','.join(qnames)]
+            fields += [cov, both_cov, ','.join(map(str,anchors[chimera_id])),
+                       ','.join(['|'.join(read_tuple) for read_tuple in read_tuples])] 
+#                       ','.join(qnames)]
             yield fields
 
 def main():
