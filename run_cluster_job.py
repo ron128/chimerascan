@@ -80,7 +80,10 @@ def run_job_on_cluster(job_file, config_file):
     #
     # Get the read length from the fastq files
     #
-    read_length = get_read_length_compressed(job.dst_fastq_files[0])
+    if os.path.exists(job.dst_fastq_files[0]):
+        read_length = get_read_length_compressed(job.dst_fastq_files[0])
+    elif os.path.exists(job.fastq_files[0]):
+        read_length = get_read_length_compressed(job.fastq_files[0])
     logging.info("%s: First sequence in file has read length %d" % (read_length))    
     #
     # Uncompress sequences
