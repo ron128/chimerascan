@@ -15,6 +15,8 @@ import shutil
 import operator
 import pysam
 
+from base import get_read_length
+
 def make_fifo(base_dir):
     tmpdir = tempfile.mkdtemp(suffix='fifo', prefix='tmp', dir=base_dir)
     fifo_file = os.path.join(tmpdir, "fifo")
@@ -28,13 +30,6 @@ def make_temp(base_dir, suffix=''):
     fd,name = tempfile.mkstemp(suffix=suffix, prefix='tmp', dir=base_dir)
     os.close(fd)
     return name
-
-def get_read_length(fastq_file):
-    f = open(fastq_file)
-    f.next()
-    seq = f.next().strip()
-    f.close()
-    return len(seq)
 
 def setup_bowtie_segment_align(output_sam_file, fastq_file, fastq_format, 
                                seed_length, multihits, mismatches, num_threads, 

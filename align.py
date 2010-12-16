@@ -84,13 +84,6 @@ def make_temp(base_dir, suffix=''):
     os.close(fd)
     return name
 
-def get_read_length(fastq_file):
-    f = open(fastq_file)
-    f.next()
-    seq = f.next().strip()
-    f.close()
-    return len(seq)
-
 def iter_multihit_alignments(samfh):    
     reads = []
     for read in samfh:

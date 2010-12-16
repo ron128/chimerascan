@@ -12,7 +12,7 @@ import lxml.etree as etree
 
 from config import PipelineConfig, JobConfig, JOB_SUCCESS, JOB_ERROR
 from setup_job import copy_sequence_job
-from align import get_read_length
+from base import get_read_length_compressed
 
 _module_dir = os.path.abspath(os.path.dirname(__file__))
 
@@ -77,6 +77,11 @@ def run_job_on_cluster(job_file, config_file):
     if retcode != 0:
         logging.error("%s: Error setting up job" % (job.name))    
         return JOB_ERROR
+    #
+    # Get the read length from the fastq files
+    #
+    read_length = get_read_length_compressed(job.dst_fastq_files[0])
+    logging.info("%s: First sequence in file has read length %d" % (read_length))    
     #
     # Uncompress sequences
     #
@@ -147,7 +152,7 @@ def run_job_on_cluster(job_file, config_file):
     else:
         py_script = os.path.join(_module_dir, "bedpe_to_fasta.py")
         args = [sys.executable, py_script,
-                "--rlen", job.read_length,
+                "--rlen", read_length,
                 "--gene-fasta-prefix", config.gene_fasta_prefix,
                 job.chimera_bedpe_file,
                 config.ref_fasta_file,
@@ -198,7 +203,7 @@ def run_job_on_cluster(job_file, config_file):
     else:
         py_script = os.path.join(_module_dir, "process_spanning_alignments.py")
         args = [sys.executable, py_script,
-                "--rlen", job.read_length,
+                "--rlen", read_length,
                 "--anchor-min", config.anchor_min,
                 "--anchor-max", config.anchor_max,
                 "--anchor-mismatches", config.anchor_mismatches,

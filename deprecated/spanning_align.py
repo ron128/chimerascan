@@ -9,12 +9,7 @@ import subprocess
 import tempfile
 import os
 
-def get_read_length(fastq_file):
-    f = open(fastq_file)
-    f.next()
-    seq = f.next().strip()
-    f.close()
-    return len(seq)
+from base import get_read_length
 
 def setup_bowtie(output_sam_file, fastq_file, fastq_format, seed_length, 
                  mismatches, num_threads, bowtie_bin, bowtie_index):

@@ -7,6 +7,29 @@ Created on Oct 26, 2010
 import string
 #import lxml.etree as etree
 
+def get_read_length(fastq_file):
+    f = open(fastq_file)
+    f.next()
+    seq = f.next().strip()
+    f.close()
+    return len(seq)
+
+def get_read_length_compressed(input_file):
+    import gzip
+    import bz2    
+    import os
+    suffix = os.path.splitext(input_file)[-1]
+    if suffix == '.gz':
+        f = gzip.GzipFile(input_file, 'r')
+    elif suffix == '.bz2':
+        f = bz2.BZ2File(input_file, 'r')
+    else:
+        f = open(input_file, 'r')
+    f.next()
+    seq = f.next().strip()
+    f.close()
+    return len(seq)
+
 def parse_multihit_sam_file(samfh):    
     reads = []
     for read in samfh:        
