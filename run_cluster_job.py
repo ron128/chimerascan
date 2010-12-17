@@ -39,6 +39,7 @@ def qsub(job_name, cmd, num_processors, cwd=None, walltime="60:00:00", pmem=None
              "#PBS -o %s/%s" % (cwd, stdout)]
     if email:
         lines.extend(["#PBS -m ae",
+                      "#PBS -M chrmaher@umich.edu",
                       "#PBS -M mkiyer@umich.edu",
                       "#PBS -M trbarret@med.umich.edu"])        
     if deps is not None:

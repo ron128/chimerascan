@@ -21,7 +21,7 @@ import numpy as np
 from bx.intervals.intersection import Interval, IntervalTree
 import pysam
 
-from base import parse_bed12_file
+from base import parse_bed12_file, get_read_length
 from gene_to_genome import build_gene_to_genome_map, transcriptome_to_genome
 
 class ExonData(object):
