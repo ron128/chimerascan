@@ -98,130 +98,112 @@ def parse_segmented_pe_sam(samfh, maxlen=100000):
             start_ind = 0
         buf_size = len(qname_ind_map)
 
-def write_discordant_reads(reads, num_hits, outfh):
-    multihit = False
-    for r in reads:
-        # do not want more than one unmapped read per mate
-        if r.is_unmapped and multihit:
-            continue
-        multihit = True
-        #logging.debug("read: %s num_hits: %d" % (r.qname, num_hits))
-        r.tags = r.tags + [('NH', num_hits)]
-        outfh.write(r)
-
-CIGAR_M = 0 #match  Alignment match (can be a sequence match or mismatch)
-CIGAR_I = 1 #insertion  Insertion to the reference
-CIGAR_D = 2 #deletion  Deletion from the reference
-CIGAR_N = 3 #skip  Skipped region from the reference
-CIGAR_S = 4 #softclip  Soft clip on the read (clipped sequence present in <seq>)
-CIGAR_H = 5 #hardclip  Hard clip on the read (clipped sequence NOT present in <seq>)
-CIGAR_P = 6 #padding  Padding (silent deletion from the padded reference sequence)
-
-def get_aligned_read_intervals(read):
-    intervals = []
-    # insert read into cluster tree
-    astart,aend = read.pos, read.pos
-    for op,length in read.cigar:
-        if length == 0: continue
-        if (op == CIGAR_I) or (op == CIGAR_S) or (op == CIGAR_H): continue
-        if (op == CIGAR_P): assert False 
-        if (op == CIGAR_N):
-            assert astart != aend
-            intervals.append((astart, aend))
-            #print read.qname, read.cigar, ref, astart, aend
-            astart = aend + length
-        aend += length
-    assert astart != aend
-    if aend > astart:
-        #print read.qname, read.cigar, ref, astart, aend
-        intervals.append((astart, aend))
-    assert aend == read.aend
-    return intervals
-
-def partition_mappings_by_strand(read_mappings):
-    # bin segments by strand    
-    num_segs = len(read_mappings)
-    strand_segs = ([list() for x in xrange(num_segs)],
-                   [list() for x in xrange(num_segs)])                   
-    for seg_num, seg_mappings in enumerate(read_mappings):
-        for r in seg_mappings:
-            if r.is_unmapped:
-                # add unmapped reads to the lists on both
-                # strands since the strands are joined
-                # separately
-                strand_segs[0][seg_num].append(r)
-                strand_segs[1][num_segs - 1 - seg_num].append(r)
-            else:
-                # flip negative strand segments
-                if r.is_reverse:
-                    seg_ind = num_segs - 1 - seg_num
-                else:
-                    seg_ind = seg_num
-                strand_segs[r.is_reverse][seg_ind].append(r)
-    return strand_segs
-
 def build_segment_alignment_dict(aln_dict, reads, seg_num, seg_offset, num_segs):
-    for i,r in enumerate(reads):
+    for r in reads:
         if r.is_unmapped:
             continue
         # the anchor position is not necessarily the beginning of 
         # the read but is used as a way of checking if adjacent
         # segments are compatible for joining
-        anchor_pos = r.pos + seg_offset if r.is_reverse else r.pos - seg_offset            
-        assert aln_dict[(r.rname, r.is_reverse, anchor_pos)][seg_num] == None        
-        aln_dict[(r.rname, r.is_reverse, anchor_pos)][seg_num] = i
+        if r.is_reverse:
+            anchor_pos = r.pos + seg_offset
+            seg_ind = num_segs - 1 - seg_num
+        else:
+            anchor_pos = r.pos - seg_offset
+            seg_ind = seg_num
+        #anchor_pos = r.pos + seg_offset if r.is_reverse else r.pos - seg_offset            
+        assert aln_dict[(r.rname, r.is_reverse, anchor_pos)][seg_ind] == None        
+        aln_dict[(r.rname, r.is_reverse, anchor_pos)][seg_ind] = r
+
+def make_unmapped_copy(r):
+    a = pysam.AlignedRead()
+    a.qname = r.qname
+    a.seq = r.seq
+    a.qual = r.qual
+    a.is_unmapped = True
+    a.is_qcfail = False
+    a.is_paired = True
+    a.is_proper_pair = False
+    a.mate_is_unmapped = True
+    a.mrnm = -1
+    a.mpos = -1
+    a.is_read1 = r.is_read1
+    a.is_read2 = r.is_read2
+    a.isize = 0
+    a.mapq = 255
+    a.is_reverse = False
+    a.rname = -1
+    a.pos = 0
+    a.cigar = ()
+    a.tags = []
+    return a
 
 def find_valid_segment_alignments(read_mappings):
     # build a map of reference positions to read segment positions
     num_segs = len(read_mappings)
     aln_dict = collections.defaultdict(lambda: [None] * num_segs)
+    unmapped_segs = [None] * num_segs    
     seg_offset = 0
     for seg_num, seg_mappings in enumerate(read_mappings):
+        # make an unmapped version of each segment to use in joining
+        if len(seg_mappings) == 1 and seg_mappings[0].is_unmapped == True:
+            unmapped_segs[seg_num] = seg_mappings[0]
+        else:
+            unmapped_segs[seg_num] = make_unmapped_copy(seg_mappings[0])
         #print 'SEGMENT', seg_num, 'offset', seg_offset
         build_segment_alignment_dict(aln_dict, seg_mappings, seg_num, seg_offset, num_segs)
         seg_offset += len(seg_mappings[0].seq)
 
-    # find the alignments where the maximum number of segments are
-    # joined (the set of best alignments) by decorating the lists with
-    # the number of mapped segments then using it as a sort key
-    decorated_hit_indexes = []
-    #for mapping_info, segment_hit_indexes in aln_dict.iteritems():        
-    for mapping_info, segment_hit_indexes in aln_dict.iteritems():
-        rname, is_reverse, anchor_pos = mapping_info        
-        num_mapping_segs = sum(0 if (i is None) else 1 for i in segment_hit_indexes)
-        decorated_hit_indexes.append((num_mapping_segs, is_reverse, segment_hit_indexes)) 
-    decorated_hit_indexes.sort(reverse=True)    
-
-    # search reference map and join reads where possible
     reads_to_join = []
-    if len(decorated_hit_indexes) == 0:
+    if len(aln_dict) == 0:
         # if there are no mappings, then all the segments must be non-mapping
         # and must only have one entry at the 0th position in the segment
         # mapping array.  create an unmapped entry in this case.
-        seg_reads = [read_mappings[i][0] for i in xrange(num_segs)]
-        reads_to_join.append([seg_reads])
+        reads_to_join.append(unmapped_segs)
+        #seg_reads = [read_mappings[i][0] for i in xrange(num_segs)]
+        #reads_to_join.append([seg_reads])
     else:
         # there are some segment mappings, but some of the segments could
         # still be unmapped.  here we create a list of joined sub-segments
         # that together comprise a full read by joining consecutive mapped
         # and unmapped segments
-        best_num_segs = decorated_hit_indexes[0][0]
+        # find the alignments where the maximum number of segments are
+        # joined (the set of best alignments) by decorating the lists with
+        # the number of mapped segments then using it as a sort key
+        sorted_segment_hits = []
+        for mapping_info, segment_hits in aln_dict.iteritems():
+            rname, is_reverse, anchor_pos = mapping_info
+            num_mapping_segs = 0
+            for seg_ind, hit in enumerate(segment_hits):
+                # replace missing segments (e.g. 'None') in segment hit list
+                # with the unmapped read segment from the main read mappings list
+                if hit is None:
+                    # find original segment index in read mapping list
+                    orig_seg_num = num_segs - 1 - seg_ind if is_reverse else seg_ind
+                    # replace with unmapped read
+                    segment_hits[seg_ind] = unmapped_segs[orig_seg_num]                    
+                    #segment_hits[seg_ind] = read_mappings[orig_seg_num][0]                    
+                else:
+                    # keep track of number of good mapping segments
+                    num_mapping_segs += 1 
+            #num_mapping_segs = sum(0 if (i is None) else 1 for i in segment_hits)
+            sorted_segment_hits.append((num_mapping_segs, is_reverse, segment_hits)) 
+        # get the most segments that mapped contiguously
+        sorted_segment_hits.sort(reverse=True)    
+        best_num_segs = sorted_segment_hits[0][0]
         #print 'best num segs', best_num_segs
-        #print 'hit indexes', decorated_hit_indexes
-        for num_mapping_segs, is_reverse, segment_hit_indexes in decorated_hit_indexes:
+        #print 'hit indexes', [(x[0], x[1], len(x[2])) for x in sorted_segment_hits]
+        for num_mapping_segs, is_reverse, segment_hits in sorted_segment_hits:
             if num_mapping_segs < best_num_segs:
                 break
             # initialize state for joining
             split_reads = []
-            ind = segment_hit_indexes[0]
-            prev_unmapped = (ind == None)
-            correct_ind = 0 if prev_unmapped else ind
-            seg_reads = [read_mappings[0][correct_ind]]        
+            seg_reads = [segment_hits[0]]
+            prev_unmapped = seg_reads[-1].is_unmapped
             # find adjacent segments to join
-            for seg_num in xrange(1, len(segment_hit_indexes)):
-                ind = segment_hit_indexes[seg_num]
-                unmapped = (ind == None)
-                correct_ind = 0 if unmapped else ind
+            for seg_num in xrange(1, len(segment_hits)):
+                seg_read = segment_hits[seg_num]
+                unmapped = seg_read.is_unmapped
                 # transition from mapped -> unmapped or unmapped -> mapped
                 # requires splitting the read into pieces
                 if prev_unmapped != unmapped:
@@ -229,14 +211,11 @@ def find_valid_segment_alignments(read_mappings):
                     seg_reads = []
                 # update unmapped state
                 prev_unmapped = unmapped
-                seg_reads.append(read_mappings[seg_num][correct_ind])                
+                seg_reads.append(seg_read)
             # add remaining segments
             if len(seg_reads) > 0:
                 split_reads.append(seg_reads)
             # add the split reads to the main list of reads to join
-            # TODO: is this the best way to join strands?
-            if is_reverse:
-                split_reads.reverse()
             reads_to_join.append(split_reads)
     return reads_to_join
 
@@ -252,12 +231,46 @@ def parse_MD_tag(val):
         if val[y].isalpha():
             offset = int(val[x:y])
             base = val[y]
-            mdops.append((offset, base))
+            mdops.append(offset)
+            mdops.append(base)
             x = y + 1
-#    if x < len(val):
-#        mdops.append(int(val[x:]))
+    if x < len(val):
+        mdops.append(int(val[x:]))
     return mdops
 
+def merge_MD_tags(vals):
+    mdops = parse_MD_tag(vals[0])
+    for val in vals[1:]:
+        nextops = parse_MD_tag(val)
+        if isinstance(mdops[-1], int) and isinstance(nextops[0], int):
+            mdops[-1] += nextops[0]
+            nextops = nextops[1:]
+        mdops.extend(nextops)
+    return ''.join(map(str, mdops))
+
+def copy_read(r):
+    a = pysam.AlignedRead()
+    a.qname = r.qname
+    a.seq = r.seq
+    a.qual = r.qual
+    a.is_unmapped = r.is_unmapped
+    a.is_qcfail = r.is_qcfail
+    a.is_paired = r.is_paired
+    a.is_proper_pair = r.is_proper_pair
+    a.mate_is_unmapped = r.mate_is_unmapped
+    a.mrnm = r.mrnm
+    a.mpos = r.mpos
+    a.is_read1 = r.is_read1
+    a.is_read2 = r.is_read2
+    a.isize = r.isize
+    a.mapq = r.mapq
+    a.is_reverse = r.is_reverse
+    a.rname = r.rname
+    a.pos = r.pos
+    a.cigar = r.cigar
+    a.tags = r.tags
+    return a
+               
 def make_joined_read(mate, reads, tags=None):
     if tags is None:
         tags = []
@@ -296,12 +309,12 @@ def make_joined_read(mate, reads, tags=None):
         for r in reads:
             edit_dist += r.opt('NM')
         tags.append(('NM', edit_dist))
+        # compute mismatches to reference (MD)
+        tags.append(('MD', merge_MD_tags([r.opt('MD') for r in reads])))
     a.tags = tags
-    #a.tags = ( ("NM", 1),
-    #           ("RG", "L1") )
     # TODO: check to see all reads are either mapped or unmapped
     # TODO: check strand assignment
-    # TODO: check rname
+    # TODO: check rname    
     assert all(r.is_unmapped == a.is_unmapped for r in reads)
     assert all(r.is_reverse == a.is_reverse for r in reads)
     assert all(r.rname == a.rname for r in reads)
