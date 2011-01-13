@@ -1,4 +1,9 @@
 '''
+Created on Jan 11, 2011
+
+@author: mkiyer
+'''
+'''
 Created on Jan 5, 2011
 
 @author: mkiyer
@@ -6,12 +11,75 @@ Created on Jan 5, 2011
 import collections
 import logging
 import operator
+import os
 
 import pysam
 
 from bx.intersection import Interval, IntervalTree
 from base import parse_multihit_alignments, get_aligned_read_intervals
 from feature import GeneFeature
+
+def get_unpaired_reads(bamfh):
+    pe_reads = ([], [])
+    # reads must be binned by qname, mate, hit, and segment
+    # so initialize to mate 0, hit 0, segment 0
+    num_reads = 0
+    prev_qname = None
+    for read in bamfh:
+        # if read is mapped in proper pair continue
+        if read.is_proper_pair:
+            continue
+        # get read attributes
+        qname = read.qname
+        mate = 0 if read.is_read1 else 1
+        hit_ind = read.opt('HI')
+        num_hits = read.opt('IH')
+        seg_ind = read.opt('XI')
+        num_segs = read.opt('XN')
+        # if query name changes we have completely finished
+        # the fragment and can reset the read data
+        if num_reads > 0 and qname != prev_qname:
+            yield pe_reads
+            # reset state variables
+            pe_reads = ([], [])
+            num_reads = 0
+        prev_qname = qname
+        # initialize mate hits
+        if len(pe_reads[mate]) == 0:
+            pe_reads[mate].extend([list() for x in xrange(num_hits)])
+        mate_reads = pe_reads[mate]
+        # initialize hit segments
+        if len(mate_reads[hit_ind]) == 0:
+            mate_reads[hit_ind].extend([None for x in xrange(num_segs)])
+        # add segment to hit/mate/read
+        mate_reads[hit_ind][seg_ind] = read
+        num_reads += 1
+    if num_reads > 0:
+        yield pe_reads
+
+def map_reads_to_references(pe_reads, tid_list):
+    # bin reads by reference name to find reads that pairs
+    # to the same gene/chromosome
+    ref_dict = collections.defaultdict(lambda: [[], []])
+    partial_mapping_dict = collections.defaultdict(lambda: [[], []])
+    nonmapping_dict = collections.defaultdict(lambda: [[], []])
+    for mate, mate_hits in enumerate(pe_reads):
+        for hitsegs in mate_hits:
+            num_unmapped_segs = sum(1 if r.is_unmapped else 0 for r in hitsegs)
+            if num_unmapped_segs == len(hitsegs):
+                assert len(hitsegs) == 1
+                nonmapping_dict[mate].append(hitsegs[0])
+            elif num_unmapped_segs > 0:
+                partial_mapping_dict[mate].append(hitsegs)
+            else:
+                assert len(hitsegs) == 1
+                read = hitsegs[0]
+                mate_pairs = ref_dict[read.rname]
+                mate_pairs[mate].append(read)
+    return ref_dict, partial_mapping_dict, nonmapping_dict
+
+
+
 
 def find_discordant_mappings():
     # if there are any unmapped segments, this read cannot be considered
@@ -176,6 +244,37 @@ def read_pair_to_gene_bedpe(read1, read2, exon_trees, exon_id_map):
 
     #chr8    74203462        74203486        chr17   1326672 1326696 PATHBIO-SOLEXA2_30TUEAAXX:3:1:962:931   1       -1      -1      MULTI;CTCCATGCAGATGATGCCGTATTTA;AAAAAATATCACAGGTAACAGAATG       chr8    74203277        74206379        uc003xzh.1      0       -       74203278        74204926        0       6       210,110,138,167,109,279,        0,509,730,1196,1646,2823,
 
+
+def find_discordant_gene_pairs(pe_reads, tid_list, min_isize, max_isize,
+                               library_type):    
+    same_strand = (library_type[0] == library_type[1])
+    # check for mapping to same gene within insert size range
+    gene_pairs = []
+    genome_pairs = []
+    for rname, mate_pairs in ref_dict.iteritems():
+        pairs_list = genome_pairs if tid_list[rname] == None else gene_pairs
+        if len(mate_pairs[0]) > 0 and len(mate_pairs[1]) > 0:
+            # ensure distance is within insert size range
+            # and strandedness matches library type
+            for r1 in mate_pairs[0]:
+                for r2 in mate_pairs[1]:
+                    # check strandedness of pairs
+                    if same_strand != (r1.is_reverse == r2.is_reverse):
+                        continue
+                    # check insert size                                         
+                    if r1.pos > r2.pos:
+                        isize = r1.aend - r2.pos
+                    else:
+                        isize = r2.aend - r1.pos
+                    if isize < min_isize or isize > max_isize:
+                        continue
+                    strand_matches_library = (r1.is_reverse != library_type[0] or
+                                              r2.is_reverse != library_type[1])
+                    # this is a concordant read pair
+                    pairs_list.append((r1, r2, strand_matches_library))
+    return gene_pairs, genome_pairs
+
+
 def get_tids(samfh, rnames):
     rname_tid_map = dict((rname,i) for i,rname in enumerate(samfh.references))    
     return [rname_tid_map[rname] for rname in rnames]
@@ -183,6 +282,13 @@ def get_tids(samfh, rnames):
 def nominate_chimeras(bam_file, gene_file, expression_file, 
                       library_type='fr', 
                       contam_refs=None):
+
+    logging.info("Reading chimerascan gene index")
+    bamfh = pysam.Samfile(input_bam_file, "rb")
+    gene_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)
+    gene_genome_map = build_gene_genome_map(bamfh, gene_file)
+
+    
     bamfh = pysam.Samfile(bam_file, "rb")
     # get contaminant reference tids
     if contam_refs is None:
@@ -223,9 +329,58 @@ def nominate_chimeras(bam_file, gene_file, expression_file,
         f.close()
     prev_output_file = bedpe_overlap_file
 
+def build_gene_genome_map(samfh, genefile):
+    rname_tid_map = dict((rname,i) for i,rname in enumerate(samfh.references))
+    gene_genome_map = [None] * len(samfh.references)
+    # build gene -> genome lookup
+    for g in GeneFeature.parse(open(genefile)):
+        name = config.GENE_REF_PREFIX + g.tx_name
+        if name not in rname_tid_map:
+            continue
+        if g.chrom not in rname_tid_map:
+            continue
+        gene_tid = rname_tid_map[name]
+        chrom_tid = rname_tid_map[g.chrom]        
+        gene_genome_map[gene_tid] = (chrom_tid, g.tx_start, g.tx_end, g.strand)
+    return gene_genome_map
 
 
     #logging.debug("Clustering chimeric gene pairs")
     #exon_pair_reads = cluster_reads(bamfh, exon_trees, exon_intervals, contam_tids, options.min_dist)    
     #logging.debug("Filtering chimeric genes")
     #filter_chimeric_genes(exon_pair_reads, exon_intervals)  
+
+    
+def main():
+    from optparse import OptionParser
+    import sys
+    logging.basicConfig(level=logging.DEBUG,
+                        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    parser = OptionParser("usage: %prog [options] <bam> <out.bedpe>")
+    parser.add_option('--max-fragment-length', dest="max_fragment_length", 
+                      type="int", default=1000)
+    parser.add_option('--library-type', dest="library_type", default="fr")
+    parser.add_option("--index", dest="index_dir",
+                      help="Path to chimerascan index directory")    
+    options, args = parser.parse_args()
+    input_bam_file = args[0]
+    output_bam_file = args[1]
+    
+    gene_file = os.path.join(config)
+    
+    library_type = parse_library_type(options.library_type)
+    logging.info("Finding discordant reads")
+    logging.debug("Input file: %s" % (input_bam_file))
+    logging.debug("Output file: %s" % (output_bam_file))
+    logging.debug("Library type: %s" % (library_type))
+
+
+    logging.info("Checking reads")
+    outfh = pysam.Samfile(output_bam_file, "wb")
+    find_discordant_reads(bamfh, outfh, 
+                          options.min_fragment_length,
+                          options.max_fragment_length,
+                          library_type)
+    
+if __name__ == '__main__':
+    main()

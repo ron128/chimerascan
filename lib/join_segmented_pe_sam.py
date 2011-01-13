@@ -159,7 +159,7 @@ def find_valid_segment_alignments(read_mappings):
         # if there are no mappings, then all the segments must be non-mapping
         # and must only have one entry at the 0th position in the segment
         # mapping array.  create an unmapped entry in this case.
-        reads_to_join.append(unmapped_segs)
+        reads_to_join.append([unmapped_segs])
         #seg_reads = [read_mappings[i][0] for i in xrange(num_segs)]
         #reads_to_join.append([seg_reads])
     else:
@@ -248,28 +248,28 @@ def merge_MD_tags(vals):
         mdops.extend(nextops)
     return ''.join(map(str, mdops))
 
-def copy_read(r):
-    a = pysam.AlignedRead()
-    a.qname = r.qname
-    a.seq = r.seq
-    a.qual = r.qual
-    a.is_unmapped = r.is_unmapped
-    a.is_qcfail = r.is_qcfail
-    a.is_paired = r.is_paired
-    a.is_proper_pair = r.is_proper_pair
-    a.mate_is_unmapped = r.mate_is_unmapped
-    a.mrnm = r.mrnm
-    a.mpos = r.mpos
-    a.is_read1 = r.is_read1
-    a.is_read2 = r.is_read2
-    a.isize = r.isize
-    a.mapq = r.mapq
-    a.is_reverse = r.is_reverse
-    a.rname = r.rname
-    a.pos = r.pos
-    a.cigar = r.cigar
-    a.tags = r.tags
-    return a
+#def copy_read(r):
+#    a = pysam.AlignedRead()
+#    a.qname = r.qname
+#    a.seq = r.seq
+#    a.qual = r.qual
+#    a.is_unmapped = r.is_unmapped
+#    a.is_qcfail = r.is_qcfail
+#    a.is_paired = r.is_paired
+#    a.is_proper_pair = r.is_proper_pair
+#    a.mate_is_unmapped = r.mate_is_unmapped
+#    a.mrnm = r.mrnm
+#    a.mpos = r.mpos
+#    a.is_read1 = r.is_read1
+#    a.is_read2 = r.is_read2
+#    a.isize = r.isize
+#    a.mapq = r.mapq
+#    a.is_reverse = r.is_reverse
+#    a.rname = r.rname
+#    a.pos = r.pos
+#    a.cigar = r.cigar
+#    a.tags = r.tags
+#    return a
                
 def make_joined_read(mate, reads, tags=None):
     if tags is None:
@@ -294,7 +294,6 @@ def make_joined_read(mate, reads, tags=None):
         a.is_read2 = True
     a.isize = 0
     a.mapq = 255
-
     a.is_unmapped = reads[0].is_unmapped
     if a.is_unmapped:
         a.rname = -1
@@ -329,8 +328,8 @@ def join_segmented_pe_reads(input_sam_file, output_bam_file):
     # open sam file
     infh = pysam.Samfile(input_sam_file, "r")
     #header = infh.header
-    #outfh = pysam.Samfile(output_bam_file, "wb", template=infh)
-    outfh = pysam.Samfile("-", "w", template=infh)
+    outfh = pysam.Samfile(output_bam_file, "wb", template=infh)
+    #outfh = pysam.Samfile("-", "w", template=infh)
     # iterate through paired-end alignments
     logging.info("Processing paired alignments...")
     for segmented_pe_reads in parse_segmented_pe_sam(infh):

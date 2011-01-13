@@ -7,6 +7,11 @@ import os
 import string
 import subprocess
 
+def parse_library_type(library_type):
+    s1 = 0 if library_type[0] == 'f' else 1
+    s2 = 0 if library_type[1] == 'f' else 1
+    return (s1, s2)
+
 def get_read_length(fastq_file):
     f = open(fastq_file)
     f.next()

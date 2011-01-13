@@ -95,7 +95,7 @@ def align_pe_segments(fastq_files, output_sam_file, segments,
     logging.debug("Alignment args: %s" % (' '.join(args)))
     aln_p = subprocess.Popen(args, stdin=seg_p.stdout, stdout=subprocess.PIPE)
     #
-    # Merge mate alignments
+    # Merge segmented alignments
     #
     py_script = os.path.join(os.path.dirname(__file__), "join_segmented_pe_sam.py")
     args = [sys.executable, py_script, "-", output_sam_file]
@@ -151,14 +151,12 @@ def main():
                       default=0)
     parser.add_option("--trim3", type="int", dest="trim3", 
                       default=0)
-    parser.add_option("--quals", dest="fastq_format")
+    parser.add_option("--quals", dest="fastq_format", default="phred33-quals")
     options, args = parser.parse_args()
     # extract command line arguments
     fastq_files = args[0:2]
     output_bam_file = args[2]
-    output_expr_file = args[3]    
     bowtie_index = os.path.join(options.index_dir, config.ALIGN_INDEX)
-    gene_feature_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)
     retcode = align(fastq_files, options.fastq_format, bowtie_index, output_bam_file,  
                     bowtie_bin=options.bowtie_bin,
                     num_processors=options.num_processors,

@@ -18,6 +18,20 @@ from lib.seq import DNA_reverse_complement
 from lib.config import JOB_ERROR, JOB_SUCCESS, ALIGN_INDEX, GENE_REF_PREFIX, GENE_FEATURE_FILE
 from lib.base import check_executable
 
+BASES_PER_LINE = 50
+
+def split_seq(seq, chars_per_line):
+    pos = 0
+    newseq = []
+    while pos < len(seq):
+        if pos + chars_per_line > len(seq):        
+            endpos = len(seq)
+        else:
+            endpos = pos + chars_per_line
+        newseq.append(seq[pos:endpos])
+        pos = endpos
+    return '\n'.join(newseq)
+
 def bed12_to_fasta(gene_feature_file, reference_seq_file):
     ref_fa = pysam.Fastafile(reference_seq_file)
     for g in GeneFeature.parse(open(gene_feature_file)):
@@ -37,8 +51,13 @@ def bed12_to_fasta(gene_feature_file, reference_seq_file):
         seq = ''.join(exon_seqs)
         if g.strand == '-':
             seq = DNA_reverse_complement(seq)
+        # break seq onto multiple lines
+        seqlines = split_seq(seq, BASES_PER_LINE)
+        print seq
+        print '------------'
+        print seqlines        
         yield (">%s range=%s:%d-%d gene=%s strand=%s\n%s" % 
-               (GENE_REF_PREFIX + g.tx_name, g.chrom, start, end, g.strand, g.gene_name, seq))
+               (GENE_REF_PREFIX + g.tx_name, g.chrom, start, end, g.strand, g.gene_name, seqlines))
     ref_fa.close()
 
 def create_chimerascan_index(output_dir, genome_fasta_file, gene_feature_file,
@@ -47,10 +66,11 @@ def create_chimerascan_index(output_dir, genome_fasta_file, gene_feature_file,
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         logging.info("Created index directory: %s" % (output_dir))
-    # copy reference fasta file to output dir
-    logging.info("Adding reference genome to index...")
+    # create FASTA index file
     index_fasta_file = os.path.join(output_dir, ALIGN_INDEX + ".fa")
     fh = open(index_fasta_file, "w")
+    # copy reference fasta file to output dir
+    logging.info("Adding reference genome to index...")
     shutil.copyfileobj(open(genome_fasta_file), fh)
     # extract sequences from gene feature file
     logging.info("Adding gene models to index...")
