@@ -192,12 +192,23 @@ def find_first_split(splits):
 ChimeraMate = collections.namedtuple('ChimeraMate',
                                      ['interval', 'seq', 'is_spanning'])
 
-class Chimera(object):    
-    def __init__(self, qname, discordant_type, mate5p, mate3p):
+class Chimera(object):
+    DISCORDANT_INNER = 0
+    DISCORDANT_5P = 1
+    DISCORDANT_3P = 2
+    DISCORDANT_OVERLAPPING = 3    
+    _discordant_types = ["DISCORDANT_INNER",
+                         "DISCORDANT_5PRIME",
+                         "DISCORDANT_3PRIME",
+                         "DISCORDANT_OVERLAPPING"]
+    
+    def __init__(self, qname, discordant_type, mate5p, mate3p, 
+                 read1_is_5prime):
         self.qname = qname
         self.discordant_type = discordant_type
         self.mate5p = mate5p
         self.mate3p = mate3p
+        self.read1_is_5prime = read1_is_5prime
     
     def to_bedpe(self):
         s = [self.mate5p.interval.chrom,
@@ -212,9 +223,10 @@ class Chimera(object):
              self.mate3p.interval.strand,
              self.mate5p.seq,
              self.mate3p.seq,
-             self.discordant_type,
-             self.mate5p.is_spanning,
-             self.mate3p.is_spanning]
+             1 if self.mate5p.is_spanning else 0,
+             1 if self.mate3p.is_spanning else 0,
+             Chimera._discordant_types[self.discordant_type],
+             1 if self.read1_is_5prime else 0]             
         return '\t'.join(map(str, s))
 
     @staticmethod
@@ -224,13 +236,15 @@ class Chimera(object):
                               int(fields[2]),
                               chrom=fields[0],
                               strand=fields[8])
-        mate5p = ChimeraMate(interval5p, fields[10], fields[13])
+        mate5p = ChimeraMate(interval5p, fields[10], bool(int(fields[12])))
         interval3p = Interval(int(fields[4]),
                               int(fields[5]),
                               chrom=fields[3],
                               strand=fields[9])
-        mate3p = ChimeraMate(interval3p, fields[11], fields[14])
-        return Chimera(fields[6], fields[12], mate5p, mate3p)
+        mate3p = ChimeraMate(interval3p, fields[11], bool(int(fields[13])))
+        discordant_type = Chimera._discordant_types.index(fields[14])        
+        read1_is_5prime = bool(int(fields[15]))        
+        return Chimera(fields[6], discordant_type, mate5p, mate3p, read1_is_5prime)
 
 def get_start_end_pos(mapped_inds, ind_read_dict):
     start = None
@@ -244,7 +258,7 @@ def get_start_end_pos(mapped_inds, ind_read_dict):
                 end = r.aend
     return start, end
     
-def gen_chimera_candidates(splits5p, splits3p, gene_genome_map):
+def gen_chimera_candidates(splits5p, splits3p, gene_genome_map, read1_is_5prime):
     '''
     generator function yield (True, Chimera) objects if this is a 
     discordant pair and (False, None) otherwise
@@ -296,17 +310,17 @@ def gen_chimera_candidates(splits5p, splits3p, gene_genome_map):
     discordant_type = None
     if (split_ind5p < len(splits5p) and
         split_ind3p < len(splits3p)):
-        discordant_type = 'DISCORDANT_OVERLAPPING'
+        discordant_type = Chimera.DISCORDANT_OVERLAPPING
     elif split_ind5p < len(splits5p):
-        discordant_type = 'DISCORDANT_5PRIME'
+        discordant_type = Chimera.DISCORDANT_5P
     elif split_ind3p < len(splits3p):
-        discordant_type = 'DISCORDANT_3PRIME'
+        discordant_type = Chimera.DISCORDANT_3P
     else:
-        discordant_type = 'DISCORDANT_INNER'
+        discordant_type = Chimera.DISCORDANT_INNER
     # produce all 5'/3' combinations
     for mate5p in mates5p:
         for mate3p in mates3p:
-            yield True, Chimera(qname, discordant_type, mate5p, mate3p)
+            yield True, Chimera(qname, discordant_type, mate5p, mate3p, read1_is_5prime)
 
 
 def check_read_unmapped(split_partitions):
@@ -322,6 +336,19 @@ def check_read_unmapped(split_partitions):
         return True, multimap
     else:
         return False, False
+
+def get_fasta(partitions):
+    # TODO: reverse complement reverse sequences to 
+    # ensure quality scores are in original sequenced
+    # read order?
+    #from seq import DNA_reverse_complement
+    # all sequences are same so only use one partition
+    splits = partitions[0]
+    qname = splits[0][0].qname
+    seq = ''.join(reads[0].seq for reads in splits)
+    return ">%s\n%s" % (qname, seq)
+    #qual = ''.join(reads[0].qual for reads in splits)
+    #return "@%s\n%s\n+%s\n%s" % (qname, seq, qname, qual)
 
 def find_discordant_pairs(pe_reads, tid_list, genome_tid_set, 
                           gene_genome_map, gene_trees, max_isize, 
@@ -341,12 +368,14 @@ def find_discordant_pairs(pe_reads, tid_list, genome_tid_set,
         for splits5p in hits[0][mate1]:
             for splits3p in hits[1][mate2]:
                 # combined 5'/3' partners
-                for is_discordant,chimera in gen_chimera_candidates(splits5p, splits3p, gene_genome_map):
+                for is_discordant,chimera in gen_chimera_candidates(splits5p, 
+                                                                    splits3p, 
+                                                                    gene_genome_map,
+                                                                    (mate1 == 0)):
                     if not is_discordant:
                         return []
                     chimeras.append(chimera)
     return chimeras
-
 
 def get_gene_tids(bamfh):
     gene_tids = []
@@ -375,20 +404,21 @@ def get_tids(samfh, rnames):
     return contam_tids
 
 def discordant_reads_to_chimeras(input_bam_file, output_bedpe_file, gene_file,
-                                 max_isize, library_type='fr', contam_refs=None):
+                                 max_isize, library_type, contam_refs=None,
+                                 unmapped_fasta_file=None):
     if contam_refs is None:
         contam_refs = []
     logging.info("Finding discordant reads")
     logging.debug("Input file: %s" % (input_bam_file))
     logging.debug("Output file: %s" % (output_bedpe_file))
+    logging.debug("Unmapped reads FASTA file: %s" % (unmapped_fasta_file))
     logging.debug("Library type: %s" % (library_type))
     logging.debug("Contaminant references: %s" % (contam_refs))
     # build a map of gene name to genome coords
     logging.info("Reading gene index")
     bamfh = pysam.Samfile(input_bam_file, "rb")    
     gene_genome_map, gene_trees = build_gene_maps(bamfh, gene_file)
-    # parse the library type string into a tuple
-    library_type = parse_library_type(library_type)
+    # check the library type string into a tuple
     assert library_type == (0, 1)    
     #same_strand = (library_type[0] == library_type[1])    
     # get contaminant reference tids
@@ -400,6 +430,11 @@ def discordant_reads_to_chimeras(input_bam_file, output_bedpe_file, gene_file,
     outfh = open(output_bedpe_file, "w")
     gene_tid_list = get_gene_tids(bamfh)
     genome_tid_set = get_genome_tids(bamfh)
+    # open unmapped fasta file if exists
+    if unmapped_fasta_file is not None:
+        fastafh = open(unmapped_fasta_file, "w")
+    else:
+        fastafh = None    
     # setup debugging logging messages
     debug_count = 0
     debug_every = 1e5
@@ -407,6 +442,7 @@ def discordant_reads_to_chimeras(input_bam_file, output_bedpe_file, gene_file,
     num_fragments = 0
     num_unmapped = 0
     num_discordant = 0
+    num_discordant_spanning = 0
     num_concordant = 0
     for pe_reads in parse_unpaired_reads(bamfh):
         # check that reads map
@@ -414,14 +450,35 @@ def discordant_reads_to_chimeras(input_bam_file, output_bedpe_file, gene_file,
         for mate, mate_partitions in enumerate(pe_reads):        
             is_unmapped, is_multimap = check_read_unmapped(mate_partitions)
             any_is_unmapped = any_is_unmapped or is_unmapped
+            # output unmapped reads for further testing (viruses, etc)
+            if (fastafh is not None) and is_unmapped and not is_multimap:
+                print >>fastafh, get_fasta(mate_partitions) 
         if any_is_unmapped:
-            # TODO: output unmapped reads for further testing (viruses, etc)
             num_unmapped += 1
         else:
             chimeras = find_discordant_pairs(pe_reads, gene_tid_list, genome_tid_set, gene_genome_map, 
                                              gene_trees, max_isize, contam_tids)
+            any_read1_span = False
+            any_read2_span = False            
             for chimera in chimeras:
                 print >>outfh, chimera.to_bedpe()
+                if chimera.mate5p.is_spanning:
+                    if chimera.read1_is_5prime:
+                        any_read1_span = True
+                    else:
+                        any_read2_span = True
+                if chimera.mate3p.is_spanning:
+                    if chimera.read1_is_5prime:
+                        any_read1_span = True
+                    else:
+                        any_read2_span = True
+            # output putative spanning chimeras for further testing
+            if (fastafh is not None) and (any_read1_span or any_read2_span):                
+                num_discordant_spanning += 1
+                if any_read1_span:
+                    print >>fastafh, ">%s\n%s" % (chimeras[0].qname, chimeras[0].mate5p.seq)
+                if any_read2_span:
+                    print >>fastafh, ">%s\n%s" % (chimeras[0].qname, chimeras[0].mate3p.seq)
             if len(chimeras) > 0:
                 num_discordant += 1
             else:
@@ -434,12 +491,17 @@ def discordant_reads_to_chimeras(input_bam_file, output_bedpe_file, gene_file,
             logging.info("Total read pairs: %d" % (num_fragments))
             logging.info("Read pairs with at least one unmapped mate: %d" % (num_unmapped))
             logging.info("Discordant reads: %d" % (num_discordant))            
+            logging.info("Discordant junction spanning reads: %d" % (num_discordant_spanning))            
             logging.info("Concordant reads: %d" % (num_concordant))            
+    # close output files
     outfh.close()
+    if fastafh is not None:
+        fastafh.close()
     # final progress
     logging.info("Total read pairs: %d" % (num_fragments))
     logging.info("Read pairs with at least one unmapped mate: %d" % (num_unmapped))
     logging.info("Discordant reads: %d" % (num_discordant))           
+    logging.info("Discordant junction spanning reads: %d" % (num_discordant_spanning))            
     logging.info("Concordant reads: %d" % (num_concordant))            
 
 
@@ -454,39 +516,18 @@ def main():
     parser.add_option("--index", dest="index_dir",
                       help="Path to chimerascan index directory")
     parser.add_option("--contam-refs", dest="contam_refs", default=None)
+    parser.add_option("--unmapped", dest="unmapped_fasta_file", default=None)    
     options, args = parser.parse_args()
     input_bam_file = args[0]
     output_bedpe_file = args[1]
     gene_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)
+    library_type = parse_library_type(options.library_type)    
     discordant_reads_to_chimeras(input_bam_file, output_bedpe_file, gene_file, 
                                  options.max_fragment_length, options.library_type,
-                                 options.contam_refs)
+                                 options.contam_refs, options.unmapped_fasta_file)
 
 if __name__ == '__main__':
     main()
-
-#def find_first_split_old(splits):
-#    rnames = set()    
-#    split_ind = 0
-#    last_mapped_ind = None
-#    # find first split with mapped reads and 
-#    # save list of rnames
-#    for split_reads in splits:
-#        split_rnames = set()
-#        for r in split_reads:
-#            if r.is_unmapped:
-#                continue
-#            split_rnames.add(r.rname)
-#        if len(split_rnames) > 0:
-#            if len(rnames) == 0:         
-#                rnames.update(split_rnames)
-#            else:
-#                if rnames.isdisjoint(split_rnames):
-#                    break
-#                rnames.intersection_update(split_rnames)
-#            last_mapped_ind = split_ind
-#        split_ind += 1
-#    return rnames, last_mapped_ind, split_ind
 
 #def find_discordant_pairs(pe_reads, tid_list, genome_tid_set, 
 #                          gene_genome_map, gene_trees, max_isize, 
@@ -554,10 +595,7 @@ if __name__ == '__main__':
 #    #print 'mate', mate2, '|||'.join(['%s:%d' % (tid_list[r.rname], r.pos) for r in threeprime_segs])
 #    #print fiveprime_segs
 #    #print threeprime_segs
-
-
-
-
+#
 #    for mate_hits in pe_reads:
 #        for split_partitions in mate_hits:
 #            for split_reads in split_partitions:
@@ -631,140 +669,3 @@ if __name__ == '__main__':
 #                new_partition.append(new_split_reads)
 #            new_pe_reads[mate].append(new_partition)
 #    return new_pe_reads
-
-#def find_discordant_pairs_old(pe_reads, tid_list, genome_tid_set, 
-#                              gene_genome_map, gene_trees, max_isize, 
-#                              contam_tids):    
-#    unmapped_hits = ([],[])
-#    genomic_hits = ([],[])
-#    mapped_hits = ([],[])
-#    # classify reads and mapping/nonmapping and determine
-#    # set of reference names for read1 and read2
-#    for mate, mate_hits in enumerate(pe_reads):
-#        for segs in mate_hits:
-#            if len(segs) == 1 and segs[0].is_unmapped:
-#                # bin nonmapping segments separately
-#                unmapped_hits[mate].append(segs[0])
-#            elif any(tid_list[seg.rname] is None for seg in segs):
-#                # ignore genomic mappings
-#                genomic_hits[mate].append(segs)
-#            else:
-#                # keep mapped segments
-#                mapped_hits[mate].append(segs)
-#    
-#    # filter hits based on library type and bin by
-#    # 5' and 3' based on strand matching library type
-#    filtered_hits = (([], []), ([], []))
-#    for mate, mate_hits in enumerate(mapped_hits):
-#        for segs in mate_hits:
-#            #print 'num_unmapped', num_unmapped_segs, 'mate', mate, '|||'.join(['%s:%d' % (tid_list[r.rname], r.pos) for r in segs])
-#            # determine sense/antisense (5' or 3')
-#            sense_index = 0
-#            for seg in segs:
-#                # ignore unmapped segments
-#                if seg.is_unmapped:
-#                    continue
-#                # TODO: support multiple library types here
-#                sense_index = 1 if seg.is_reverse else 0
-#                break
-#            filtered_hits[sense_index][mate].append(segs)
-#
-#    # join 5' and 3' hits
-#    concordant_partially_mapped = []
-#    discordant_unmapped = []
-#    discordant_mapped = []    
-#    for mate1, mate2 in ((0, 1), (1, 0)):
-#        for fiveprime_segs in filtered_hits[0][mate1]:
-#            for threeprime_segs in filtered_hits[1][mate2]:
-#                # combine 5'/3' partners
-#                segs = []
-#                segs.extend(fiveprime_segs)
-#                segs.extend(threeprime_segs)
-#                # check rnames
-#                rnames = set(seg.rname for seg in segs
-#                             if not seg.is_unmapped)
-#                assert len(rnames) > 0
-#                if len(rnames) == 1:
-#                    # only one gene reference so this is a 
-#                    # concordant pair
-#                    concordant_partially_mapped.append(segs)
-#                elif len(rnames) > 2:
-#                    discordant_unmapped.append(segs)
-#                else:
-#                    # double check that the first/last segments are mapped
-#                    if segs[0].is_unmapped or segs[-1].is_unmapped:                    
-#                        discordant_unmapped.append(segs)
-#                    else:
-#                        discordant_mapped.append(segs)
-#
-#    # select hits with fewest mismatches, keeping categories separate for now
-#    concordant_partially_mapped = select_best_mismatches(concordant_partially_mapped)
-#    discordant_unmapped = select_best_mismatches(discordant_unmapped)
-#    discordant_mapped = select_best_mismatches(discordant_mapped)
-#    
-#    #return discordant_mapped, discordant_unmapped
-#
-#    for segs in discordant_mapped:
-#        print '|||'.join(['%s:%d' % ('None' if r.rname == -1 else tid_list[r.rname], r.pos) for r in segs])
-#
-#    #print 'mate', mate1, '|||'.join(['%s:%d' % (tid_list[r.rname], r.pos) for r in fiveprime_segs])
-#    #print 'mate', mate2, '|||'.join(['%s:%d' % (tid_list[r.rname], r.pos) for r in threeprime_segs])
-#    #print fiveprime_segs
-#    #print threeprime_segs
-#    
-#def map_reads_to_references(pe_reads, tid_list):
-#    # bin reads by reference name to find reads that pairs
-#    # to the same gene/chromosome
-#    ref_dict = collections.defaultdict(lambda: [[], []])
-#    partial_mapping_dict = collections.defaultdict(lambda: [[], []])
-#    nonmapping_dict = collections.defaultdict(lambda: [[], []])
-#    for mate, mate_hits in enumerate(pe_reads):
-#        for hitsegs in mate_hits:
-#            num_unmapped_segs = sum(1 if r.is_unmapped else 0 for r in hitsegs)
-#            if num_unmapped_segs == len(hitsegs):
-#                assert len(hitsegs) == 1
-#                nonmapping_dict[mate].append(hitsegs[0])
-#            elif num_unmapped_segs > 0:
-#                partial_mapping_dict[mate].append(hitsegs)
-#            else:
-#                assert len(hitsegs) == 1
-#                read = hitsegs[0]
-#                mate_pairs = ref_dict[read.rname]
-#                mate_pairs[mate].append(read)
-#    return ref_dict, partial_mapping_dict, nonmapping_dict
-
-#def discordant_reads_to_chimeras(samfh, contam_tids):    
-#    # establish counters
-#    total_reads = 0
-#    total_alignment_hits = 0
-#    both_non_mapping = 0
-#    single_non_mapping = 0
-#    split_mates = 0    
-#    # logging output
-#    debug_every = 1e5
-#    debug_next = debug_every    
-#    for mate_hits in parse_pe_multihit_alignments(samfh, 
-#                                                  remove_unmapped=True, 
-#                                                  contam_tids=contam_tids):
-#        # logging debug output
-#        total_reads += 1
-#        total_alignment_hits += len(mate_hits[0]) + len(mate_hits[1])
-#        if total_reads == debug_next:
-#            debug_next += debug_every
-#            logging.debug("Processed reads=%d alignments=%d" % 
-#                          (total_reads, total_alignment_hits))
-#        read1_hits, read2_hits = mate_hits
-#        if len(read1_hits) == 0 and len(read2_hits) == 0:
-#            both_non_mapping += 1
-#        elif len(read1_hits) == 0 or len(read2_hits) == 0:
-#            single_non_mapping += 1
-#        else:
-#            split_mates += 1
-#            read1_best_hits = select_best_reads(read1_hits)
-#            read2_best_hits = select_best_reads(read2_hits)
-#            yield read1_best_hits, read2_best_hits
-#    logging.info("Total reads=%d" % (total_reads))
-#    logging.info("Total alignment hits=%d" % (total_alignment_hits))
-#    logging.info("Both non-mapping pairs=%d" % (both_non_mapping))
-#    logging.info("Single non-mapping pairs=%d" % (single_non_mapping))
-#    logging.info("Chimeric reads=%d" % (split_mates))

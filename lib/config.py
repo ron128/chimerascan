@@ -24,7 +24,12 @@ GENE_REF_PREFIX = 'gene_'
 GENE_FEATURE_FILE = "gene_features.txt"
 
 DISCORDANT_READS_FILE = "discordant_reads.bam"
-EXPRESSION_FILE = "expression.txt"
+PAIRED_DISCORDANT_READS_FILE = "discordant_reads_paired.bam"
+DISCORDANT_BEDPE_FILE = "discordant_chimeras.bedpe"
+UNMAPPED_FASTA_FILE = "unmapped_reads.fa"
+ENCOMPASSING_CHIMERA_BEDPE_FILE = "encompassing_chimeras.bedpe"
+EXON_JUNCTION_TRIM_BP = 10
+
 
 translate_quals = {'solexa': 'solexa-quals',
                    'illumina': 'solexa1.3-quals',

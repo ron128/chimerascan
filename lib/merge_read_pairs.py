@@ -159,7 +159,7 @@ def pair_reads(r1, r2, add_tags=None, keep_tags=None):
     r1.tags = r1_tags
     r2.tags = r2_tags
             
-def merge_read_pairs(bamfh, output_bamfh, min_isize, max_isize, library_type):    
+def merge_read_pairs(bamfh, output_bamfh, min_isize, max_isize, library_type):
     # setup debugging logging messages
     debug_count = 0
     debug_every = 1e5

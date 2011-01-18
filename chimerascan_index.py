@@ -52,10 +52,7 @@ def bed12_to_fasta(gene_feature_file, reference_seq_file):
         if g.strand == '-':
             seq = DNA_reverse_complement(seq)
         # break seq onto multiple lines
-        seqlines = split_seq(seq, BASES_PER_LINE)
-        print seq
-        print '------------'
-        print seqlines        
+        seqlines = split_seq(seq, BASES_PER_LINE)    
         yield (">%s range=%s:%d-%d gene=%s strand=%s\n%s" % 
                (GENE_REF_PREFIX + g.tx_name, g.chrom, start, end, g.strand, g.gene_name, seqlines))
     ref_fa.close()

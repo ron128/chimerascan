@@ -8,10 +8,16 @@ import os
 import sys
 from optparse import OptionParser
 
+import pysam
+
+# local imports
 import lib.config as config
 from lib.config import JOB_SUCCESS, JOB_ERROR
-from lib.base import check_executable, get_read_length
+from lib.base import check_executable, get_read_length, parse_library_type
 from lib.align import align
+from lib.merge_read_pairs import merge_read_pairs
+from lib.find_discordant_reads import discordant_reads_to_chimeras
+from lib.nominate_chimeras import nominate_chimeras
 
 def check_command_line_args(options, args, parser):
     # check command line arguments
@@ -81,6 +87,8 @@ def main():
     parser = OptionParser("usage: %prog [options] <mate1.fq> <mate2.fq> <output_dir>")
     parser.add_option("-p", "--processors", dest="num_processors", 
                       type="int", default=config.MIN_PROCESSORS)
+    parser.add_option("--index", dest="index_dir",
+                      help="Path to chimerascan index directory")
     parser.add_option("--samtools-bin", dest="samtools_bin", 
                       default="samtools", help="Path to 'samtools' program")
     parser.add_option("--bowtie-build-bin", dest="bowtie_build_bin", 
@@ -88,22 +96,26 @@ def main():
                       help="Path to 'bowtie-build' program")
     parser.add_option("--bowtie-bin", dest="bowtie_bin", default="bowtie", 
                       help="Path to 'bowtie' program")
-    parser.add_option("--bowtie-threads", dest="bowtie_threads", type="int",
-                      default=1, help="Bowtie threads per mate")
-    parser.add_option("--index", dest="index_dir",
-                      help="Path to chimerascan index directory")
     parser.add_option("--multihits", type="int", dest="multihits", 
                       default=40)
     parser.add_option("--mismatches", type="int", dest="mismatches", 
                       default=2)
-    parser.add_option("--seed-length", type="int", dest="seed_length", 
+    parser.add_option("--segment-length", type="int", dest="segment_length", 
                       default=25)
+    parser.add_option("--trim5", type="int", dest="trim5", 
+                      default=0)
+    parser.add_option("--trim3", type="int", dest="trim3", 
+                      default=0)    
     parser.add_option("--quals", dest="fastq_format")
+    parser.add_option("--min-fragment-length", type="int", 
+                      dest="min_fragment_length", default=50,
+                      help="Smallest expected fragment length")
     parser.add_option("--max-fragment-length", type="int", 
                       dest="max_fragment_length", default=600,
                       help="Largest expected fragment length (reads less"
                       " than this fragment length are assumed to be "
-                      " genomically contiguous")    
+                      " genomically contiguous")
+    parser.add_option('--library', dest="library_type", default="fr")    
     options, args = parser.parse_args()
     check_command_line_args(options, args, parser)
     # extract command line arguments
@@ -114,24 +126,65 @@ def main():
         os.makedirs(output_dir)
         logging.info("Created index directory: %s" % (output_dir))    
     align_output_file = os.path.join(output_dir, config.DISCORDANT_READS_FILE)
-    align_expr_file = os.path.join(output_dir, config.EXPRESSION_FILE)
     bowtie_index = os.path.join(options.index_dir, config.ALIGN_INDEX)
+    paired_bam_file = os.path.join(output_dir, config.PAIRED_DISCORDANT_READS_FILE)
+    discordant_bedpe_file = os.path.join(output_dir, config.DISCORDANT_BEDPE_FILE)
+    unmapped_fasta_file = os.path.join(output_dir, config.UNMAPPED_FASTA_FILE)
+    encompassing_chimera_bedpe_file = os.path.join(output_dir, config.ENCOMPASSING_CHIMERA_BEDPE_FILE)
+    library_type = parse_library_type(options.library_type)    
     gene_feature_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)
-    #
-    # Discordant reads alignment step
-    #
     try:
-        align(align_output_file, align_expr_file, fastq_files, 
-              options.seed_length,
-              options.fastq_format, 
-              options.multihits, 
-              options.mismatches,
-              options.bowtie_threads, 
-              options.bowtie_bin, 
-              bowtie_index, 
-              gene_feature_file, 
-              config.GENE_REF_PREFIX,
-              options.max_fragment_length)
+        #
+        # Discordant reads alignment step
+        #        
+        align(fastq_files, options.fastq_format, bowtie_index,
+              align_output_file, options.bowtie_bin, 
+              options.num_processors, options.segment_length,
+              options.trim5, options.trim3, options.multihits,
+              options.mismatches)
+        #
+        # Merge paired-end reads step
+        #
+        bamfh = pysam.Samfile(align_output_file, "rb")
+        paired_bamfh = pysam.Samfile(paired_bam_file, "wb", template=bamfh)
+        merge_read_pairs(bamfh, paired_bamfh, 
+                         options.min_fragment_length,
+                         options.max_fragment_length,
+                         library_type)
+        paired_bamfh.close() 
+        bamfh.close()
+        #
+        # Find discordant reads step
+        #
+        # TODO: add contam refs
+        bamfh = pysam.Samfile(paired_bam_file, "rb")
+        discordant_reads_to_chimeras(bamfh, discordant_bedpe_file, gene_feature_file,
+                                     options.max_fragment_length, library_type,
+                                     contam_refs=None,
+                                     unmapped_fasta_file=unmapped_fasta_file)
+        bamfh.close()
+        #
+        # Nominate chimeras step
+        #
+        infh = open(discordant_bedpe_file, "r")
+        outfh = open(encompassing_chimera_bedpe_file, "w")                
+        nominate_chimeras(infh, outfh, gene_feature_file,
+                          contam_refs=None, 
+                          trim=config.EXON_JUNCTION_TRIM_BP)
+        outfh.close()
+        infh.close()        
+        #
+        # Extract junction sequences from chimeras file
+        #         
+        bedpe_to_junction_fasta(bed_file, reference_seq_file,
+                                read_length,
+                                fasta_output_fh, junc_output_fh)        
+        #python ~/workspace/chimerascan/lib/bedpe_to_fasta.py --index /exds/projects/chimerascan/hg19_ucsc_illumina --rlen 53 test.chimeras.txt juncs.fa juncs.txt
+        
+        
+        #python ~/workspace/chimerascan/lib/segmented_spanning_align.py --bowtie-bin /exds/users/mkiyer/sequel/sw/alignment/bowtie/bowtie-0.12.7/bowtie --bowtie-index juncs --bowtie-threads 1 --segment-multihits 2 --segment-mismatches 2 --segment-length 25 --quals solexa-quals vcap_unmapped.fa vcap_spanning.txt
+        #python ~/workspace/chimerascan/lib/segmented_spanning_align.py --bowtie-bin /exds/users/mkiyer/sequel/sw/alignment/bowtie/bowtie-0.12.7/bowtie --bowtie-index juncs --bowtie-threads 1 --segment-multihits 2 --segment-mismatches 2 --segment-length 25 --quals solexa-quals vcap_unmapped.fa vcap_spanning.txt
+
         retcode = JOB_SUCCESS
     except Exception:
         retcode = JOB_ERROR
