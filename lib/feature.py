@@ -8,7 +8,7 @@ import itertools
 
 class GeneFeature(object):    
     __slots__ = ('chrom', 'tx_start', 'tx_end', 'tx_name', 'gene_name', 
-                 'strand', 'cds_start', 'cds_end', 'exon_count', 'exons') 
+                 'strand', 'cds_start', 'cds_end', 'exon_count', 'exons')
 
     def __str__(self):
         fields = [self.tx_name,
@@ -141,44 +141,3 @@ class BEDFeature(object):
             if line.startswith("track"):
                 continue
             yield BEDFeature.from_string(line)
-
-#class BEDGene():
-#    pass
-#
-#def parse_bed12_line(line):
-#    if line is None:
-#        return None
-#    line = line.strip()
-#    if line.startswith('#'):
-#        return None
-#    if line.startswith('track'):
-#        return None
-#    fields = line.split('\t')
-#    # first six fields are required
-#    g = BEDGene()
-#    g.chrom = fields[0]
-#    g.tx_start = int(fields[1])
-#    g.tx_end = int(fields[2])
-#    g.name = fields[3]
-#    g.score = fields[4]
-#    g.strand = fields[5]        
-#    g.cds_start = int(fields[6])
-#    g.cds_end = int(fields[7])
-#    g.exon_count = int(fields[9])
-#    block_sizes = map(int, fields[10].split(',')[:-1])
-#    block_starts = map(int, fields[11].split(',')[:-1])        
-#    g.exon_starts = [(g.tx_start + start) for start in block_starts]        
-#    g.exon_ends = [(start + size) for start, size in zip(g.exon_starts, block_sizes)]
-#    g.exons = zip(g.exon_starts, g.exon_ends)
-#    g.introns = zip(g.exon_ends, g.exon_starts[1:])        
-#    return g
-#
-#def parse_bed12_file(line_iter):
-#    '''
-#    parse a gene bed file
-#    '''
-#    for line in line_iter:
-#        g = parse_bed12_line(line)
-#        if g is None:
-#            continue
-#        yield g

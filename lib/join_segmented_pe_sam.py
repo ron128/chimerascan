@@ -98,23 +98,39 @@ def parse_segmented_pe_sam(samfh, maxlen=100000):
             start_ind = 0
         buf_size = len(qname_ind_map)
 
-def build_segment_alignment_dict(aln_dict, reads, seg_num, seg_offset, num_segs):
+def build_segment_alignment_dict(aln_dict, reads, seg_num):
+    aln_seg_dict = {}
     for r in reads:
         if r.is_unmapped:
             continue
-        # the anchor position is not necessarily the beginning of 
-        # the read but is used as a way of checking if adjacent
-        # segments are compatible for joining
-        if r.is_reverse:
-            anchor_pos = r.pos + seg_offset
-            seg_ind = num_segs - 1 - seg_num
+        #print 'READ', r        
+        # check whether an adjacent segment exists to join with
+        join_key = (r.rname, r.is_reverse, r.aend if r.is_reverse else r.pos)
+        #print 'JOIN_KEY', join_key
+        if join_key not in aln_dict:
+            # make a new segment to join with
+            join_pos = r.pos if r.is_reverse else r.aend
+            #print 'NEW_ENTRY', r.rname, r.is_reverse, join_pos
+            aln_seg_dict[(r.rname, r.is_reverse, join_pos)] = (r.rname, r.pos, r.aend, r.is_reverse, [seg_num], [r])
         else:
-            anchor_pos = r.pos - seg_offset
-            seg_ind = seg_num
-        #anchor_pos = r.pos + seg_offset if r.is_reverse else r.pos - seg_offset            
-        assert aln_dict[(r.rname, r.is_reverse, anchor_pos)][seg_ind] == None        
-        aln_dict[(r.rname, r.is_reverse, anchor_pos)][seg_ind] = r
-
+            # get old join segment
+            rname, start, end, is_reverse, seg_inds, seg_reads = aln_dict[join_key]
+            del aln_dict[join_key]
+            # make a new entry in the aligment dict
+            seg_inds.append(seg_num)
+            seg_reads.append(r)
+            if is_reverse:
+                start = r.pos
+                join_pos = start
+            else:
+                end = r.aend
+                join_pos = end
+            # add new join segment
+            #print 'UPDATE_ENTRY', rname, is_reverse, join_pos
+            aln_seg_dict[(rname, is_reverse, join_pos)] = (rname, start, end, is_reverse, seg_inds, seg_reads)
+    # update main alignment dict with items from this segment
+    aln_dict.update(aln_seg_dict)
+ 
 def make_unmapped_copy(r):
     a = pysam.AlignedRead()
     a.qname = r.qname
@@ -135,94 +151,117 @@ def make_unmapped_copy(r):
     a.rname = -1
     a.pos = 0
     a.cigar = ()
-    a.tags = []
+    a.tags = (('XM', 0),)
     return a
+
+def get_contiguous_indexes(ind_list):
+    if len(ind_list) == 0:
+        return []
+    contig_inds = []
+    current_inds = [ind_list[0]]
+    for ind in ind_list[1:]:
+        if ind != current_inds[-1] + 1:
+            contig_inds.append(tuple(current_inds))
+            current_inds = []
+        current_inds.append(ind)
+    if len(current_inds) > 0:
+        contig_inds.append(tuple(current_inds))
+    return contig_inds
+
 
 def find_valid_segment_alignments(read_mappings):
     # build a map of reference positions to read segment positions
     num_segs = len(read_mappings)
     aln_dict = collections.defaultdict(lambda: [None] * num_segs)
-    unmapped_segs = [None] * num_segs    
-    seg_offset = 0
+    unmapped_seg_reads = {}
+    unmapped_inds = set()
     for seg_num, seg_mappings in enumerate(read_mappings):
         # make an unmapped version of each segment to use in joining
         if len(seg_mappings) == 1 and seg_mappings[0].is_unmapped == True:
-            unmapped_segs[seg_num] = seg_mappings[0]
+            unmapped_seg_reads[seg_num] = seg_mappings[0]
+            unmapped_inds.add(seg_num)
         else:
-            unmapped_segs[seg_num] = make_unmapped_copy(seg_mappings[0])
-        #print 'SEGMENT', seg_num, 'offset', seg_offset
-        build_segment_alignment_dict(aln_dict, seg_mappings, seg_num, seg_offset, num_segs)
-        seg_offset += len(seg_mappings[0].seq)
+            unmapped_seg_reads[seg_num] = make_unmapped_copy(seg_mappings[0])
+        build_segment_alignment_dict(aln_dict, seg_mappings, seg_num)
+    # get the set of all segment indexes
+    all_inds = set(range(num_segs))
+    # get the set of mappable segment indexes
+    mappable_inds = all_inds.difference(unmapped_inds)
 
-    reads_to_join = []
+    # if there are no mappings, then all the segments must be non-mapping
+    # and must only have one entry at the 0th position in the segment
+    # mapping array.  create an unmapped entry in this case.
     if len(aln_dict) == 0:
-        # if there are no mappings, then all the segments must be non-mapping
-        # and must only have one entry at the 0th position in the segment
-        # mapping array.  create an unmapped entry in this case.
-        reads_to_join.append([unmapped_segs])
-        #seg_reads = [read_mappings[i][0] for i in xrange(num_segs)]
-        #reads_to_join.append([seg_reads])
-    else:
-        # there are some segment mappings, but some of the segments could
-        # still be unmapped.  here we create a list of joined sub-segments
-        # that together comprise a full read by joining consecutive mapped
-        # and unmapped segments
-        # find the alignments where the maximum number of segments are
-        # joined (the set of best alignments) by decorating the lists with
-        # the number of mapped segments then using it as a sort key
-        sorted_segment_hits = []
-        for mapping_info, segment_hits in aln_dict.iteritems():
-            rname, is_reverse, anchor_pos = mapping_info
-            num_mapping_segs = 0
-            for seg_ind, hit in enumerate(segment_hits):
-                # replace missing segments (e.g. 'None') in segment hit list
-                # with the unmapped read segment from the main read mappings list
-                if hit is None:
-                    # find original segment index in read mapping list
-                    orig_seg_num = num_segs - 1 - seg_ind if is_reverse else seg_ind
-                    # replace with unmapped read
-                    segment_hits[seg_ind] = unmapped_segs[orig_seg_num]                    
-                    #segment_hits[seg_ind] = read_mappings[orig_seg_num][0]                    
-                else:
-                    # keep track of number of good mapping segments
-                    num_mapping_segs += 1 
-            #num_mapping_segs = sum(0 if (i is None) else 1 for i in segment_hits)
-            sorted_segment_hits.append((num_mapping_segs, is_reverse, segment_hits)) 
-        # get the most segments that mapped contiguously
-        sorted_segment_hits.sort(reverse=True)    
-        best_num_segs = sorted_segment_hits[0][0]
-        #print 'best num segs', best_num_segs
-        #print 'hit indexes', [(x[0], x[1], len(x[2])) for x in sorted_segment_hits]
-        for num_mapping_segs, is_reverse, segment_hits in sorted_segment_hits:
-            if num_mapping_segs < best_num_segs:
-                break
-            # initialize state for joining
-            split_reads = []
-            seg_reads = [segment_hits[0]]
-            prev_unmapped = seg_reads[-1].is_unmapped
-            # find adjacent segments to join
-            for seg_num in xrange(1, len(segment_hits)):
-                seg_read = segment_hits[seg_num]
-                unmapped = seg_read.is_unmapped
-                # transition from mapped -> unmapped or unmapped -> mapped
-                # requires splitting the read into pieces
-                if prev_unmapped != unmapped:
-                    split_reads.append(seg_reads)
-                    seg_reads = []
-                # update unmapped state
-                prev_unmapped = unmapped
-                seg_reads.append(seg_read)
-            # add remaining segments
-            if len(seg_reads) > 0:
-                split_reads.append(seg_reads)
-            # add the split reads to the main list of reads to join
-            reads_to_join.append(split_reads)
-    return reads_to_join
+        return [[[[unmapped_seg_reads[i] for i in xrange(num_segs)]]]]
 
-def join_segments(read_mappings):
-    # search for segment matches
-    joined_read_hits = find_valid_segment_alignments(read_mappings)
-    return joined_read_hits
+    # there are some segment mappings, but some of the segments could
+    # still be unmapped.  here we create a list of joined sub-segments
+    # that together comprise a full read by joining consecutive mapped
+    # and unmapped segments
+    # find the alignments where the maximum number of segments are
+    # joined (the set of best alignments) by decorating the lists with
+    # the number of mapped segments then using it as a sort key
+    segment_dict = collections.defaultdict(lambda: [])
+    for aln_key, aln_info in aln_dict.iteritems():
+        (rname, start, end, is_reverse, seg_inds, seg_reads) = aln_info        
+        segment_dict[tuple(seg_inds)].append(seg_reads)    
+    sorted_mapping_inds = collections.deque(sorted(segment_dict.keys(), key=len, reverse=True))
+
+    # build list of valid segment alignments prioritized by the
+    # size of the largest contiguous segment (ties broken by 2nd largest,
+    # 3rd largest, etc)
+    best_rank = 0 
+    rank = 0
+    joined_segs_sets = set()
+    while len(sorted_mapping_inds) > 0:
+        joined_segs = set()
+        used_inds = set()
+        # iterate through sorted segment indices and add
+        # independent segments so that all mappable segments
+        # are part of the final joined read 
+        for mapping_inds in sorted_mapping_inds:
+            if used_inds.isdisjoint(mapping_inds):            
+                used_inds.update(mapping_inds)        
+                joined_segs.add(mapping_inds)
+                if used_inds == mappable_inds:
+                    break
+        # remove best element from mapping index dict
+        sorted_mapping_inds.popleft()
+        # rank this segment to determine whether to 
+        # keep looping
+        rank = tuple(len(x) for x in joined_segs)
+        if (best_rank == None) or (rank > best_rank):
+            best_rank = rank
+        elif (rank < best_rank):
+            break
+        # find missing indexes to fill with unmapped reads
+        missing_inds = sorted(all_inds.difference(used_inds))
+        contig_missing_inds = get_contiguous_indexes(missing_inds)
+        for inds_tuple in contig_missing_inds:
+            joined_segs.add(inds_tuple)
+        # add to set of joined_segs
+        if joined_segs not in joined_segs_sets: 
+            joined_segs_sets.add(frozenset(joined_segs))
+
+    # convert lists of joined segments to full reads
+    joined_reads = []
+    for joined_segs in joined_segs_sets:
+        # extract reads at each segment
+        split_reads = []
+        # sort indexes in order of original read
+        for seg_inds in sorted(joined_segs):
+            if seg_inds in segment_dict:
+                #print 'SEG INDS FOUND IN DICT', seg_inds
+                seg_reads = segment_dict[seg_inds]
+            else:
+                #print 'UNMAPPED', seg_inds
+                seg_reads = [[unmapped_seg_reads[i] for i in seg_inds]]
+            #print 'SEG READS', seg_reads
+            split_reads.append(seg_reads)
+        joined_reads.append(split_reads)
+    #print 'JOINED READS', joined_reads
+    return joined_reads
+
 
 def parse_MD_tag(val):
     x = 0
@@ -247,33 +286,14 @@ def merge_MD_tags(vals):
             nextops = nextops[1:]
         mdops.extend(nextops)
     return ''.join(map(str, mdops))
-
-#def copy_read(r):
-#    a = pysam.AlignedRead()
-#    a.qname = r.qname
-#    a.seq = r.seq
-#    a.qual = r.qual
-#    a.is_unmapped = r.is_unmapped
-#    a.is_qcfail = r.is_qcfail
-#    a.is_paired = r.is_paired
-#    a.is_proper_pair = r.is_proper_pair
-#    a.mate_is_unmapped = r.mate_is_unmapped
-#    a.mrnm = r.mrnm
-#    a.mpos = r.mpos
-#    a.is_read1 = r.is_read1
-#    a.is_read2 = r.is_read2
-#    a.isize = r.isize
-#    a.mapq = r.mapq
-#    a.is_reverse = r.is_reverse
-#    a.rname = r.rname
-#    a.pos = r.pos
-#    a.cigar = r.cigar
-#    a.tags = r.tags
-#    return a
                
 def make_joined_read(mate, reads, tags=None):
     if tags is None:
         tags = []
+    # flip reverse strand reads
+    if not reads[0].is_unmapped and reads[0].is_reverse:
+        reads = sorted(reads, reverse=True)
+    # make new reads
     a = pysam.AlignedRead()
     # create paired-end reads but do not mark them
     # as proper pairs and set all mate information
@@ -298,6 +318,10 @@ def make_joined_read(mate, reads, tags=None):
     if a.is_unmapped:
         a.rname = -1
         a.pos = 0
+        # add the XM tag from bowtie saying whether unmapped
+        # due to multimapping or other reason
+        xm_tag = min(r.opt('XM') for r in reads)
+        tags.append(('XM', xm_tag))
     else:
         a.is_reverse = reads[0].is_reverse
         a.rname = reads[0].rname
@@ -311,12 +335,6 @@ def make_joined_read(mate, reads, tags=None):
         # compute mismatches to reference (MD)
         tags.append(('MD', merge_MD_tags([r.opt('MD') for r in reads])))
     a.tags = tags
-    # TODO: check to see all reads are either mapped or unmapped
-    # TODO: check strand assignment
-    # TODO: check rname    
-    assert all(r.is_unmapped == a.is_unmapped for r in reads)
-    assert all(r.is_reverse == a.is_reverse for r in reads)
-    assert all(r.rname == a.rname for r in reads)
     return a
 
 
@@ -339,22 +357,27 @@ def join_segmented_pe_reads(input_sam_file, output_bam_file):
             logging.info("Processed %d reads" % debug_count)            
         # get alignments    
         for mate, mate_segs in enumerate(segmented_pe_reads):
-            joined_read_mappings = join_segments(mate_segs)            
-            # total number of mapping hits
-            num_mappings = len(joined_read_mappings)
-            #print joined_read_mappings
-            for mapping_ind, joined_segments in enumerate(joined_read_mappings):
-                # number of split alignment hits
-                num_split_hits = len(joined_segments)
-                # make SAM record for each segment
-                for split_index, seg_reads in enumerate(joined_segments):
-                    tags = [('IH', num_mappings),
-                            ('HI', mapping_ind),
-                            ('XN', num_split_hits),
-                            ('XI', split_index)]            
-                    r = make_joined_read(mate, seg_reads, tags=tags)
-                    outfh.write(r)
-
+            # search for segment matches
+            joined_hits = find_valid_segment_alignments(mate_segs)
+            num_hits = len(joined_hits)
+            #print 'HITS', num_hits
+            for hit_index, split_hits in enumerate(joined_hits):
+                # total number of splits
+                num_splits = len(split_hits)                
+                #print 'HIT', hit_index, 'SPLITS', len(split_hits)
+                for split_index, seg_hits in enumerate(split_hits):
+                    num_seg_hits = len(seg_hits)
+                    #print 'SPLIT', split_index, 'HITS', num_seg_hits
+                    for seg_index, seg_reads in enumerate(seg_hits):                        
+                        # make SAM record for each segment
+                        tags = [('NH', num_hits),
+                                ('XH', hit_index),
+                                ('XN', num_splits),
+                                ('XI', split_index),
+                                ('IH', num_seg_hits),
+                                ('HI', seg_index)]                        
+                        r = make_joined_read(mate, seg_reads, tags=tags)
+                        outfh.write(r)
 
 if __name__ == '__main__':
     from optparse import OptionParser

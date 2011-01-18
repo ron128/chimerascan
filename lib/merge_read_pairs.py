@@ -22,10 +22,13 @@ def parse_pe_sam_file(bamfh):
         # get read attributes
         qname = read.qname
         mate = 0 if read.is_read1 else 1
-        hit_ind = read.opt('HI')
-        num_hits = read.opt('IH')
-        seg_ind = read.opt('XI')
-        num_segs = read.opt('XN')
+        # get hit/segment/mapping tags
+        num_split_partitions = read.opt('NH')
+        partition_ind = read.opt('XH')
+        num_splits = read.opt('XN')
+        split_ind = read.opt('XI')
+        num_mappings = read.opt('IH')
+        mapping_ind = read.opt('HI')        
         # if query name changes we have completely finished
         # the fragment and can reset the read data
         if num_reads > 0 and qname != prev_qname:
@@ -36,13 +39,17 @@ def parse_pe_sam_file(bamfh):
         prev_qname = qname
         # initialize mate hits
         if len(pe_reads[mate]) == 0:
-            pe_reads[mate].extend([list() for x in xrange(num_hits)])
+            pe_reads[mate].extend([list() for x in xrange(num_split_partitions)])
         mate_reads = pe_reads[mate]
         # initialize hit segments
-        if len(mate_reads[hit_ind]) == 0:
-            mate_reads[hit_ind].extend([None for x in xrange(num_segs)])
+        if len(mate_reads[partition_ind]) == 0:
+            mate_reads[partition_ind].extend([list() for x in xrange(num_splits)])
+        split_reads = mate_reads[partition_ind][split_ind]
+        # initialize segment mappings
+        if len(split_reads) == 0:
+            split_reads.extend([None for x in xrange(num_mappings)])
         # add segment to hit/mate/read
-        mate_reads[hit_ind][seg_ind] = read
+        split_reads[mapping_ind] = read
         num_reads += 1
     if num_reads > 0:
         yield pe_reads
@@ -50,15 +57,28 @@ def parse_pe_sam_file(bamfh):
 def map_reads_to_references(pe_reads):
     # bin reads by reference name to find reads that pairs
     # to the same gene/chromosome
-    ref_dict = collections.defaultdict(lambda: [[], []])
+    ref_dict = collections.defaultdict(lambda: ([], []))
     for mate, mate_hits in enumerate(pe_reads):
-        for hitsegs in mate_hits:
-            if any(r.is_unmapped for r in hitsegs):
-                continue
-            assert len(hitsegs) == 1
-            read = hitsegs[0]
-            mate_pairs = ref_dict[read.rname]
-            mate_pairs[mate].append(read)
+        # matching paired-end reads cannot have splits
+        # to multiple references, and if multiple split
+        # partitions were found it suggests split read
+        # mapping occurred
+        num_split_partitions = len(mate_hits)
+        if num_split_partitions > 1:
+            continue
+        # reads with >1 split cannot be paired successfully
+        # so do not add to reference dict
+        if len(mate_hits[0]) > 1:
+            continue            
+        # this read has a single partition of splits and is
+        # not split into multiple reads
+        split_reads = mate_hits[0][0]
+        for r in split_reads:
+            if r.is_unmapped:
+                continue 
+            # add to reference dict
+            mate_pairs = ref_dict[r.rname]
+            mate_pairs[mate].append(r)
     return ref_dict
 
 def find_concordant_pairs(ref_dict, min_isize, max_isize,
@@ -163,16 +183,19 @@ def merge_read_pairs(bamfh, output_bamfh, min_isize, max_isize, library_type):
         else:
             # write unpaired reads to unpaired BAM file
             for mate_hits in pe_reads:
-                for hitsegs in mate_hits:
-                    for r in hitsegs:
-                        output_bamfh.write(r)
+                for partitions in mate_hits:
+                    for split_reads in partitions:
+                        for r in split_reads:
+                            output_bamfh.write(r)
             num_unpaired += 1
         num_fragments += 1
         # progress log
         debug_count += 1
         if debug_count == debug_next:
             debug_next += debug_every
-            logging.info("Processed %d reads" % debug_count)
+            logging.info("Total read pairs: %d" % (num_fragments))
+            logging.info("Paired reads: %d" % (num_paired))
+            logging.info("Unpaired_reads: %d" % (num_unpaired))
     logging.info("Total read pairs: %d" % (num_fragments))
     logging.info("Paired reads: %d" % (num_paired))
     logging.info("Unpaired_reads: %d" % (num_unpaired))
@@ -181,7 +204,7 @@ def main():
     from optparse import OptionParser
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    parser = OptionParser("usage: %prog [options] <bam> <out.bedpe>")
+    parser = OptionParser("usage: %prog [options] <in.bam> <out.bam>")
     parser.add_option('--min-fragment-length', dest="min_fragment_length", 
                       type="int", default=50)
     parser.add_option('--max-fragment-length', dest="max_fragment_length", 
@@ -195,7 +218,6 @@ def main():
     logging.debug("Input file: %s" % (input_bam_file))
     logging.debug("Output file: %s" % (output_bam_file))
     logging.debug("Library type: '%s'" % (options.library_type))
-
     library_type = parse_library_type(options.library_type)
     bamfh = pysam.Samfile(input_bam_file, "rb")
     outfh = pysam.Samfile(output_bam_file, "wb", template=bamfh)
@@ -204,6 +226,7 @@ def main():
                      options.min_fragment_length,
                      options.max_fragment_length,
                      library_type)
+    logging.info("Paired-end merging completed")
     
 if __name__ == '__main__':
     main()
