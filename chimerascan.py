@@ -45,9 +45,9 @@ def check_command_line_args(options, args, parser):
         parser.error("read lengths mate1=%d and mate2=%d are unequal" % 
                      (read_lengths[0], read_lengths[1]))
     # check that seed length < read length
-    if any(options.seed_length > rlen for rlen in read_lengths):
+    if any(options.segment_length > rlen for rlen in read_lengths):
         parser.error("seed length %d cannot be longer than read length" % 
-                     (options.seed_length))
+                     (options.segment_length))
     # check that output dir is not a regular file
     if os.path.exists(output_dir) and (not os.path.isdir(output_dir)):
         parser.error("Output directory name '%s' exists and is not a valid directory" % 
