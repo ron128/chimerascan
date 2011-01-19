@@ -22,34 +22,6 @@ class AlignError(Exception):
     def __str__(self):
         return repr(self.value)
 
-def check_fastq_files(fastq_files, segment_length, trim5, trim3):
-    # check that input fastq files exist
-    read_lengths = []
-    for mate,fastq_file in enumerate(fastq_files):
-        if not os.path.isfile(fastq_file):
-            raise AlignError("mate '%d' fastq file '%s' is not valid" % 
-                             (mate, fastq_file))
-        logging.debug("Checking read length for file %s" % (fastq_file))
-        read_lengths.append(get_read_length(fastq_file))
-        logging.debug("Read length for file %s: %d" % 
-                      (fastq_file, read_lengths[-1]))
-    # check that mate read lengths are equal
-    if len(set(read_lengths)) > 1:
-        logging.error("read lengths mate1=%d and mate2=%d are unequal" % 
-                      (read_lengths[0], read_lengths[1]))
-        return False
-    rlen = read_lengths[0]
-    trimmed_rlen = rlen - trim5 - trim3
-    # check that segment length >= MIN_SEGMENT_LENGTH 
-    if segment_length < MIN_SEGMENT_LENGTH:
-        raise AlignError("segment length (%d) too small (min is %d)" % 
-                         (segment_length, MIN_SEGMENT_LENGTH))
-    # check that segment length < trimmed read length
-    if segment_length > trimmed_rlen:
-        raise AlignError("segment length (%d) longer than trimmed read length (%d)" % 
-                         (segment_length, trimmed_rlen))
-    return read_lengths[0]
-
 def determine_read_segments(read_length, segment_length, trim5, trim3):
     # figure out how many segments are available
     trimmed_rlen = read_length - trim5 - trim3
@@ -111,6 +83,34 @@ def align_segments(fastq_files, output_sam_file, segments,
     aln_p.wait()
     seg_p.wait()
 
+def check_fastq_files(fastq_files, segment_length, trim5, trim3):
+    # check that input fastq files exist
+    read_lengths = []
+    for mate,fastq_file in enumerate(fastq_files):
+        if not os.path.isfile(fastq_file):
+            raise AlignError("mate '%d' fastq file '%s' is not valid" % 
+                             (mate, fastq_file))
+        logging.debug("Checking read length for file %s" % (fastq_file))
+        read_lengths.append(get_read_length(fastq_file))
+        logging.debug("Read length for file %s: %d" % 
+                      (fastq_file, read_lengths[-1]))
+    # check that mate read lengths are equal
+    if len(set(read_lengths)) > 1:
+        logging.error("read lengths mate1=%d and mate2=%d are unequal" % 
+                      (read_lengths[0], read_lengths[1]))
+        return False
+    rlen = read_lengths[0]
+    trimmed_rlen = rlen - trim5 - trim3
+    # check that segment length >= MIN_SEGMENT_LENGTH 
+    if segment_length < MIN_SEGMENT_LENGTH:
+        raise AlignError("segment length (%d) too small (min is %d)" % 
+                         (segment_length, MIN_SEGMENT_LENGTH))
+    # check that segment length < trimmed read length
+    if segment_length > trimmed_rlen:
+        raise AlignError("segment length (%d) longer than trimmed read length (%d)" % 
+                         (segment_length, trimmed_rlen))
+    return read_lengths[0]
+
 def align(fastq_files, fastq_format, 
           bowtie_index, output_sam_file,  
           bowtie_bin="bowtie",
@@ -120,7 +120,7 @@ def align(fastq_files, fastq_format,
           trim3=0, 
           multihits=40, 
           mismatches=2,
-          bowtie_mode="-n"): 
+          bowtie_mode="-n"):
     # check fastq files
     read_length = check_fastq_files(fastq_files, segment_length, trim5, trim3)
     # divide reads into segments
