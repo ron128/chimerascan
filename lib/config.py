@@ -25,7 +25,8 @@ GENE_FEATURE_FILE = "gene_features.txt"
 
 ALIGNED_READS_FILE = "aligned_reads.bam"
 PAIRED_ALIGNED_READS_FILE = "aligned_reads_paired.bam"
-DISCORDANT_BEDPE_FILE = "discordant_chimeras.bedpe"
+DISCORDANT_BEDPE_FILE = "discordant_reads.bedpe"
+SORTED_DISCORDANT_BEDPE_FILE = "discordant_reads.srt.bedpe"
 UNMAPPED_FASTA_FILE = "unmapped_reads.fa"
 ENCOMPASSING_CHIMERA_BEDPE_FILE = "encompassing_chimeras.bedpe"
 EXON_JUNCTION_TRIM_BP = 10
@@ -33,7 +34,7 @@ JUNC_REF_FASTA_FILE = "spanning_juncs.fa"
 JUNC_REF_MAP_FILE = "spanning_juncs.txt"
 JUNC_BOWTIE_INDEX = "spanning_juncs"
 JUNC_READS_BAM_FILE = "aligned_junc_reads.bam"
-
+CHIMERA_BEDPE_FILE = "chimeras.bedpe"
 
 translate_quals = {'solexa': 'solexa-quals',
                    'illumina': 'solexa1.3-quals',

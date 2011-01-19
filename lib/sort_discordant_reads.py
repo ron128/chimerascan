@@ -6,6 +6,12 @@ Created on Jan 17, 2011
 import logging
 import subprocess
 
+def sort_discordant_reads(input_file, output_file):
+    outfh = open(output_file, "w")
+    subprocess.call(["sort", "-k1,1", "-k4,4", "-k2,2g", "-k5,5g", input_file], 
+                    stdout=outfh)
+    outfh.close()
+
 def main():
     from optparse import OptionParser
     logging.basicConfig(level=logging.DEBUG,
@@ -17,10 +23,7 @@ def main():
     logging.info("Sorting discordant BEDPE file")
     logging.info("Input file: %s" % (input_file))
     logging.info("Output file: %s" % (output_file))
-    outfh = open(output_file, "w")
-    subprocess.call(["sort", "-k1,1", "-k4,4", "-k2,2g", "-k5,5g", input_file], 
-                    stdout=outfh)
-    outfh.close()
+    sort_discordant_reads(input_file, output_file)
 
 if __name__ == '__main__':
     main()

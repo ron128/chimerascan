@@ -20,6 +20,8 @@ from lib.merge_read_pairs import merge_read_pairs
 from lib.find_discordant_reads import discordant_reads_to_chimeras
 from lib.nominate_chimeras import nominate_chimeras
 from lib.bedpe_to_fasta import bedpe_to_junction_fasta
+from lib.merge_spanning_alignments import merge_spanning_alignments
+from lib.sort_discordant_reads import sort_discordant_reads
 
 def check_command_line_args(options, args, parser):
     # check command line arguments
@@ -169,10 +171,15 @@ def main():
                                      unmapped_fasta_file=unmapped_fasta_file)
         bamfh.close()
         #
+        # Sort discordant reads
+        #
+        sorted_discordant_bedpe_file = os.path.join(output_dir, config.SORTED_DISCORDANT_BEDPE_FILE)
+        sort_discordant_reads(discordant_bedpe_file, sorted_discordant_bedpe_file)        
+        #
         # Nominate chimeras step
         #
         encompassing_bedpe_file = os.path.join(output_dir, config.ENCOMPASSING_CHIMERA_BEDPE_FILE)        
-        infh = open(discordant_bedpe_file, "r")
+        infh = open(sorted_discordant_bedpe_file, "r")
         outfh = open(encompassing_bedpe_file, "w")                
         # TODO: add contam refs
         nominate_chimeras(infh, outfh, gene_feature_file,
@@ -209,25 +216,10 @@ def main():
         #
         # Merge spanning and encompassing read information
         #
-        
-        #
-        # Synthesis of spanning and encompassing reads
-        #
-        if all(up_to_date(job.spanning_chimera_file, f) for f in job.spanning_bowtie_output_files):
-            logging.info("[SKIPPED] Processed spanning alignment %s is up to date" % (job.spanning_chimera_file))
-        else:
-            py_script = os.path.join(_module_dir, "process_spanning_alignments.py")
-            args = [sys.executable, py_script,
-                    "--rlen", read_length,
-                    "--anchor-min", config.anchor_min,
-                    "--anchor-max", config.anchor_max,
-                    "--anchor-mismatches", config.anchor_mismatches,
-                    job.chimera_mapping_file,
-                    job.spanning_chimera_file] + job.spanning_bowtie_output_files
-            cmd = ' '.join(map(str, args))
-            qsub(job.name, cmd, num_processors=1, cwd=job.output_dir, walltime="2:00:00", deps=job_ids, 
-                 stdout="process_spanning_alignments.log", email=True)
-                
+        chimera_bedpe_file = os.path.join(output_dir, config.CHIMERA_BEDPE_FILE)        
+        merge_spanning_alignments(junc_bam_file, junc_map_file, chimera_bedpe_file,
+                                  read_length, anchor_min=0, anchor_max=0,
+                                  anchor_mismatches=0)
         retcode = JOB_SUCCESS
     except Exception:
         retcode = JOB_ERROR

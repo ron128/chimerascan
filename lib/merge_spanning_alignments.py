@@ -160,13 +160,12 @@ def join_spanning_reads(bam_file, junc_map,
         chimera_id = rname_tid_map[chimera_name]        
         cov = chimera_counts[chimera_id]
         read_tuples = chimera_reads[chimera_id]
+        spanning_qnames = set(read_tuple[0] for read_tuple in read_tuples)
         if len(read_tuples) == 0:
             read_tuples = [("None", "None")]
         for fields in bedpe_records:
             # intersect encompassing with spanning reads to see overlap
             encompassing_qnames = fields[JUNC_MAP_QNAME_COLUMN].split(SEQ_FIELD_DELIM)
-            #print encompassing_qnames
-            spanning_qnames = set(read_tuple[0] for read_tuple in read_tuples)
             union_cov = len(spanning_qnames.union(encompassing_qnames))
             intersect_cov = len(spanning_qnames.intersection(encompassing_qnames))
             #both_cov = sum(1 for read_tuple in read_tuples if read_tuple[0] in set(encompassing_qnames))
@@ -175,29 +174,37 @@ def join_spanning_reads(bam_file, junc_map,
                        SEQ_FIELD_DELIM.join([read_tuple[0] for read_tuple in read_tuples])]
             yield fields
 
+def merge_spanning_alignments(bam_file, junc_map_file, output_file,
+                              read_length, anchor_min, anchor_max,
+                              anchor_mismatches):
+    junc_map = read_chimera_mapping_file(junc_map_file)
+    f = open(output_file, "w")
+    for bedpe_fields in join_spanning_reads(bam_file, junc_map,
+                                            read_length,
+                                            anchor_min,
+                                            anchor_max, 
+                                            anchor_mismatches):
+        print >>f, '\t'.join(map(str, bedpe_fields))
+    f.close()
+
 def main():
     from optparse import OptionParser
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")    
-    parser = OptionParser("usage: %prog [options] <junc_map> <in.bam> <out.txt>")    
+    parser = OptionParser("usage: %prog [options] <in.bam> <junc_map> <out.txt>")    
     parser.add_option("--rlen", type="int", dest="read_length")
     parser.add_option("--anchor-min", type="int", dest="anchor_min", default=0)
     parser.add_option("--anchor-max", type="int", dest="anchor_max", default=0)
     parser.add_option("--anchor-mismatches", type="int", dest="anchor_mismatches", default=0)
     options, args = parser.parse_args()
-    junc_map_file = args[0]
-    bam_file = args[1]
+    bam_file = args[0]
+    junc_map_file = args[1]
     output_file = args[2]
-    
-    junc_map = read_chimera_mapping_file(junc_map_file)
-    f = open(output_file, "w")
-    for bedpe_fields in join_spanning_reads(bam_file, junc_map,
-                                            options.read_length,
-                                            options.anchor_min,
-                                            options.anchor_max, 
-                                            options.anchor_mismatches):
-        print >>f, '\t'.join(map(str, bedpe_fields))
-    f.close()
+    merge_spanning_alignments(bam_file, junc_map_file, output_file,
+                              options.read_length, 
+                              options.anchor_min, 
+                              options.anchor_max,
+                              options.anchor_mismatches)
 
 if __name__ == '__main__': main()
 
