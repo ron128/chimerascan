@@ -80,18 +80,15 @@ def check_command_line_args(options, args, parser):
     else:
         parser.error("chimerascan bowtie index file '%s' invalid" % (align_index_file))
     # check for sufficient processors
-    processors_needed = (config.BASE_PROCESSORS + 2*options.bowtie_threads)    
-    if processors_needed > options.num_processors:
-        parser.error("Not enough processor cores (approx. %d needed, %d available)" % 
-                     (processors_needed, options.num_processors))
-
+    if options.num_processors < config.BASE_PROCESSORS:
+        logging.warning("Please specify >=2 processes using '-p' to allow program to run efficiently")
 
 def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = OptionParser("usage: %prog [options] <mate1.fq> <mate2.fq> <output_dir>")
     parser.add_option("-p", "--processors", dest="num_processors", 
-                      type="int", default=config.MIN_PROCESSORS)
+                      type="int", default=config.BASE_PROCESSORS)
     parser.add_option("--index", dest="index_dir",
                       help="Path to chimerascan index directory")
     parser.add_option("--samtools-bin", dest="samtools_bin", 
