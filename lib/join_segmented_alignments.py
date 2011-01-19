@@ -15,23 +15,11 @@ import shutil
 import pysam
 from segment_reads import parse_qname
 
-# functions for initializing new buffer lists
-buf_init_funcs = [lambda: (([],),([],)),
-                  lambda: (([],[]), ([],[])),
-                  lambda: (([],[],[]), ([],[],[])),
-                  lambda: (([],[],[],[]), ([],[],[],[])),
-                  lambda: (([],[],[],[],[]), ([],[],[],[],[])),
-                  lambda: (([],[],[],[],[],[]), ([],[],[],[],[],[])),
-                  lambda: (([],[],[],[],[],[],[]), ([],[],[],[],[],[],[])),
-                  lambda: (([],[],[],[],[],[],[],[]), ([],[],[],[],[],[],[],[])),
-                  lambda: (([],[],[],[],[],[],[],[],[]), ([],[],[],[],[],[],[],[],[])),
-                  lambda: (([],[],[],[],[],[],[],[],[],[]), ([],[],[],[],[],[],[],[],[],[]))]
-    
-def parse_segmented_pe_sam(samfh, maxlen=100000):
-    '''
-    reads are padded with 3 characters: '_xy', where 
-    x=mate number and y=segment number.    
-    '''
+def parse_segmented_sam(samfh, is_paired=True, maxlen=100000):
+    num_mates = 2 if is_paired else 1    
+    # function for initializing new buffer list
+    buf_init_func = lambda num_segs: tuple(tuple(list() for x in xrange(num_segs)) 
+                                           for m in xrange(num_mates))
     qname_ind_map = {}
     start_ind = 0
     end_ind = 0
@@ -41,8 +29,9 @@ def parse_segmented_pe_sam(samfh, maxlen=100000):
         qname, mate, seg, num_segs = parse_qname(read.qname)
         # set read flags to reflect that this is paired-end
         # data but the reads have not been joined into pairs
+        #print "QNAME", qname, "MATE", mate, "SEG", seg, "NUM_SEGS", num_segs
         read.qname = qname
-        read.is_paired = True
+        read.is_paired = is_paired
         read.is_proper_pair = False
         read.mate_is_unmapped = True
         read.mrnm = -1
@@ -60,7 +49,7 @@ def parse_segmented_pe_sam(samfh, maxlen=100000):
             # test if buffer has become full
             if buf_size == maxlen:
                 # buffer full so return first read
-                yield buf[start_ind]                
+                yield buf[start_ind]
                 # delete the read qname to decrease the buffer size by
                 # one and allow parser to iterate until it is full again
                 return_qname = buf[start_ind][0][0][0].qname
@@ -71,7 +60,8 @@ def parse_segmented_pe_sam(samfh, maxlen=100000):
                     start_ind = 0
             # reset end index in buffer            
             qname_ind_map[qname] = end_ind
-            buf[end_ind] = buf_init_funcs[num_segs - 1]()
+            buf[end_ind] = buf_init_func(num_segs)
+            #buf_init_funcs[num_segs - 1]()
             # get current index for insertion
             cur_ind = end_ind
             # advance end index
@@ -97,6 +87,7 @@ def parse_segmented_pe_sam(samfh, maxlen=100000):
         if start_ind == maxlen:
             start_ind = 0
         buf_size = len(qname_ind_map)
+
 
 def build_segment_alignment_dict(aln_dict, reads, seg_num):
     aln_seg_dict = {}
@@ -338,7 +329,7 @@ def make_joined_read(mate, reads, tags=None):
     return a
 
 
-def join_segmented_pe_reads(input_sam_file, output_bam_file):
+def join_segmented_alignments(input_sam_file, output_bam_file, is_paired):
     # setup debugging logging messages
     debug_count = 0
     debug_every = 1e5
@@ -350,7 +341,7 @@ def join_segmented_pe_reads(input_sam_file, output_bam_file):
     #outfh = pysam.Samfile("-", "w", template=infh)
     # iterate through paired-end alignments
     logging.info("Processing paired alignments...")
-    for segmented_pe_reads in parse_segmented_pe_sam(infh):
+    for segmented_pe_reads in parse_segmented_sam(infh, is_paired):
         debug_count += 1
         if debug_count == debug_next:
             debug_next += debug_every
@@ -385,10 +376,12 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = OptionParser("usage: %prog [options] <insam> <outsam>")
+    parser.add_option("--sr", dest="sr", action="store_true", default=False)
     options, args = parser.parse_args()
+    is_paired = not options.sr
     input_sam_file = args[0]
     output_bam_file = args[1]
     logging.debug("Joining segmented paired-end mappings")
     logging.debug("Input file: %s" % (input_sam_file))
     logging.debug("Output file: %s" % (output_bam_file))
-    join_segmented_pe_reads(input_sam_file, output_bam_file)
+    join_segmented_alignments(input_sam_file, output_bam_file, is_paired)

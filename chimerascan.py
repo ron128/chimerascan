@@ -6,6 +6,7 @@ Created on Jan 5, 2011
 import logging
 import os
 import sys
+import subprocess
 from optparse import OptionParser
 
 import pysam
@@ -18,6 +19,7 @@ from lib.align import align
 from lib.merge_read_pairs import merge_read_pairs
 from lib.find_discordant_reads import discordant_reads_to_chimeras
 from lib.nominate_chimeras import nominate_chimeras
+from lib.bedpe_to_fasta import bedpe_to_junction_fasta
 
 def check_command_line_args(options, args, parser):
     # check command line arguments
@@ -79,7 +81,8 @@ def check_command_line_args(options, args, parser):
     processors_needed = (config.BASE_PROCESSORS + 2*options.bowtie_threads)    
     if processors_needed > options.num_processors:
         parser.error("Not enough processor cores (approx. %d needed, %d available)" % 
-                     (processors_needed, options.num_processors)) 
+                     (processors_needed, options.num_processors))
+
 
 def main():
     logging.basicConfig(level=logging.DEBUG,
@@ -96,6 +99,9 @@ def main():
                       help="Path to 'bowtie-build' program")
     parser.add_option("--bowtie-bin", dest="bowtie_bin", default="bowtie", 
                       help="Path to 'bowtie' program")
+    parser.add_option("--bowtie-mode-v", action="store_true", 
+                      dest="bowtie_mode_v", default=False,
+                      help="Run bowtie with -v to ignore quality scores")
     parser.add_option("--multihits", type="int", dest="multihits", 
                       default=40)
     parser.add_option("--mismatches", type="int", dest="mismatches", 
@@ -125,26 +131,23 @@ def main():
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         logging.info("Created index directory: %s" % (output_dir))    
-    align_output_file = os.path.join(output_dir, config.DISCORDANT_READS_FILE)
-    bowtie_index = os.path.join(options.index_dir, config.ALIGN_INDEX)
-    paired_bam_file = os.path.join(output_dir, config.PAIRED_DISCORDANT_READS_FILE)
-    discordant_bedpe_file = os.path.join(output_dir, config.DISCORDANT_BEDPE_FILE)
-    unmapped_fasta_file = os.path.join(output_dir, config.UNMAPPED_FASTA_FILE)
-    encompassing_chimera_bedpe_file = os.path.join(output_dir, config.ENCOMPASSING_CHIMERA_BEDPE_FILE)
     library_type = parse_library_type(options.library_type)    
     gene_feature_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)
     try:
         #
         # Discordant reads alignment step
-        #        
+        #
+        align_output_file = os.path.join(output_dir, config.ALIGNED_READS_FILE)
+        bowtie_index = os.path.join(options.index_dir, config.ALIGN_INDEX)        
         align(fastq_files, options.fastq_format, bowtie_index,
               align_output_file, options.bowtie_bin, 
               options.num_processors, options.segment_length,
               options.trim5, options.trim3, options.multihits,
-              options.mismatches)
+              options.mismatches, options.bowtie_mode)        
         #
         # Merge paired-end reads step
         #
+        paired_bam_file = os.path.join(output_dir, config.PAIRED_ALIGNED_READS_FILE)        
         bamfh = pysam.Samfile(align_output_file, "rb")
         paired_bamfh = pysam.Samfile(paired_bam_file, "wb", template=bamfh)
         merge_read_pairs(bamfh, paired_bamfh, 
@@ -156,6 +159,8 @@ def main():
         #
         # Find discordant reads step
         #
+        discordant_bedpe_file = os.path.join(output_dir, config.DISCORDANT_BEDPE_FILE)
+        unmapped_fasta_file = os.path.join(output_dir, config.UNMAPPED_FASTA_FILE)
         # TODO: add contam refs
         bamfh = pysam.Samfile(paired_bam_file, "rb")
         discordant_reads_to_chimeras(bamfh, discordant_bedpe_file, gene_feature_file,
@@ -166,8 +171,10 @@ def main():
         #
         # Nominate chimeras step
         #
+        encompassing_bedpe_file = os.path.join(output_dir, config.ENCOMPASSING_CHIMERA_BEDPE_FILE)        
         infh = open(discordant_bedpe_file, "r")
-        outfh = open(encompassing_chimera_bedpe_file, "w")                
+        outfh = open(encompassing_bedpe_file, "w")                
+        # TODO: add contam refs
         nominate_chimeras(infh, outfh, gene_feature_file,
                           contam_refs=None, 
                           trim=config.EXON_JUNCTION_TRIM_BP)
@@ -175,16 +182,52 @@ def main():
         infh.close()        
         #
         # Extract junction sequences from chimeras file
-        #         
-        bedpe_to_junction_fasta(bed_file, reference_seq_file,
-                                read_length,
-                                fasta_output_fh, junc_output_fh)        
-        #python ~/workspace/chimerascan/lib/bedpe_to_fasta.py --index /exds/projects/chimerascan/hg19_ucsc_illumina --rlen 53 test.chimeras.txt juncs.fa juncs.txt
+        #        
+        ref_fasta_file = os.path.join(options.index_dir, config.ALIGN_INDEX + ".fa")
+        read_length = get_read_length(fastq_files[0])
+        junc_fasta_file = os.path.join(options.output_dir, config.JUNC_REF_FASTA_FILE)
+        junc_map_file = os.path.join(options.output_dir, config.JUNC_REF_MAP_FILE)        
+        bedpe_to_junction_fasta(encompassing_bedpe_file, ref_fasta_file,                                
+                                read_length, open(junc_fasta_file, "w"),
+                                open(junc_map_file, "w"))
+        #
+        # Build a bowtie index to align and detect spanning reads
+        #
+        bowtie_spanning_index = os.path.join(options.output_dir, config.JUNC_BOWTIE_INDEX)
+        args = [options.bowtie_build_bin, junc_fasta_file, bowtie_spanning_index]
+        subprocess.call(args)
+        #
+        # Align unmapped reads across putative junctions
+        #
+        junc_bam_file = os.path.join(output_dir, config.JUNC_READS_BAM_FILE)
+        bowtie_index = os.path.join(options.index_dir, config.ALIGN_INDEX)        
+        align([unmapped_fasta_file], "phred33-quals", bowtie_spanning_index,
+              junc_bam_file, options.bowtie_bin, 
+              options.num_processors, options.segment_length,
+              options.trim5, options.trim3, options.multihits,
+              options.mismatches, options.bowtie_mode)
+        #
+        # Merge spanning and encompassing read information
+        #
         
-        
-        #python ~/workspace/chimerascan/lib/segmented_spanning_align.py --bowtie-bin /exds/users/mkiyer/sequel/sw/alignment/bowtie/bowtie-0.12.7/bowtie --bowtie-index juncs --bowtie-threads 1 --segment-multihits 2 --segment-mismatches 2 --segment-length 25 --quals solexa-quals vcap_unmapped.fa vcap_spanning.txt
-        #python ~/workspace/chimerascan/lib/segmented_spanning_align.py --bowtie-bin /exds/users/mkiyer/sequel/sw/alignment/bowtie/bowtie-0.12.7/bowtie --bowtie-index juncs --bowtie-threads 1 --segment-multihits 2 --segment-mismatches 2 --segment-length 25 --quals solexa-quals vcap_unmapped.fa vcap_spanning.txt
-
+        #
+        # Synthesis of spanning and encompassing reads
+        #
+        if all(up_to_date(job.spanning_chimera_file, f) for f in job.spanning_bowtie_output_files):
+            logging.info("[SKIPPED] Processed spanning alignment %s is up to date" % (job.spanning_chimera_file))
+        else:
+            py_script = os.path.join(_module_dir, "process_spanning_alignments.py")
+            args = [sys.executable, py_script,
+                    "--rlen", read_length,
+                    "--anchor-min", config.anchor_min,
+                    "--anchor-max", config.anchor_max,
+                    "--anchor-mismatches", config.anchor_mismatches,
+                    job.chimera_mapping_file,
+                    job.spanning_chimera_file] + job.spanning_bowtie_output_files
+            cmd = ' '.join(map(str, args))
+            qsub(job.name, cmd, num_processors=1, cwd=job.output_dir, walltime="2:00:00", deps=job_ids, 
+                 stdout="process_spanning_alignments.log", email=True)
+                
         retcode = JOB_SUCCESS
     except Exception:
         retcode = JOB_ERROR

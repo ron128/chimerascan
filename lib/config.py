@@ -23,12 +23,16 @@ BOWTIE_INDEX_FILE = 'align_index.1.ebwt'
 GENE_REF_PREFIX = 'gene_'
 GENE_FEATURE_FILE = "gene_features.txt"
 
-DISCORDANT_READS_FILE = "discordant_reads.bam"
-PAIRED_DISCORDANT_READS_FILE = "discordant_reads_paired.bam"
+ALIGNED_READS_FILE = "aligned_reads.bam"
+PAIRED_ALIGNED_READS_FILE = "aligned_reads_paired.bam"
 DISCORDANT_BEDPE_FILE = "discordant_chimeras.bedpe"
 UNMAPPED_FASTA_FILE = "unmapped_reads.fa"
 ENCOMPASSING_CHIMERA_BEDPE_FILE = "encompassing_chimeras.bedpe"
 EXON_JUNCTION_TRIM_BP = 10
+JUNC_REF_FASTA_FILE = "spanning_juncs.fa"
+JUNC_REF_MAP_FILE = "spanning_juncs.txt"
+JUNC_BOWTIE_INDEX = "spanning_juncs"
+JUNC_READS_BAM_FILE = "aligned_junc_reads.bam"
 
 
 translate_quals = {'solexa': 'solexa-quals',

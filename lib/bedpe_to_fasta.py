@@ -12,8 +12,7 @@ import pysam
 # local imports
 import config
 
-def bedpe_to_junction_fasta(bed_file, reference_seq_file,
-                            read_length,
+def bedpe_to_junction_fasta(bed_file, reference_seq_file, read_length,
                             fasta_output_fh, junc_output_fh):
     gene_fasta_prefix = config.GENE_REF_PREFIX
     ref_fa = pysam.Fastafile(reference_seq_file)
