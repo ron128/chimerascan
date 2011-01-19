@@ -137,12 +137,13 @@ def main():
     #
     logging.info("Running alignment stage")
     align_output_file = os.path.join(output_dir, config.ALIGNED_READS_FILE)
-    bowtie_index = os.path.join(options.index_dir, config.ALIGN_INDEX)        
+    bowtie_index = os.path.join(options.index_dir, config.ALIGN_INDEX)
+    bowtie_mode = "-v" if options.bowtie_mode_v else "-n"
     align(fastq_files, options.fastq_format, bowtie_index,
           align_output_file, options.bowtie_bin, 
           options.num_processors, options.segment_length,
           options.trim5, options.trim3, options.multihits,
-          options.mismatches, options.bowtie_mode)        
+          options.mismatches, bowtie_mode)        
     #
     # Merge paired-end reads step
     #
