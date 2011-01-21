@@ -161,7 +161,7 @@ def main():
     # use the entire read length as the "seed" here
     if bowtie_mode == "-n":
         args.extend(["-l", str(read_length)])
-    args += [options.bowtie_index, 
+    args += [bowtie_index, 
              "-1", fastq_files[0],
              "-2", fastq_files[1],
              aligned_bam_file]
