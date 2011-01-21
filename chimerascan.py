@@ -155,7 +155,7 @@ def main():
             "--maxins", options.max_fragment_length,
             "--trim5", options.trim5,
             "--trim3", options.trim3,
-            options.library_type,
+            "--%s" % options.library_type,
             "--un", unaligned_fastq_prefix,
             "--max", maxmultimap_fastq_prefix]
     # use the entire read length as the "seed" here
