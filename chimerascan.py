@@ -165,6 +165,7 @@ def main():
              "-1", fastq_files[0],
              "-2", fastq_files[1],
              aligned_bam_file]
+    args = map(str, args)
     logging.debug("Bowtie alignment args: %s" % (' '.join(args)))
     subprocess.call(args)    
     
