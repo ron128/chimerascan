@@ -5,11 +5,9 @@ Created on Jan 9, 2011
 '''
 import collections
 import logging
-import os
 
 import pysam
 
-import config
 from base import parse_library_type
 
 def parse_pe_sam_file(bamfh):

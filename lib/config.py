@@ -22,11 +22,14 @@ BOWTIE_INDEX_FILE = 'align_index.1.ebwt'
 GENE_REF_PREFIX = 'gene_'
 GENE_FEATURE_FILE = "gene_features.txt"
 
-ALIGNED_READS_FILE = "aligned_reads.bam"
-PAIRED_ALIGNED_READS_FILE = "aligned_reads_paired.bam"
+ALIGNED_READS_BAM_FILE = "aligned_reads.bam"
+UNALIGNED_FASTQ_PREFIX = "unaligned"
+MAXMULTIMAP_FASTQ_PREFIX = "maxmulti"
+DISCORDANT_BAM_FILE = "discordant_reads.bam"
+DISCORDANT_PAIRED_BAM_FILE = "discordant_reads_paired.bam"
 DISCORDANT_BEDPE_FILE = "discordant_reads.bedpe"
 SORTED_DISCORDANT_BEDPE_FILE = "discordant_reads.srt.bedpe"
-UNMAPPED_FASTA_FILE = "unmapped_reads.fa"
+SPANNING_FASTQ_FILE = "putative_spanning_reads.fq"
 ENCOMPASSING_CHIMERA_BEDPE_FILE = "encompassing_chimeras.bedpe"
 EXON_JUNCTION_TRIM_BP = 10
 JUNC_REF_FASTA_FILE = "spanning_juncs.fa"

@@ -12,15 +12,25 @@ import sys
 
 import pysam
 
+# local imports
 from bx.intersection import Interval, IntervalTree
+from bx.cluster import ClusterTree
+
 import config
 from base import parse_library_type
 from feature import GeneFeature
 from seq import DNA_reverse_complement
 
+# constants
 ChimeraMate = collections.namedtuple('ChimeraMate',
                                      ['interval', 'seq', 'qual', 'is_spanning'])
 
+# mapping codes
+NM = 0
+MULTIMAP = 1
+GENOME = 2
+MAP = 3
+    
 class Chimera(object):
     DISCORDANT_INNER = 0
     DISCORDANT_5P = 1
@@ -143,21 +153,6 @@ def build_gene_maps(samfh, genefile):
         gene_trees[chrom_tid].insert_interval(gene_interval)
     return gene_genome_map, gene_trees
 
-def select_best_segments(seg_list):
-    # sort by number of unmapped segments
-    sorted_segs = []
-    for segs in seg_list:
-        num_unmapped_segs = sum(1 if r.is_unmapped else 0 for r in segs)
-        sorted_segs.append((num_unmapped_segs, segs))
-    sorted_segs = sorted(sorted_segs, key=operator.itemgetter(0))
-    best_num_unmapped_segs = sorted_segs[0][0]
-    best_segs = []
-    for num_unmapped_segs, segs in sorted_segs:
-        if num_unmapped_segs > best_num_unmapped_segs:
-            break
-        best_segs.append(segs)
-    return best_segs
-
 def select_best_mismatches(reads, mismatch_tolerance=0):
     if len(reads) == 0:
         return []
@@ -183,10 +178,12 @@ def select_best_mismatches(reads, mismatch_tolerance=0):
         best_reads.append(r)
     return best_reads
 
-def group_reads_by_strand(partitions, tid_list):
+def process_partition(partitions, tid_list):
     for partition in partitions:
         splits5p = []
         splits3p = []
+        codes5p = set()
+        codes3p = set()
         for split_reads in partition:
             reads5p = []
             reads3p = []
@@ -196,25 +193,38 @@ def group_reads_by_strand(partitions, tid_list):
             # to choose from among multimapping reads?
             best_reads = select_best_mismatches(split_reads)
             for r in best_reads:
-                # TODO: for now, we ignore genomic reads because they
-                # require further processing
+                # TODO: for now, we treat genomic reads as unmapped because they
+                # require further processing.  by treating unmapped we allow them
+                # to be consider as mis-mapped spanning reads in future steps,
+                # and allow the other segments in the paired-end fragment to 
+                # determine  
                 if tid_list[r.rname] is None:
-                    continue            
-                # determine sense/antisense by assuming that
-                # 5' reads are sense and 3' reads are antisense
-                if r.is_unmapped:
+                    r.is_unmapped = True
+                    reads5p.append(r)
+                    reads3p.append(r)
+                    codes5p.add(GENOME)
+                    codes3p.add(GENOME)
+                elif r.is_unmapped:
                     reads3p.append(r)
                     reads5p.append(r)
-                elif r.is_reverse:
-                    reads3p.append(r)
+                    code = MULTIMAP if r.opt('XM') > 0 else NM
+                    codes5p.add(code)
+                    codes3p.add(code)
                 else:
-                    reads5p.append(r)
+                    if r.is_reverse:
+                        # determine sense/antisense by assuming that
+                        # 5' reads are sense and 3' reads are antisense                    
+                        reads3p.append(r)
+                        codes3p.add(MAP)
+                    else:
+                        reads5p.append(r)
+                        codes5p.add(MAP)
             splits5p.append(reads5p)
-            splits3p.append(reads3p)        
+            splits3p.append(reads3p)
         if all(len(reads) > 0 for reads in splits5p):
-            yield 0, splits5p
+            yield 0, codes5p, splits5p
         if all(len(reads) > 0 for reads in splits3p):
-            yield 1, splits3p
+            yield 1, codes3p, splits3p
 
 def find_first_split(splits):
     rname_dict = collections.defaultdict(lambda: collections.defaultdict(lambda: []))
@@ -225,6 +235,7 @@ def find_first_split(splits):
     for ind,split_reads in enumerate(splits):
         split_rname_dict = collections.defaultdict(lambda: [])
         for r in split_reads:
+            print 'INDEX', ind, 'READ', r
             if r.is_unmapped:
                 continue
             split_rname_dict[r.rname].append(r)
@@ -249,6 +260,35 @@ def find_first_split(splits):
         split_ind += 1
     return rname_dict, mapped_inds, split_ind
 
+
+#def cluster_reads(splits, max_isize):    
+#    trees = collections.defaultdict(lambda: ClusterTree(max_isize,1))
+#    unmapped_reads = collections.defaultdict(lambda: [])
+#    # bin the reads by reference and cluster by position
+#    reads = []
+#    read_ind = 0
+#    for ind,split_reads in enumerate(splits):
+#        ind_is_unmapped = True
+#        for r in split_reads:
+#            if r.is_unmapped:
+#                continue
+#            ind_is_unmapped = False
+#            reads.append((ind,r))
+#            trees[r.rname].insert(r.pos, r.aend, read_ind)
+#            read_ind += 1
+#        if ind_is_unmapped:
+#            unmapped_reads[ind].extend(split_reads)
+#    # find groups of reads on different references
+#    for rname, cluster_tree in trees.iteritems():
+#        ind_read_dict = collections.defaultdict(lambda: [])
+#        for start, end, read_inds in cluster_tree.getregions():
+#            for i in read_inds:
+#                ind, r = reads[i]
+#                ind_read_dict[ind].append(r)
+#            ind_read_dict.update(unmapped_reads)
+#            yield rname, start, end, ind_read_dict
+
+
 def get_start_end_pos(mapped_inds, ind_read_dict):
     start = None
     end = None
@@ -265,7 +305,13 @@ def get_seq_and_qual(splits):
     seqs = []
     quals = []
     for reads in splits:
-        if reads[0].is_unmapped or (not reads[0].is_reverse):
+        # TODO: I am now manually switching genome hits to
+        # 'unmapped' so that they are effectively ignored,
+        # but they still need to be reverse complemented if 
+        # seq is on the reverse strand, so using the 'unmapped'
+        # flag alone does not suffice
+        #if reads[0].is_unmapped:
+        if not reads[0].is_reverse:
             seq = reads[0].seq
             qual = reads[0].qual
         else:
@@ -286,11 +332,20 @@ def get_fastq(partitions):
     #return ">%s\n%s" % (qname, seq)
 
 def make_chimera_mates(mate_splits, splits, gene_genome_map):
+    '''
+    returns a 3-tuple:
+    * list of ChimeraMate objects,
+    * whether the read has unmapped segments, and 
+    * index of discordant splice
+    '''
     refdict, mapped_inds, split_ind = find_first_split(splits)
-    # lookup gene information
+    # read must have at least one mapped segment
+    if len(mapped_inds) == 0:
+        # this read has no mappings
+        return [], True, split_ind
+    mates = []
     span = mapped_inds[-1] < (len(mate_splits) - 1)
-    seq, qual = get_seq_and_qual(mate_splits)
-    mates = []    
+    seq, qual = get_seq_and_qual(mate_splits)     
     for rname, inddict in refdict.iteritems():        
         g = gene_genome_map[rname]
         # TODO: there are cases where putative small rearrangements
@@ -317,6 +372,11 @@ def gen_chimera_candidates(splits5p, splits3p, gene_genome_map, read1_is_5prime)
     mates5p, has_unmapped_splits, split_ind5p = make_chimera_mates(splits5p, 
                                                                    itertools.chain(splits5p, reversed(splits3p)),
                                                                    gene_genome_map)
+    print 'NUM SPLITS', num_splits
+    print 'MATES5P', mates5p
+    print 'UNMAPPED', has_unmapped_splits
+    print '5P SPLIT IND', split_ind5p
+    
     concordant5p = False
     spanning5p = False
     if split_ind5p == num_splits:
@@ -328,6 +388,10 @@ def gen_chimera_candidates(splits5p, splits3p, gene_genome_map, read1_is_5prime)
     mates3p, has_unmapped_splits, split_ind3p = make_chimera_mates(splits3p,
                                                                    itertools.chain(splits3p, reversed(splits5p)), 
                                                                    gene_genome_map)
+    print 'MATES3P', mates3p
+    print 'UNMAPPED', has_unmapped_splits
+    print '3P SPLIT IND', split_ind3p
+
     concordant3p = False
     spanning3p = False
     if split_ind3p == num_splits:
@@ -357,28 +421,24 @@ def gen_chimera_candidates(splits5p, splits3p, gene_genome_map, read1_is_5prime)
         for mate3p in mates3p:
             yield True, False, False, Chimera(qname, discordant_type, mate5p, mate3p, read1_is_5prime)
 
-def find_discordant_pairs(pe_reads, tid_list, genome_tid_set, 
-                          gene_genome_map, gene_trees, max_isize, 
-                          contam_tids):
+
+def find_discordant_pairs(hits, gene_genome_map):
     '''
     function cannot be called with unmapped reads; at least one mapping
     must exist for each read in the pair
     '''
-    # bin reads by strand and mate
-    hits = (([], []), ([], []))
-    for mate, mate_partitions in enumerate(pe_reads):
-        for strand,splits in group_reads_by_strand(mate_partitions, tid_list):
-            hits[strand][mate].append(splits)
     # join hits
     chimeras = []
     for mate1, mate2 in ((0, 1), (1, 0)):
-        for splits5p in hits[0][mate1]:            
-            for splits3p in hits[1][mate2]:
-                # combined 5'/3' partners
+        mates5p = hits[0][mate1]
+        mates3p = hits[1][mate2]
+        for splits5p in mates5p:
+            for splits3p in mates3p:                
+                # combine 5'/3' partners
                 for res in gen_chimera_candidates(splits5p, splits3p, 
                                                   gene_genome_map,
                                                   (mate1 == 0)):
-                    is_discordant, span5p, span3p, chimera = res          
+                    is_discordant, span5p, span3p, chimera = res
                     if not is_discordant:
                         read1_span = (((mate1 == 0) and span5p) or
                                       ((mate1 == 1) and span3p))
@@ -388,20 +448,6 @@ def find_discordant_pairs(pe_reads, tid_list, genome_tid_set,
                     chimeras.append(chimera)
     return chimeras, False, False
 
-
-def check_read_unmapped(split_partitions):
-    # if only one partition with one split
-    # and one mapping read that is unmapped,
-    # then the entire read is unmapped
-    if (len(split_partitions) == 1 and
-        len(split_partitions[0]) == 1 and
-        len(split_partitions[0][0]) == 1 and
-        split_partitions[0][0][0].is_unmapped):
-        r = split_partitions[0][0][0]
-        multimap = r.opt('XM') > 0
-        return True, multimap
-    else:
-        return False, False
 
 def get_gene_tids(bamfh):
     gene_tids = []
@@ -467,61 +513,76 @@ def discordant_reads_to_chimeras(input_bam_file, output_bedpe_file, gene_file,
     debug_next = debug_every
     num_fragments = 0
     num_unmapped = 0
+    num_unmapped_rescued = 0
     num_discordant = 0
     num_discordant_spanning = 0
     num_concordant = 0
     num_concordant_unmapped = 0
+    logging.info("Parsing BAM file")    
     for pe_reads in parse_unpaired_reads(bamfh):
-        # check that reads map
-        any_is_unmapped = False
-        for mate, mate_partitions in enumerate(pe_reads):        
-            is_unmapped, is_multimap = check_read_unmapped(mate_partitions)
-            any_is_unmapped = any_is_unmapped or is_unmapped
-            # output unmapped reads for further testing (viruses, etc)
-            if (fastqfh is not None) and is_unmapped and not is_multimap:
-                print >>fastqfh, get_fastq(mate_partitions) 
-        if any_is_unmapped:
-            num_unmapped += 1
-        else:
-            chimeras,any_read1_span,any_read2_span = find_discordant_pairs(pe_reads, gene_tid_list, genome_tid_set, gene_genome_map, 
-                                                                           gene_trees, max_isize, contam_tids)
-            for chimera in chimeras:
-                print >>outfh, chimera.to_bedpe()
-                if chimera.mate5p.is_spanning:
-                    if chimera.read1_is_5prime:
-                        any_read1_span = True
-                    else:
-                        any_read2_span = True
-                if chimera.mate3p.is_spanning:
-                    if not chimera.read1_is_5prime:
-                        any_read1_span = True
-                    else:
-                        any_read2_span = True
-            # output putative spanning chimeras for further testing
-            if (fastqfh is not None) and (any_read1_span or any_read2_span):
-                if len(chimeras) == 0:
-                    num_concordant_unmapped += 1
-                else:             
-                    num_discordant_spanning += 1
-                if any_read1_span:
-                    print >>fastqfh, get_fastq(pe_reads[0]) 
-                if any_read2_span:
-                    print >>fastqfh, get_fastq(pe_reads[1])
-            if len(chimeras) > 0:
-                num_discordant += 1
-            else:
-                num_concordant += 1
+        # count fragments
         num_fragments += 1
         # progress log
         debug_count += 1
         if debug_count == debug_next:
             debug_next += debug_every
             logging.info("Total read pairs: %d" % (num_fragments))
-            logging.info("Read pairs with at least one unmapped mate: %d" % (num_unmapped))
+            logging.info("Read pairs with at least one unmapped mate: %d (%d saved)" % (num_unmapped, num_unmapped_rescued))
+            logging.info("Concordant reads: %d" % (num_concordant))            
+            logging.info("Concordant pairs with at least one unmapped mate: %d" % (num_concordant_unmapped))
             logging.info("Discordant reads: %d" % (num_discordant))            
             logging.info("Discordant junction spanning reads: %d" % (num_discordant_spanning))            
-            logging.info("Concordant reads: %d" % (num_concordant))            
-            logging.info("Concordant pairs with at least one unmapped mate: %d" % (num_concordant_unmapped))            
+        # bin reads by strand and mate and keep track of whether we
+        # find mapped hits for this fragment
+        hits = (([], []), ([], []))
+        mate_mapping_codes = (set(), set())
+        for mate, mate_partitions in enumerate(pe_reads):
+            for strand, mapping_codes, splits in process_partition(mate_partitions, gene_tid_list):
+#                print 'MATE', mate, 'STRAND', strand, 'CODES', mapping_codes
+#                for i,s in enumerate(splits):
+#                    for r in s:
+#                        print 'INDEX', i, r
+                mate_mapping_codes[mate].update(mapping_codes)
+                if MAP in mapping_codes:
+                    hits[strand][mate].append(splits)
+        # if either mate is unmapped, stop here and do not proceed to
+        # look for discordant pairs
+        if any(MAP not in mapping_codes for mapping_codes in mate_mapping_codes):
+            for mate, codes in enumerate(mate_mapping_codes):
+                # output unmapped reads for further testing (viruses, etc)
+                # if the mate has any non-mapping reads (not genome/multimaps)
+                if NM in codes:
+                    num_unmapped_rescued += 1
+                    if (fastqfh is not None):                    
+                        print >>fastqfh, get_fastq(pe_reads[mate])
+            num_unmapped += 1
+            continue
+        # find discordant pairs in the mapped reads
+        chimeras,any_read1_span,any_read2_span = find_discordant_pairs(hits, gene_genome_map)
+        for chimera in chimeras:
+            # output chimera
+            print >>outfh, chimera.to_bedpe()
+            # convert from 5'/3' back to read1/read2 for output
+            if chimera.mate5p.is_spanning:
+                any_read1_span = chimera.read1_is_5prime
+                any_read2_span = not chimera.read1_is_5prime
+            if chimera.mate3p.is_spanning:
+                any_read1_span = not chimera.read1_is_5prime
+                any_read2_span = chimera.read1_is_5prime
+        # output putative spanning chimeras for further testing
+        if (fastqfh is not None) and (any_read1_span or any_read2_span):
+            if len(chimeras) == 0:
+                num_concordant_unmapped += 1
+            else:             
+                num_discordant_spanning += 1
+            if any_read1_span:
+                print >>fastqfh, get_fastq(pe_reads[0]) 
+            if any_read2_span:
+                print >>fastqfh, get_fastq(pe_reads[1])
+        if len(chimeras) > 0:
+            num_discordant += 1
+        else:
+            num_concordant += 1
     # close output files
     outfh.close()
     if fastqfh is not None:
@@ -559,3 +620,20 @@ def main():
 if __name__ == '__main__':
     main()
 
+
+
+#
+#def select_best_segments(seg_list):
+#    # sort by number of unmapped segments
+#    sorted_segs = []
+#    for segs in seg_list:
+#        num_unmapped_segs = sum(1 if r.is_unmapped else 0 for r in segs)
+#        sorted_segs.append((num_unmapped_segs, segs))
+#    sorted_segs = sorted(sorted_segs, key=operator.itemgetter(0))
+#    best_num_unmapped_segs = sorted_segs[0][0]
+#    best_segs = []
+#    for num_unmapped_segs, segs in sorted_segs:
+#        if num_unmapped_segs > best_num_unmapped_segs:
+#            break
+#        best_segs.append(segs)
+#    return best_segs

@@ -129,26 +129,61 @@ def main():
     # create output dir if it does not exist
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-        logging.info("Created index directory: %s" % (output_dir))    
+        logging.info("Created output directory: %s" % (output_dir))    
     library_type = parse_library_type(options.library_type)    
     gene_feature_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)
+    bowtie_mode = "-v" if options.bowtie_mode_v else "-n"
+    read_length = get_read_length(fastq_files[0])    
+    #
+    # Initial Bowtie alignment step
+    #
+    # align in paired-end mode, trying to resolve as many reads as possible
+    # this effectively rules out the vast majority of reads as candidate
+    # fusions
+    unaligned_fastq_prefix = os.path.join(output_dir, config.UNALIGNED_FASTQ_PREFIX)
+    maxmultimap_fastq_prefix = os.path.join(output_dir, config.MAXMULTIMAP_FASTQ_PREFIX)
+    aligned_bam_file = os.path.join(output_dir, config.ALIGNED_READS_BAM_FILE)
+    args = [options.bowtie_bin, "-q", "-S", 
+            "-p", str(options.num_processors),
+            "--%s" % options.fastq_format,
+            "-k", str(options.multihits),
+            "-m", str(options.multihits),
+            bowtie_mode, str(options.mismatches),
+            "--minins", options.min_fragment_length,
+            "--maxins", options.max_fragment_length,
+            "--trim5", options.trim5,
+            "--trim3", options.trim3,
+            options.library_type,
+            "--un", unaligned_fastq_prefix,
+            "--max", maxmultimap_fastq_prefix]
+    # use the entire read length as the "seed" here
+    if bowtie_mode == "-n":
+        args.extend(["-l", str(read_length)])
+    args += [options.bowtie_index, 
+             "-1", fastq_files[0],
+             "-2", fastq_files[1],
+             aligned_bam_file]
+    logging.debug("Bowtie alignment args: %s" % (' '.join(args)))
+    subprocess.call(args)    
+    
+    import sys
+    sys.exit(0)
     #
     # Discordant reads alignment step
     #
     logging.info("Running alignment stage")
-    align_output_file = os.path.join(output_dir, config.ALIGNED_READS_FILE)
+    discordant_bam_file = os.path.join(output_dir, config.DISCORDANT_BAM_FILE)
     bowtie_index = os.path.join(options.index_dir, config.ALIGN_INDEX)
-    bowtie_mode = "-v" if options.bowtie_mode_v else "-n"
     align(fastq_files, options.fastq_format, bowtie_index,
-          align_output_file, options.bowtie_bin, 
+          discordant_bam_file, options.bowtie_bin, 
           options.num_processors, options.segment_length,
           options.trim5, options.trim3, options.multihits,
           options.mismatches, bowtie_mode)        
     #
     # Merge paired-end reads step
     #
-    paired_bam_file = os.path.join(output_dir, config.PAIRED_ALIGNED_READS_FILE)        
-    bamfh = pysam.Samfile(align_output_file, "rb")
+    paired_bam_file = os.path.join(output_dir, config.DISCORDANT_PAIRED_BAM_FILE)        
+    bamfh = pysam.Samfile(discordant_bam_file, "rb")
     paired_bamfh = pysam.Samfile(paired_bam_file, "wb", template=bamfh)
     merge_read_pairs(bamfh, paired_bamfh, 
                      options.min_fragment_length,
@@ -160,14 +195,12 @@ def main():
     # Find discordant reads step
     #
     discordant_bedpe_file = os.path.join(output_dir, config.DISCORDANT_BEDPE_FILE)
-    unmapped_fasta_file = os.path.join(output_dir, config.UNMAPPED_FASTA_FILE)
+    unmapped_fastq_file = os.path.join(output_dir, config.UNMAPPED_FASTQ_FILE)
     # TODO: add contam refs
-    bamfh = pysam.Samfile(paired_bam_file, "rb")
-    discordant_reads_to_chimeras(bamfh, discordant_bedpe_file, gene_feature_file,
+    discordant_reads_to_chimeras(paired_bam_file, discordant_bedpe_file, gene_feature_file,
                                  options.max_fragment_length, library_type,
                                  contam_refs=None,
-                                 unmapped_fasta_file=unmapped_fasta_file)
-    bamfh.close()
+                                 unmapped_fastq_file=unmapped_fastq_file)
     #
     # Sort discordant reads
     #
@@ -189,16 +222,15 @@ def main():
     # Extract junction sequences from chimeras file
     #        
     ref_fasta_file = os.path.join(options.index_dir, config.ALIGN_INDEX + ".fa")
-    read_length = get_read_length(fastq_files[0])
-    junc_fasta_file = os.path.join(options.output_dir, config.JUNC_REF_FASTA_FILE)
-    junc_map_file = os.path.join(options.output_dir, config.JUNC_REF_MAP_FILE)        
+    junc_fasta_file = os.path.join(output_dir, config.JUNC_REF_FASTA_FILE)
+    junc_map_file = os.path.join(output_dir, config.JUNC_REF_MAP_FILE)        
     bedpe_to_junction_fasta(encompassing_bedpe_file, ref_fasta_file,                                
                             read_length, open(junc_fasta_file, "w"),
                             open(junc_map_file, "w"))
     #
     # Build a bowtie index to align and detect spanning reads
     #
-    bowtie_spanning_index = os.path.join(options.output_dir, config.JUNC_BOWTIE_INDEX)
+    bowtie_spanning_index = os.path.join(output_dir, config.JUNC_BOWTIE_INDEX)
     args = [options.bowtie_build_bin, junc_fasta_file, bowtie_spanning_index]
     subprocess.call(args)
     #
@@ -206,11 +238,11 @@ def main():
     #
     junc_bam_file = os.path.join(output_dir, config.JUNC_READS_BAM_FILE)
     bowtie_index = os.path.join(options.index_dir, config.ALIGN_INDEX)        
-    align([unmapped_fasta_file], "phred33-quals", bowtie_spanning_index,
+    align([unmapped_fastq_file], "phred33-quals", bowtie_spanning_index,
           junc_bam_file, options.bowtie_bin, 
           options.num_processors, options.segment_length,
           options.trim5, options.trim3, options.multihits,
-          options.mismatches, options.bowtie_mode)
+          options.mismatches, bowtie_mode)
     #
     # Merge spanning and encompassing read information
     #
