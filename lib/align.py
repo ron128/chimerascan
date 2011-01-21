@@ -22,22 +22,27 @@ class AlignError(Exception):
     def __str__(self):
         return repr(self.value)
 
-def determine_read_segments(read_length, segment_length, trim5, trim3):
+def determine_read_segments(read_length, segment_length, segment_trim, trim5, trim3):
     # figure out how many segments are available
     trimmed_rlen = read_length - trim5 - trim3
-    num_segments = trimmed_rlen / segment_length
+    num_segments = trimmed_rlen / segment_length    
+    if segment_trim:
+        read_end = segment_length * num_segments
+    else:
+        read_end = read_length - trim3    
     if num_segments == 1:
-        return [(trim5, read_length - trim3)]
+        # if just one segment is available, just use a single segment length
+        return [(trim5, read_end)]
     start = trim5 + segment_length
     segments = [(trim5, start)]
     for x in xrange(1, num_segments - 1):
         segments.append((start, start + segment_length))
         start += segment_length
-    if start < (read_length - trim3):
-        segments.append((start, read_length - trim3))
+    if start < read_end:        
+        segments.append((start, read_end))
     return segments
 
-def align_segments(fastq_files, output_sam_file, segments,
+def align_segments(fastq_files, output_bam_file, segments,
                    fastq_format, multihits, mismatches, 
                    num_threads, bowtie_bin, bowtie_index,
                    bowtie_mode):    
@@ -76,7 +81,7 @@ def align_segments(fastq_files, output_sam_file, segments,
     args = [sys.executable, py_script]
     if len(fastq_files) == 1:
         args.append("--sr")
-    args.extend(["-", output_sam_file])
+    args.extend(["-", output_bam_file])
     logging.debug("Join segmented alignments args: %s" % (' '.join(args)))
     out_p = subprocess.Popen(args, stdin=aln_p.stdout)
     out_p.wait()    
@@ -112,10 +117,11 @@ def check_fastq_files(fastq_files, segment_length, trim5, trim3):
     return read_lengths[0]
 
 def align(fastq_files, fastq_format, 
-          bowtie_index, output_sam_file,  
+          bowtie_index, output_bam_file,  
           bowtie_bin="bowtie",
           num_processors=2,
           segment_length=25, 
+          segment_trim=False,
           trim5=0, 
           trim3=0, 
           multihits=40, 
@@ -126,12 +132,12 @@ def align(fastq_files, fastq_format,
     # divide reads into segments
     # TODO: trim reads with polyA tails or bad quality scores
     # signify mate1 and mate2
-    segments = determine_read_segments(read_length, segment_length, trim5, trim3)
+    segments = determine_read_segments(read_length, segment_length, segment_trim, trim5, trim3)
     logging.info("Dividing %dbp reads into %d segments: %s" %
                  (read_length, len(segments), segments))      
     # run paired-end segmented aligner
     logging.info("Running segmented paired-end alignment")
-    align_segments(fastq_files, output_sam_file, segments,
+    align_segments(fastq_files, output_bam_file, segments,
                    fastq_format, multihits, mismatches, num_processors,
                    bowtie_bin, bowtie_index, bowtie_mode)
     logging.info("Alignment completed")
@@ -162,6 +168,9 @@ def main():
                       default=0)
     parser.add_option("--trim3", type="int", dest="trim3", 
                       default=0)
+    parser.add_option("--segment-trim", action="store_true", default=False,
+                      help="Trim reads to be an exact multiple of the " 
+                      "segment length")
     parser.add_option("--quals", dest="fastq_format", default="phred33-quals")
     options, args = parser.parse_args()
     # extract command line arguments
@@ -177,6 +186,7 @@ def main():
                     bowtie_bin=options.bowtie_bin,
                     num_processors=options.num_processors,
                     segment_length=options.segment_length,
+                    segment_trim=options.segment_trim,
                     trim5=options.trim5,
                     trim3=options.trim3,
                     multihits=options.multihits,

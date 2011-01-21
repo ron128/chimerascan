@@ -83,6 +83,15 @@ def check_command_line_args(options, args, parser):
     if options.num_processors < config.BASE_PROCESSORS:
         logging.warning("Please specify >=2 processes using '-p' to allow program to run efficiently")
 
+def up_to_date(outfile, infile):
+    if not os.path.exists(infile):
+        return False
+    if not os.path.exists(outfile):
+        return False
+    if os.path.getsize(outfile) == 0:
+        return False    
+    return os.path.getmtime(outfile) >= os.path.getmtime(infile)
+
 def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -135,123 +144,176 @@ def main():
     gene_feature_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)
     bowtie_mode = "-v" if options.bowtie_mode_v else "-n"
     bowtie_index = os.path.join(options.index_dir, config.ALIGN_INDEX)
-    read_length = get_read_length(fastq_files[0])    
+    read_length = get_read_length(fastq_files[0])
+    # minimum fragment length cannot be smaller than the trimmed read length
+    trimmed_read_length = read_length - options.trim5 - options.trim3
+    min_fragment_length = max(options.min_fragment_length, 
+                              trimmed_read_length)
     #
     # Initial Bowtie alignment step
     #
     # align in paired-end mode, trying to resolve as many reads as possible
     # this effectively rules out the vast majority of reads as candidate
     # fusions
-    unaligned_fastq_prefix = os.path.join(output_dir, config.UNALIGNED_FASTQ_PREFIX)
-    maxmultimap_fastq_prefix = os.path.join(output_dir, config.MAXMULTIMAP_FASTQ_PREFIX)
-    aligned_bam_file = os.path.join(output_dir, config.ALIGNED_READS_BAM_FILE)
-    args = [options.bowtie_bin, "-q", "-S", 
-            "-p", str(options.num_processors),
-            "--%s" % options.fastq_format,
-            "-k", str(options.multihits),
-            "-m", str(options.multihits),
-            bowtie_mode, str(options.mismatches),
-            "--minins", options.min_fragment_length,
-            "--maxins", options.max_fragment_length,
-            "--trim5", options.trim5,
-            "--trim3", options.trim3,
-            "--%s" % options.library_type,
-            "--un", unaligned_fastq_prefix,
-            "--max", maxmultimap_fastq_prefix]
-    # use the entire read length as the "seed" here
-    if bowtie_mode == "-n":
-        args.extend(["-l", str(read_length)])
-    args += [bowtie_index, 
-             "-1", fastq_files[0],
-             "-2", fastq_files[1],
-             aligned_bam_file]
-    args = map(str, args)
-    logging.debug("Bowtie alignment args: %s" % (' '.join(args)))
-    subprocess.call(args)    
-    
-    import sys
-    sys.exit(0)
+    unaligned_fastq_param = os.path.join(output_dir, config.UNALIGNED_FASTQ_PARAM)
+    maxmultimap_fastq_param = os.path.join(output_dir, config.MAXMULTIMAP_FASTQ_PARAM)
+    aligned_sam_file = os.path.join(output_dir, config.ALIGNED_READS_SAM_FILE)
+    if all(up_to_date(aligned_sam_file, fq) for fq in fastq_files):
+        logging.info("[SKIPPED] Alignment results exist")
+    else:
+        logging.info("Aligning full-length reads in paired-end mode")
+        args = [options.bowtie_bin, "-q", "-S", 
+                "-p", str(options.num_processors),
+                "--%s" % options.fastq_format,
+                "-k", str(options.multihits),
+                "-m", str(options.multihits),
+                bowtie_mode, str(options.mismatches),
+                "--minins", min_fragment_length,
+                "--maxins", options.max_fragment_length,
+                "--trim5", options.trim5,
+                "--trim3", options.trim3,
+                "--%s" % options.library_type,
+                "--un", unaligned_fastq_param,
+                "--max", maxmultimap_fastq_param]
+        # use the entire read length as the "seed" here
+        if bowtie_mode == "-n":
+            args.extend(["-l", str(read_length)])
+        args += [bowtie_index, 
+                 "-1", fastq_files[0],
+                 "-2", fastq_files[1],
+                 aligned_sam_file]
+        args = map(str, args)        
+        logging.debug("Bowtie alignment args: %s" % (' '.join(args)))
+        retcode = subprocess.call(args)
+        if retcode != 0:
+            logging.error("Bowtie failed with error code %d" % (retcode))    
+            sys.exit(retcode)
     #
     # Discordant reads alignment step
     #
-    logging.info("Running alignment stage")
+    logging.info("Aligning initially unmapped reads in single read mode")
     discordant_bam_file = os.path.join(output_dir, config.DISCORDANT_BAM_FILE)
-    align(fastq_files, options.fastq_format, bowtie_index,
-          discordant_bam_file, options.bowtie_bin, 
-          options.num_processors, options.segment_length,
-          options.trim5, options.trim3, options.multihits,
-          options.mismatches, bowtie_mode)        
+    unaligned_fastq_files = [os.path.join(output_dir, fq) for fq in config.UNALIGNED_FASTQ_FILES]    
+    if all(up_to_date(discordant_bam_file, fq) for fq in fastq_files):
+        logging.info("[SKIPPED] Discordant alignment results exist")
+    else:
+        align(unaligned_fastq_files, options.fastq_format, bowtie_index,
+              discordant_bam_file, 
+              bowtie_bin=options.bowtie_bin,
+              num_processors=options.num_processors, 
+              segment_length=options.segment_length,
+              segment_trim=True,
+              trim5=options.trim5, 
+              trim3=options.trim3, 
+              multihits=options.multihits,
+              mismatches=options.mismatches, 
+              bowtie_mode=bowtie_mode)
     #
     # Merge paired-end reads step
     #
-    paired_bam_file = os.path.join(output_dir, config.DISCORDANT_PAIRED_BAM_FILE)        
-    bamfh = pysam.Samfile(discordant_bam_file, "rb")
-    paired_bamfh = pysam.Samfile(paired_bam_file, "wb", template=bamfh)
-    merge_read_pairs(bamfh, paired_bamfh, 
-                     options.min_fragment_length,
-                     options.max_fragment_length,
-                     library_type)
-    paired_bamfh.close() 
-    bamfh.close()
+    paired_bam_file = os.path.join(output_dir, config.DISCORDANT_PAIRED_BAM_FILE)
+    if up_to_date(paired_bam_file, discordant_bam_file):
+        logging.info("[SKIPPED] Read pairing results exist")
+    else:
+        bamfh = pysam.Samfile(discordant_bam_file, "rb")
+        paired_bamfh = pysam.Samfile(paired_bam_file, "wb", template=bamfh)
+        merge_read_pairs(bamfh, paired_bamfh, 
+                         options.min_fragment_length,
+                         options.max_fragment_length,
+                         library_type)
+        paired_bamfh.close() 
+        bamfh.close()
     #
     # Find discordant reads step
     #
     discordant_bedpe_file = os.path.join(output_dir, config.DISCORDANT_BEDPE_FILE)
-    unmapped_fastq_file = os.path.join(output_dir, config.UNMAPPED_FASTQ_FILE)
-    # TODO: add contam refs
-    discordant_reads_to_chimeras(paired_bam_file, discordant_bedpe_file, gene_feature_file,
-                                 options.max_fragment_length, library_type,
-                                 contam_refs=None,
-                                 unmapped_fastq_file=unmapped_fastq_file)
+    spanning_fastq_file = os.path.join(output_dir, config.SPANNING_FASTQ_FILE)
+    if (up_to_date(discordant_bedpe_file, paired_bam_file) and
+        up_to_date(spanning_fastq_file, paired_bam_file)):    
+        logging.info("[SKIPPED] Discordant BEDPE file exists")
+    else:
+        # TODO: add contam refs
+        discordant_reads_to_chimeras(paired_bam_file, discordant_bedpe_file, gene_feature_file,
+                                     options.max_fragment_length, library_type,
+                                     contam_refs=None,
+                                     unmapped_fastq_file=spanning_fastq_file)
     #
     # Sort discordant reads
     #
     sorted_discordant_bedpe_file = os.path.join(output_dir, config.SORTED_DISCORDANT_BEDPE_FILE)
-    sort_discordant_reads(discordant_bedpe_file, sorted_discordant_bedpe_file)        
+    if (up_to_date(sorted_discordant_bedpe_file, discordant_bedpe_file)):
+        logging.info("[SKIPPED] Sorted discordant BEDPE file exists")
+    else:        
+        sort_discordant_reads(discordant_bedpe_file, sorted_discordant_bedpe_file)        
     #
     # Nominate chimeras step
     #
     encompassing_bedpe_file = os.path.join(output_dir, config.ENCOMPASSING_CHIMERA_BEDPE_FILE)        
-    infh = open(sorted_discordant_bedpe_file, "r")
-    outfh = open(encompassing_bedpe_file, "w")                
-    # TODO: add contam refs
-    nominate_chimeras(infh, outfh, gene_feature_file,
-                      contam_refs=None, 
-                      trim=config.EXON_JUNCTION_TRIM_BP)
-    outfh.close()
-    infh.close()        
+    if (up_to_date(encompassing_bedpe_file, sorted_discordant_bedpe_file)):
+        logging.info("[SKIPPED] Encompassing chimeras BEDPE file exists")
+    else:        
+        infh = open(sorted_discordant_bedpe_file, "r")
+        outfh = open(encompassing_bedpe_file, "w")                
+        # TODO: add contam refs
+        nominate_chimeras(infh, outfh, gene_feature_file,
+                          contam_refs=None, 
+                          trim=config.EXON_JUNCTION_TRIM_BP)
+        outfh.close()
+        infh.close()        
     #
     # Extract junction sequences from chimeras file
     #        
     ref_fasta_file = os.path.join(options.index_dir, config.ALIGN_INDEX + ".fa")
     junc_fasta_file = os.path.join(output_dir, config.JUNC_REF_FASTA_FILE)
-    junc_map_file = os.path.join(output_dir, config.JUNC_REF_MAP_FILE)        
-    bedpe_to_junction_fasta(encompassing_bedpe_file, ref_fasta_file,                                
-                            read_length, open(junc_fasta_file, "w"),
-                            open(junc_map_file, "w"))
+    junc_map_file = os.path.join(output_dir, config.JUNC_REF_MAP_FILE)
+    if (up_to_date(junc_fasta_file, encompassing_bedpe_file) and
+        up_to_date(junc_map_file, encompassing_bedpe_file)):        
+        logging.info("[SKIPPED] Chimeric junction files exist")
+    else:        
+        bedpe_to_junction_fasta(encompassing_bedpe_file, ref_fasta_file,                                
+                                read_length, open(junc_fasta_file, "w"),
+                                open(junc_map_file, "w"))
     #
     # Build a bowtie index to align and detect spanning reads
     #
     bowtie_spanning_index = os.path.join(output_dir, config.JUNC_BOWTIE_INDEX)
-    args = [options.bowtie_build_bin, junc_fasta_file, bowtie_spanning_index]
-    subprocess.call(args)
+    if (up_to_date(bowtie_spanning_index, junc_fasta_file)):
+        logging.info("[SKIPPED] Bowtie junction index exists")
+    else:        
+        args = [options.bowtie_build_bin, junc_fasta_file, bowtie_spanning_index]
+        subprocess.call(args)
     #
     # Align unmapped reads across putative junctions
     #
     junc_bam_file = os.path.join(output_dir, config.JUNC_READS_BAM_FILE)
-    bowtie_index = os.path.join(options.index_dir, config.ALIGN_INDEX)        
-    align([unmapped_fastq_file], "phred33-quals", bowtie_spanning_index,
-          junc_bam_file, options.bowtie_bin, 
-          options.num_processors, options.segment_length,
-          options.trim5, options.trim3, options.multihits,
-          options.mismatches, bowtie_mode)
+    if (up_to_date(junc_bam_file, bowtie_spanning_index) and
+        up_to_date(junc_bam_file, spanning_fastq_file)):
+        logging.info("[SKIPPED] Spanning read alignment exists")
+    else:            
+        align([spanning_fastq_file], 
+              "phred33-quals", 
+              bowtie_spanning_index,
+              junc_bam_file, 
+              bowtie_bin=options.bowtie_bin, 
+              num_processors=options.num_processors, 
+              segment_length=options.segment_length,
+              segment_trim=False,
+              trim5=options.trim5, 
+              trim3=options.trim3, 
+              multihits=options.multihits,
+              mismatches=options.mismatches, 
+              bowtie_mode=bowtie_mode)
     #
     # Merge spanning and encompassing read information
     #
-    chimera_bedpe_file = os.path.join(output_dir, config.CHIMERA_BEDPE_FILE)        
-    merge_spanning_alignments(junc_bam_file, junc_map_file, chimera_bedpe_file,
-                              read_length, anchor_min=0, anchor_max=0,
-                              anchor_mismatches=0)
+    chimera_bedpe_file = os.path.join(output_dir, config.CHIMERA_BEDPE_FILE)
+    if (up_to_date(chimera_bedpe_file, junc_bam_file) and
+        up_to_date(chimera_bedpe_file, junc_map_file)):
+        logging.info("[SKIPPED] Chimera BEDPE file exists")
+    else:                        
+        merge_spanning_alignments(junc_bam_file, junc_map_file, chimera_bedpe_file,
+                                  read_length, anchor_min=0, anchor_max=0,
+                                  anchor_mismatches=0)
     retcode = JOB_SUCCESS
     sys.exit(retcode)
 
