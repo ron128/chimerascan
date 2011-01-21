@@ -130,9 +130,11 @@ def main():
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         logging.info("Created output directory: %s" % (output_dir))    
+    # gather and parse run parameters
     library_type = parse_library_type(options.library_type)    
     gene_feature_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)
     bowtie_mode = "-v" if options.bowtie_mode_v else "-n"
+    bowtie_index = os.path.join(options.index_dir, config.ALIGN_INDEX)
     read_length = get_read_length(fastq_files[0])    
     #
     # Initial Bowtie alignment step
@@ -173,7 +175,6 @@ def main():
     #
     logging.info("Running alignment stage")
     discordant_bam_file = os.path.join(output_dir, config.DISCORDANT_BAM_FILE)
-    bowtie_index = os.path.join(options.index_dir, config.ALIGN_INDEX)
     align(fastq_files, options.fastq_format, bowtie_index,
           discordant_bam_file, options.bowtie_bin, 
           options.num_processors, options.segment_length,
