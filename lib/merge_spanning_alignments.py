@@ -142,6 +142,9 @@ def join_spanning_reads(bam_file, junc_map,
         for partition in alignments:
             if len(partition) > 1:
                 num_splits += 1
+                # TODO: skip reads that split into multiple partitions
+                # since the junctions should be contiguous
+                continue
             for split_reads in partition:
                 func = filter_reads_by_anchor(split_reads, junc_positions, anchors,
                                               anchor_min, anchor_max, max_anchor_mismatches)

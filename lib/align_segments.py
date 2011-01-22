@@ -136,7 +136,7 @@ def align(fastq_files, fastq_format,
     logging.info("Dividing %dbp reads into %d segments: %s" %
                  (read_length, len(segments), segments))      
     # run paired-end segmented aligner
-    logging.info("Running segmented paired-end alignment")
+    logging.info("Running segmented alignment")
     align_segments(fastq_files, output_bam_file, segments,
                    fastq_format, multihits, mismatches, num_processors,
                    bowtie_bin, bowtie_index, bowtie_mode)

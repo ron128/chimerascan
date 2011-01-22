@@ -1,0 +1,15 @@
+Metadata-Version: 1.0
+Name: pysam
+Version: 0.3.1
+Summary: pysam
+Home-page: http://code.google.com/p/pysam/
+Author: Andreas Heger
+Author-email: andreas.heger@gmail.com
+License: MIT
+Description: 
+        
+        pysam
+        *****
+        
+        
+Platform: ALL

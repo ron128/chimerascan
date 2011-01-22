@@ -22,7 +22,7 @@ BOWTIE_INDEX_FILE = 'align_index.1.ebwt'
 GENE_REF_PREFIX = 'gene_'
 GENE_FEATURE_FILE = "gene_features.txt"
 
-ALIGNED_READS_SAM_FILE = "aligned_reads.sam"
+ALIGNED_READS_BAM_FILE = "aligned_reads.bam"
 UNALIGNED_FASTQ_PARAM = "unaligned.fq"
 UNALIGNED_FASTQ_FILES = ("unaligned_1.fq", "unaligned_2.fq")
 MAXMULTIMAP_FASTQ_PARAM = "maxmulti.fq"

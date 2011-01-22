@@ -15,7 +15,8 @@ import pysam
 import lib.config as config
 from lib.config import JOB_SUCCESS, JOB_ERROR
 from lib.base import check_executable, get_read_length, parse_library_type
-from lib.align import align
+from lib.align_segments import align
+from lib.align_full import align_pe_full
 from lib.merge_read_pairs import merge_read_pairs
 from lib.find_discordant_reads import discordant_reads_to_chimeras
 from lib.nominate_chimeras import nominate_chimeras
@@ -157,34 +158,27 @@ def main():
     # fusions
     unaligned_fastq_param = os.path.join(output_dir, config.UNALIGNED_FASTQ_PARAM)
     maxmultimap_fastq_param = os.path.join(output_dir, config.MAXMULTIMAP_FASTQ_PARAM)
-    aligned_sam_file = os.path.join(output_dir, config.ALIGNED_READS_SAM_FILE)
-    if all(up_to_date(aligned_sam_file, fq) for fq in fastq_files):
+    aligned_bam_file = os.path.join(output_dir, config.ALIGNED_READS_BAM_FILE)
+    if all(up_to_date(aligned_bam_file, fq) for fq in fastq_files):
         logging.info("[SKIPPED] Alignment results exist")
-    else:
+    else:    
         logging.info("Aligning full-length reads in paired-end mode")
-        args = [options.bowtie_bin, "-q", "-S", 
-                "-p", str(options.num_processors),
-                "--%s" % options.fastq_format,
-                "-k", str(options.multihits),
-                "-m", str(options.multihits),
-                bowtie_mode, str(options.mismatches),
-                "--minins", min_fragment_length,
-                "--maxins", options.max_fragment_length,
-                "--trim5", options.trim5,
-                "--trim3", options.trim3,
-                "--%s" % options.library_type,
-                "--un", unaligned_fastq_param,
-                "--max", maxmultimap_fastq_param]
-        # use the entire read length as the "seed" here
-        if bowtie_mode == "-n":
-            args.extend(["-l", str(read_length)])
-        args += [bowtie_index, 
-                 "-1", fastq_files[0],
-                 "-2", fastq_files[1],
-                 aligned_sam_file]
-        args = map(str, args)        
-        logging.debug("Bowtie alignment args: %s" % (' '.join(args)))
-        retcode = subprocess.call(args)
+        retcode = align_pe_full(fastq_files, 
+                                bowtie_index,
+                                aligned_bam_file, 
+                                unaligned_fastq_param,
+                                maxmultimap_fastq_param,
+                                min_fragment_length=min_fragment_length,
+                                max_fragment_length=options.max_fragment_length,
+                                trim5=options.trim5,
+                                trim3=options.trim3,
+                                library_type=options.library_type,
+                                num_processors=options.num_processors,
+                                fastq_format=options.fastq_format,
+                                multihits=options.multihits,
+                                mismatches=options.mismatches,
+                                bowtie_bin=options.bowtie_bin,
+                                bowtie_mode=bowtie_mode)
         if retcode != 0:
             logging.error("Bowtie failed with error code %d" % (retcode))    
             sys.exit(retcode)
