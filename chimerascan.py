@@ -191,12 +191,12 @@ def main():
     #
     # Discordant reads alignment step
     #
-    logging.info("Aligning initially unmapped reads in single read mode")
     discordant_bam_file = os.path.join(output_dir, config.DISCORDANT_BAM_FILE)
     unaligned_fastq_files = [os.path.join(output_dir, fq) for fq in config.UNALIGNED_FASTQ_FILES]    
     if all(up_to_date(discordant_bam_file, fq) for fq in fastq_files):
         logging.info("[SKIPPED] Discordant alignment results exist")
     else:
+        logging.info("Aligning initially unmapped reads in single read mode")
         align(unaligned_fastq_files, options.fastq_format, bowtie_index,
               discordant_bam_file, 
               bowtie_bin=options.bowtie_bin,
@@ -215,6 +215,7 @@ def main():
     if up_to_date(paired_bam_file, discordant_bam_file):
         logging.info("[SKIPPED] Read pairing results exist")
     else:
+        logging.info("Pairing aligned reads")
         bamfh = pysam.Samfile(discordant_bam_file, "rb")
         paired_bamfh = pysam.Samfile(paired_bam_file, "wb", template=bamfh)
         merge_read_pairs(bamfh, paired_bamfh, 
@@ -232,6 +233,7 @@ def main():
         up_to_date(spanning_fastq_file, paired_bam_file)):    
         logging.info("[SKIPPED] Discordant BEDPE file exists")
     else:
+        logging.info("Nominating discordant reads")
         # TODO: add contam refs
         discordant_reads_to_chimeras(paired_bam_file, discordant_bedpe_file, gene_feature_file,
                                      options.max_fragment_length, library_type,
@@ -244,6 +246,7 @@ def main():
     if (up_to_date(sorted_discordant_bedpe_file, discordant_bedpe_file)):
         logging.info("[SKIPPED] Sorted discordant BEDPE file exists")
     else:        
+        logging.info("Sorting discordant reads")
         sort_discordant_reads(discordant_bedpe_file, sorted_discordant_bedpe_file)        
     #
     # Nominate chimeras step
@@ -252,6 +255,7 @@ def main():
     if (up_to_date(encompassing_bedpe_file, sorted_discordant_bedpe_file)):
         logging.info("[SKIPPED] Encompassing chimeras BEDPE file exists")
     else:        
+        logging.info("Aggregating discordant reads across genes")
         infh = open(sorted_discordant_bedpe_file, "r")
         outfh = open(encompassing_bedpe_file, "w")                
         # TODO: add contam refs
@@ -270,6 +274,7 @@ def main():
         up_to_date(junc_map_file, encompassing_bedpe_file)):        
         logging.info("[SKIPPED] Chimeric junction files exist")
     else:        
+        logging.info("Extracting chimeric junction sequences")
         bedpe_to_junction_fasta(encompassing_bedpe_file, ref_fasta_file,                                
                                 read_length, open(junc_fasta_file, "w"),
                                 open(junc_map_file, "w"))
@@ -280,6 +285,7 @@ def main():
     if (up_to_date(bowtie_spanning_index, junc_fasta_file)):
         logging.info("[SKIPPED] Bowtie junction index exists")
     else:        
+        logging.info("Building bowtie index for junction-spanning reads")
         args = [options.bowtie_build_bin, junc_fasta_file, bowtie_spanning_index]
         subprocess.call(args)
     #
@@ -290,6 +296,7 @@ def main():
         up_to_date(junc_bam_file, spanning_fastq_file)):
         logging.info("[SKIPPED] Spanning read alignment exists")
     else:            
+        logging.info("Aligning junction-spanning reads")
         align([spanning_fastq_file], 
               "phred33-quals", 
               bowtie_spanning_index,
@@ -310,7 +317,8 @@ def main():
     if (up_to_date(chimera_bedpe_file, junc_bam_file) and
         up_to_date(chimera_bedpe_file, junc_map_file)):
         logging.info("[SKIPPED] Chimera BEDPE file exists")
-    else:                        
+    else:
+        logging.info("Merging spanning and encompassing read alignments")
         merge_spanning_alignments(junc_bam_file, junc_map_file, chimera_bedpe_file,
                                   read_length, anchor_min=0, anchor_max=0,
                                   anchor_mismatches=0)
