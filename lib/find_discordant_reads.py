@@ -634,7 +634,7 @@ def discordant_reads_to_chimeras(input_bam_file, output_bedpe_file, gene_file,
     logging.info("Concordant pairs with at least one unmapped mate: %d" % (num_concordant_unmapped))
     logging.info("Discordant reads: %d" % (num_discordant))            
     logging.info("Discordant junction spanning reads: %d" % (num_discordant_spanning))  
-
+    
 
 def main():
     from optparse import OptionParser

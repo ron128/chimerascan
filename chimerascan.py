@@ -196,7 +196,7 @@ def main():
               bowtie_bin=options.bowtie_bin,
               num_processors=options.num_processors, 
               segment_length=options.segment_length,
-              segment_trim=True,
+              segment_trim=False,
               trim5=options.trim5, 
               trim3=options.trim3, 
               multihits=options.multihits,
