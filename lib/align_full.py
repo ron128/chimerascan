@@ -62,22 +62,22 @@ def align_pe_full(fastq_files,
 def sam_stdin_to_bam(output_bam_file, multihits):
     samfh = pysam.Samfile("-", "r")
     bamfh = pysam.Samfile(output_bam_file, "wb", template=samfh)
-    num_unmapped = 0
-    num_multihits = 0
+#    num_unmapped = 0
+#    num_multihits = 0
     for r in samfh:
-        if r.is_unmapped:
-            xm_tag = r.opt('XM')
-            # keep multihits in the BAM file but remove nonmapping reads
-            # since these will specifically be remapped later
-            if xm_tag < multihits:
-                num_unmapped += 1
-                continue
-            num_multihits += 1
         bamfh.write(r)
+#        if r.is_unmapped:
+#            xm_tag = r.opt('XM')
+#            # keep multihits in the BAM file but remove nonmapping reads
+#            # since these will specifically be remapped later
+#            if xm_tag < multihits:
+#                num_unmapped += 1
+#                continue
+#            num_multihits += 1
     bamfh.close()
     samfh.close()
-    logging.debug("[SAMTOBAM] Filtered %d unmapped reads" % (num_unmapped))
-    logging.debug("[SAMTOBAM] Allowed %d highly multimapping reads to pass through as unmapped" % (num_multihits))
+    #logging.debug("[SAMTOBAM] Filtered %d unmapped reads" % (num_unmapped))
+    #logging.debug("[SAMTOBAM] Allowed %d highly multimapping reads to pass through as unmapped" % (num_multihits))
     logging.info("[SAMTOBAM] Finished converting SAM -> BAM")
 
 if __name__ == '__main__':

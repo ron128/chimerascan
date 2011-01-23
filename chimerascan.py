@@ -196,7 +196,7 @@ def main():
               bowtie_bin=options.bowtie_bin,
               num_processors=options.num_processors, 
               segment_length=options.segment_length,
-              segment_trim=False,
+              segment_trim=True,
               trim5=options.trim5, 
               trim3=options.trim3, 
               multihits=options.multihits,
@@ -227,12 +227,13 @@ def main():
         up_to_date(spanning_fastq_file, paired_bam_file)):    
         logging.info("[SKIPPED] Discordant BEDPE file exists")
     else:
-        logging.info("Nominating discordant reads")
+        logging.info("Finding discordant reads")
         # TODO: add contam refs
         discordant_reads_to_chimeras(paired_bam_file, discordant_bedpe_file, gene_feature_file,
                                      options.max_fragment_length, library_type,
                                      contam_refs=None,
                                      unmapped_fastq_file=spanning_fastq_file)
+    sys.exit(0)
     #
     # Sort discordant reads
     #

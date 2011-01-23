@@ -132,6 +132,9 @@ def parse_discordant_reads(infh):
     prev_tx5p, prev_tx3p = None,None
     reads = []
     for line in infh:
+        if line.startswith('*'):
+            # skip nonmapping reads
+            continue
         chimera = Chimera.from_bedpe(line)
         tx5p = chimera.mate5p.interval.chrom
         tx3p = chimera.mate3p.interval.chrom       

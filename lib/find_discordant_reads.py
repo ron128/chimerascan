@@ -19,7 +19,7 @@ from bx.cluster import ClusterTree
 import config
 from base import parse_library_type
 from seq import DNA_reverse_complement
-from gene_to_genome import build_gene_maps
+from gene_to_genome import build_gene_maps, get_gene_tids
 from alignment_parser import parse_unpaired_reads
 
 # constants
@@ -304,13 +304,22 @@ def get_seq_and_qual(splits):
         quals.append(qual)        
     return ''.join(seqs), ''.join(quals)
 
-def get_fastq(partitions):
-    # all sequences are same so only use one partition
-    splits = partitions[0]
-    qname = splits[0][0].qname
-    seq, qual = get_seq_and_qual(splits)
-    return "@%s\n%s\n+%s\n%s" % (qname, seq, qname, qual)
-    #return ">%s\n%s" % (qname, seq)
+#def get_fastq(partitions):
+#    # all sequences are same so only use one partition
+#    splits = partitions[0]
+#    qname = splits[0][0].qname
+#    seq, qual = get_seq_and_qual(splits)
+#    return "@%s\n%s\n+%s\n%s" % (qname, seq, qname, qual)
+#    #return ">%s\n%s" % (qname, seq)
+
+def get_nonmapping_bedpe_string(pe_reads, read1_span, read2_span):
+    qname = pe_reads[0][0][0][0].qname
+    seq1, qual1 = get_seq_and_qual(pe_reads[0][0])
+    seq2, qual2 = get_seq_and_qual(pe_reads[1][0])
+    return '\t'.join('*', 0, 0, '*', 0, 0, qname, 1, 0, 0, seq1, seq2, 
+                     qual1, qual2, int(read1_span), int(read2_span), 
+                     "NONMAPPING", 1)
+
 
 def make_chimera_mates(mate_splits, splits, gene_genome_map):
     '''
@@ -422,42 +431,15 @@ def find_discordant_pairs(hits, gene_genome_map):
                     chimeras.append(chimera)
     return chimeras, False, False
 
-
-def get_gene_tids(bamfh):
-    gene_tids = []
-    for ref in bamfh.references:
-        if ref.startswith(config.GENE_REF_PREFIX):
-            gene_tids.append(ref)
-        else:
-            gene_tids.append(None)
-    return gene_tids
-
-def get_genome_tids(bamfh):
-    tids = set()
-    for tid,ref in enumerate(bamfh.references):
-        if not ref.startswith(config.GENE_REF_PREFIX):
-            tids.add(tid)
-    return tids
-
-def get_tids(samfh, rnames):
-    rname_tid_map = dict((rname,i) for i,rname in enumerate(samfh.references))    
-    contam_tids = []
-    for rname in rnames:
-        if rname not in rname_tid_map:
-            logging.warning("Reference %s not found in SAM file.. ignoring" % (rname))
-        else:
-            contam_tids.append(rname_tid_map[rname])
-    return contam_tids
-
 def discordant_reads_to_chimeras(input_bam_file, output_bedpe_file, gene_file,
                                  max_isize, library_type, contam_refs=None,
-                                 unmapped_fastq_file=None):
+                                 spanning_reads_file=None):
     if contam_refs is None:
         contam_refs = []
     logging.info("Finding discordant reads")
     logging.debug("Input file: %s" % (input_bam_file))
     logging.debug("Output file: %s" % (output_bedpe_file))
-    logging.debug("Unmapped reads FASTA file: %s" % (unmapped_fastq_file))
+    logging.debug("Spanning reads IDs file: %s" % (spanning_reads_file))
     logging.debug("Library type: %s" % (str(library_type)))
     logging.debug("Contaminant references: %s" % (contam_refs))
     # check the library type string is a tuple
@@ -466,21 +448,14 @@ def discordant_reads_to_chimeras(input_bam_file, output_bedpe_file, gene_file,
     logging.info("Reading gene index")
     bamfh = pysam.Samfile(input_bam_file, "rb")    
     gene_genome_map, gene_trees = build_gene_maps(bamfh, gene_file)
-    #same_strand = (library_type[0] == library_type[1])    
-    # get contaminant reference tids
-    if contam_refs is None:
-        contam_tids = set()
-    else:
-        contam_tids = set(get_tids(bamfh, contam_refs))
     # search for discordant reads that represent chimeras
     outfh = open(output_bedpe_file, "w")
     gene_tid_list = get_gene_tids(bamfh)
-    genome_tid_set = get_genome_tids(bamfh)
     # open unmapped fasta file if exists
-    if unmapped_fastq_file is not None:
-        fastqfh = open(unmapped_fastq_file, "w")
+    if spanning_reads_file is not None:
+        spanningfh = open(spanning_reads_file, "w")
     else:
-        fastqfh = None    
+        spanningfh = None    
     # setup debugging logging messages
     debug_count = 0
     debug_every = 1e5
@@ -522,13 +497,16 @@ def discordant_reads_to_chimeras(input_bam_file, output_bedpe_file, gene_file,
         # if either mate is unmapped, stop here and do not proceed to
         # look for discordant pairs
         if any(MAP not in mapping_codes for mapping_codes in mate_mapping_codes):
+            unmapped_mates = [False, False]            
             for mate, codes in enumerate(mate_mapping_codes):
-                # output unmapped reads for further testing (viruses, etc)
-                # if the mate has any non-mapping reads (not genome/multimaps)
                 if NM in codes:
                     num_unmapped_rescued += 1
-                    if (fastqfh is not None):                    
-                        print >>fastqfh, get_fastq(pe_reads[mate])
+                    unmapped_mates[mate] = True
+            # output unmapped reads for further testing (viruses, etc)
+            # if the mate has any non-mapping reads (not genome/multimaps)
+            print >>outfh, get_nonmapping_bedpe_string(pe_reads, 
+                                                       unmapped_mates[0], 
+                                                       unmapped_mates[1])            
             num_unmapped += 1
             continue
         # find discordant pairs in the mapped reads
@@ -544,23 +522,22 @@ def discordant_reads_to_chimeras(input_bam_file, output_bedpe_file, gene_file,
                 any_read1_span = not chimera.read1_is_5prime
                 any_read2_span = chimera.read1_is_5prime
         # output putative spanning chimeras for further testing
-        if (fastqfh is not None) and (any_read1_span or any_read2_span):
+        if (any_read1_span or any_read2_span):
             if len(chimeras) == 0:
                 num_concordant_unmapped += 1
             else:             
                 num_discordant_spanning += 1
-            if any_read1_span:
-                print >>fastqfh, get_fastq(pe_reads[0]) 
-            if any_read2_span:
-                print >>fastqfh, get_fastq(pe_reads[1])
+            print >>outfh, get_nonmapping_bedpe_string(pe_reads, 
+                                                       any_read1_span, 
+                                                       any_read2_span) 
         if len(chimeras) > 0:
             num_discordant += 1
         else:
             num_concordant += 1
     # close output files
     outfh.close()
-    if fastqfh is not None:
-        fastqfh.close()
+    if spanningfh is not None:
+        spanningfh.close()
     # final progress
     logging.info("Total read pairs: %d" % (num_fragments))
     logging.info("Read pairs with at least one unmapped mate: %d (%d saved)" % (num_unmapped, num_unmapped_rescued))
@@ -581,7 +558,7 @@ def main():
     parser.add_option("--index", dest="index_dir",
                       help="Path to chimerascan index directory")
     parser.add_option("--contam-refs", dest="contam_refs", default=None)
-    parser.add_option("--unmapped", dest="unmapped_fastq_file", default=None)    
+    parser.add_option("--unmapped", dest="unmapped_reads_file", default=None)    
     options, args = parser.parse_args()
     input_bam_file = args[0]
     output_bedpe_file = args[1]
@@ -589,7 +566,7 @@ def main():
     library_type = parse_library_type(options.library_type)    
     discordant_reads_to_chimeras(input_bam_file, output_bedpe_file, gene_file, 
                                  options.max_fragment_length, library_type,
-                                 options.contam_refs, options.unmapped_fastq_file)
+                                 options.contam_refs, options.unmapped_reads_file)
 
 if __name__ == '__main__':
     main()

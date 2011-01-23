@@ -18,6 +18,32 @@ from seq import DNA_reverse_complement
 from feature import GeneFeature
 from base import parse_multihit_alignments
 
+def get_gene_tids(bamfh):
+    gene_tids = []
+    for ref in bamfh.references:
+        if ref.startswith(config.GENE_REF_PREFIX):
+            gene_tids.append(ref)
+        else:
+            gene_tids.append(None)
+    return gene_tids
+
+def get_genome_tids(bamfh):
+    tids = set()
+    for tid,ref in enumerate(bamfh.references):
+        if not ref.startswith(config.GENE_REF_PREFIX):
+            tids.add(tid)
+    return tids
+
+def get_tids(samfh, rnames):
+    rname_tid_map = dict((rname,i) for i,rname in enumerate(samfh.references))    
+    contam_tids = []
+    for rname in rnames:
+        if rname not in rname_tid_map:
+            logging.warning("Reference %s not found in SAM file.. ignoring" % (rname))
+        else:
+            contam_tids.append(rname_tid_map[rname])
+    return contam_tids
+
 def build_gene_maps(samfh, genefile):
     rname_tid_map = dict((rname,i) for i,rname in enumerate(samfh.references))
     gene_genome_map = [None] * len(samfh.references)
@@ -35,7 +61,7 @@ def build_gene_maps(samfh, genefile):
         # store gene by reference id in sam file
         gene_genome_map[gene_tid] = g
         # add gene to interval tree
-        gene_interval = Interval(g.tx_start, g.tx_end, strand=g.strand, value=g.tx_name)
+        gene_interval = Interval(g.tx_start, g.tx_end, chrom=g.chrom, strand=g.strand, value=g.tx_name)
         gene_trees[chrom_tid].insert_interval(gene_interval)
     return gene_genome_map, gene_trees
 
