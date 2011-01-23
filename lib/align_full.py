@@ -59,13 +59,69 @@ def align_pe_full(fastq_files,
         return retcode
     return aln_p.wait()
 
+def fix_alignment_order(samfh, is_paired=True, maxlen=100000):
+    num_mates = 2 if is_paired else 1    
+    # function for initializing new buffer list
+    buf_init_func = lambda: tuple(list() for m in xrange(num_mates))
+    qname_ind_map = {}
+    start_ind = 0
+    end_ind = 0
+    cur_ind = 0
+    buf = [None] * maxlen
+    for read in samfh:
+        qname = read.qname
+        mate = 0 if read.is_read1 else 1
+        # see whether this read is already in the buffer
+        if qname not in qname_ind_map:
+            buf_size = len(qname_ind_map)
+            # test if buffer has become full
+            if buf_size == maxlen:
+                # buffer full so return first read
+                yield buf[start_ind]
+                # delete the read qname to decrease the buffer size by
+                # one and allow parser to iterate until it is full again
+                return_qname = buf[start_ind][0][0].qname
+                del qname_ind_map[return_qname]
+                # advance start index
+                start_ind += 1
+                if start_ind == maxlen:
+                    start_ind = 0
+            # reset end index in buffer            
+            qname_ind_map[qname] = end_ind
+            buf[end_ind] = buf_init_func()
+            # get current index for insertion
+            cur_ind = end_ind
+            # advance end index
+            end_ind += 1
+            if end_ind == maxlen:
+                end_ind = 0
+        else:
+            # grab buffer index for this read qname
+            cur_ind = qname_ind_map[qname]
+        # add read to buffer
+        buf[cur_ind][mate].append(read)        
+    # now empty the rest of the buffer
+    buf_size = len(qname_ind_map)
+    while buf_size > 0:
+        # buffer full so return first read
+        yield buf[start_ind]                
+        # delete the read qname to decrease the buffer size by
+        # one and allow parser to iterate until it is full again
+        return_qname = buf[start_ind][0][0].qname
+        del qname_ind_map[return_qname]
+        # advance start index
+        start_ind += 1
+        if start_ind == maxlen:
+            start_ind = 0
+        buf_size = len(qname_ind_map)
+
 def sam_stdin_to_bam(output_bam_file, multihits):
     samfh = pysam.Samfile("-", "r")
     bamfh = pysam.Samfile(output_bam_file, "wb", template=samfh)
-#    num_unmapped = 0
-#    num_multihits = 0
-    for r in samfh:
-        bamfh.write(r)
+    for pe_reads in fix_alignment_order(samfh):
+        for reads in pe_reads:
+            for r in reads:
+                bamfh.write(r)
 #        if r.is_unmapped:
 #            xm_tag = r.opt('XM')
 #            # keep multihits in the BAM file but remove nonmapping reads
