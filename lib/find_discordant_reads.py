@@ -36,11 +36,13 @@ class Chimera(object):
     DISCORDANT_INNER = 0
     DISCORDANT_5P = 1
     DISCORDANT_3P = 2
-    DISCORDANT_OVERLAPPING = 3    
+    DISCORDANT_OVERLAPPING = 3
+    NONMAPPING = 4
     _discordant_types = ["DISCORDANT_INNER",
                          "DISCORDANT_5PRIME",
                          "DISCORDANT_3PRIME",
-                         "DISCORDANT_OVERLAPPING"]
+                         "DISCORDANT_OVERLAPPING",
+                         "NONMAPPING"]
     
     def __init__(self, qname, discordant_type, mate5p, mate3p, 
                  read1_is_5prime):
@@ -317,8 +319,8 @@ def get_nonmapping_bedpe_string(pe_reads, read1_span, read2_span):
     seq1, qual1 = get_seq_and_qual(pe_reads[0][0])
     seq2, qual2 = get_seq_and_qual(pe_reads[1][0])
     return '\t'.join('*', 0, 0, '*', 0, 0, qname, 1, 0, 0, seq1, seq2, 
-                     qual1, qual2, int(read1_span), int(read2_span), 
-                     "NONMAPPING", 1)
+                     qual1, qual2, int(read1_span), int(read2_span),
+                     Chimera.NONMAPPING, 1) 
 
 
 def make_chimera_mates(mate_splits, splits, gene_genome_map):

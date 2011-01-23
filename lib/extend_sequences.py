@@ -15,10 +15,17 @@ def parse_qname_file(qname_fh):
         qname, mate = line.strip().split('\t')
         yield qname, int(mate)
 
-def parse_discordant_reads(infh):
+def parse_discordant_by_qname(infh):
+    chimeras = [] 
     for line in infh:
         chimera = Chimera.from_bedpe(line)
-        yield chimera
+        qname = chimera.qname
+        if len(chimeras) > 0 and (qname != chimeras[-1].qname):
+            yield chimeras
+            chimeras = []
+        chimeras.append(chimera)
+    if len(chimeras) > 0:
+        yield chimeras
 
 def parse_fastq(line_iter):
     try:        
@@ -42,43 +49,34 @@ def parse_fastq(line_iter):
             yield qname, seq, qual
     except StopIteration:
         pass
-
-def sam_stdin_to_bam(output_bam_file, multihits):
-    samfh = pysam.Samfile("-", "r")
-    bamfh = pysam.Samfile(output_bam_file, "wb", template=samfh)
-    num_unmapped = 0
-    num_multihits = 0
-    for r in samfh:
-        if r.is_unmapped:
-            xm_tag = r.opt('XM')
-            # keep multihits in the BAM file but remove nonmapping reads
-            # since these will specifically be remapped later
-            if xm_tag < multihits:
-                num_unmapped += 1
-                continue
-            num_multihits += 1
-        bamfh.write(r)
-    bamfh.close()
-    samfh.close()
-    logging.debug("[SAMTOBAM] Filtered %d unmapped reads" % (num_unmapped))
-    logging.debug("[SAMTOBAM] Allowed %d highly multimapping reads to pass through as unmapped" % (num_multihits))
-    logging.info("[SAMTOBAM] Finished converting SAM -> BAM")
-
-
+    
+def fetch_fastq_qname(fastq_iters, qname):
+    while True:
+        records = [it.next() for it in fastq_iters]
+        #print 'FASTQ', records[0][0]
+        if records[0][0] == qname:
+            break
+    return records
 
 def extend_sequences(input_fastq_files, discordant_bedpe_file,
                      output_discordant_bedpe_file, 
                      output_spanning_fastq_file):
     fastq_iters = [parse_fastq(open(fq)) for fq in input_fastq_files]
-    discordant_iter = parse_discordant_reads(open(discordant_bedpe_file))     
-    bedpe_fh = open(output_discordant_bedpe_file, "w")
-    fastq_fh = open(output_spanning_fastq_file, "w")    
-    try:
-        
-        pass
-    except StopIteration:
-        pass
-    
+    #bedpe_fh = open(output_discordant_bedpe_file, "w")
+    #fastq_fh = open(output_spanning_fastq_file, "w")        
+    num_lines = 0
+    for chimeras in parse_discordant_by_qname(open(discordant_bedpe_file)):        
+        # find sequences in fastq file
+        print 'SEARCHING for %s' % chimeras[0].qname
+        fastq_records = fetch_fastq_qname(fastq_iters, chimeras[0].qname)
+        num_lines += 1
+        print 'found', num_lines        
+        #if chimera.discordant_type == Chimera.NONMAPPING:
+        #    pass
+        #else:
+        #    pass
+        #pass
+    print 'processed %d lines' % (num_lines)
     
 
 def main():
