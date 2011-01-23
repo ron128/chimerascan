@@ -145,9 +145,9 @@ def main():
     gene_feature_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)
     bowtie_mode = "-v" if options.bowtie_mode_v else "-n"
     bowtie_index = os.path.join(options.index_dir, config.ALIGN_INDEX)
-    read_length = get_read_length(fastq_files[0])
+    original_read_length = get_read_length(fastq_files[0])
     # minimum fragment length cannot be smaller than the trimmed read length
-    trimmed_read_length = read_length - options.trim5 - options.trim3
+    trimmed_read_length = original_read_length - options.trim5 - options.trim3
     min_fragment_length = max(options.min_fragment_length, 
                               trimmed_read_length)
     #
@@ -264,13 +264,15 @@ def main():
     ref_fasta_file = os.path.join(options.index_dir, config.ALIGN_INDEX + ".fa")
     junc_fasta_file = os.path.join(output_dir, config.JUNC_REF_FASTA_FILE)
     junc_map_file = os.path.join(output_dir, config.JUNC_REF_MAP_FILE)
+    spanning_read_length = get_read_length(spanning_fastq_file)    
     if (up_to_date(junc_fasta_file, encompassing_bedpe_file) and
         up_to_date(junc_map_file, encompassing_bedpe_file)):        
         logging.info("[SKIPPED] Chimeric junction files exist")
     else:        
         logging.info("Extracting chimeric junction sequences")
         bedpe_to_junction_fasta(encompassing_bedpe_file, ref_fasta_file,                                
-                                read_length, open(junc_fasta_file, "w"),
+                                spanning_read_length, 
+                                open(junc_fasta_file, "w"),
                                 open(junc_map_file, "w"))
     #
     # Build a bowtie index to align and detect spanning reads
@@ -314,7 +316,7 @@ def main():
     else:
         logging.info("Merging spanning and encompassing read alignments")
         merge_spanning_alignments(junc_bam_file, junc_map_file, chimera_bedpe_file,
-                                  read_length, anchor_min=0, anchor_max=0,
+                                  spanning_read_length, anchor_min=0, anchor_max=0,
                                   anchor_mismatches=0)
     retcode = JOB_SUCCESS
     sys.exit(retcode)

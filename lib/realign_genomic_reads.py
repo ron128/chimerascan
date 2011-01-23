@@ -1,4 +1,9 @@
 '''
+Created on Jan 22, 2011
+
+@author: mkiyer
+'''
+'''
 Created on Jan 11, 2011
 
 @author: mkiyer
@@ -18,77 +23,10 @@ from bx.cluster import ClusterTree
 # local imports
 import config
 from base import parse_library_type
+from feature import GeneFeature
 from seq import DNA_reverse_complement
 from gene_to_genome import build_gene_maps
 from alignment_parser import parse_unpaired_reads
-
-# constants
-ChimeraMate = collections.namedtuple('ChimeraMate',
-                                     ['interval', 'seq', 'qual', 'is_spanning'])
-
-# mapping codes
-NM = 0
-MULTIMAP = 1
-GENOME = 2
-MAP = 3
-    
-class Chimera(object):
-    DISCORDANT_INNER = 0
-    DISCORDANT_5P = 1
-    DISCORDANT_3P = 2
-    DISCORDANT_OVERLAPPING = 3    
-    _discordant_types = ["DISCORDANT_INNER",
-                         "DISCORDANT_5PRIME",
-                         "DISCORDANT_3PRIME",
-                         "DISCORDANT_OVERLAPPING"]
-    
-    def __init__(self, qname, discordant_type, mate5p, mate3p, 
-                 read1_is_5prime):
-        self.qname = qname
-        self.discordant_type = discordant_type
-        self.mate5p = mate5p
-        self.mate3p = mate3p
-        self.read1_is_5prime = read1_is_5prime
-    
-    def to_bedpe(self):
-        s = [self.mate5p.interval.chrom,
-             self.mate5p.interval.start,
-             self.mate5p.interval.end,
-             self.mate3p.interval.chrom,
-             self.mate3p.interval.start,
-             self.mate3p.interval.end,
-             self.qname,
-             1,
-             self.mate5p.interval.strand,
-             self.mate3p.interval.strand,
-             self.mate5p.seq,
-             self.mate3p.seq,
-             self.mate5p.qual,
-             self.mate3p.qual,
-             1 if self.mate5p.is_spanning else 0,
-             1 if self.mate3p.is_spanning else 0,
-             Chimera._discordant_types[self.discordant_type],
-             1 if self.read1_is_5prime else 0]             
-        return '\t'.join(map(str, s))
-
-    @staticmethod
-    def from_bedpe(line):
-        fields = line.strip().split('\t')
-        interval5p = Interval(int(fields[1]),
-                              int(fields[2]),
-                              chrom=fields[0],
-                              strand=fields[8])
-        mate5p = ChimeraMate(interval5p, fields[10], fields[12], bool(int(fields[14])))
-        interval3p = Interval(int(fields[4]),
-                              int(fields[5]),
-                              chrom=fields[3],
-                              strand=fields[9])
-        mate3p = ChimeraMate(interval3p, fields[11], fields[13], bool(int(fields[15])))
-        discordant_type = Chimera._discordant_types.index(fields[16])        
-        read1_is_5prime = bool(int(fields[17]))        
-        return Chimera(fields[6], discordant_type, mate5p, mate3p, read1_is_5prime)
-
-
 
 #def rescue_genome_mappings(pe_reads, gene_tid_list, gene_trees):
 #    for mate, partitions in enumerate(pe_reads):
@@ -568,46 +506,75 @@ def discordant_reads_to_chimeras(input_bam_file, output_bedpe_file, gene_file,
     logging.info("Concordant pairs with at least one unmapped mate: %d" % (num_concordant_unmapped))
     logging.info("Discordant reads: %d" % (num_discordant))            
     logging.info("Discordant junction spanning reads: %d" % (num_discordant_spanning))  
-    
+
+def parse_bam
+    for read in bamfh:
+        # ignore paired reads
+        if read.is_proper_pair:
+            continue
+        # TODO: set genome reads to 'unmapped'
+        if tid_list[read.rname] is None:
+            read.is_unmapped = True
+        # get read attributes
+        qname = read.qname
+        mate = 0 if read.is_read1 else 1
+        # get hit/segment/mapping tags
+        num_split_partitions = read.opt('NH')
+        partition_ind = read.opt('XH')
+        num_splits = read.opt('XN')
+        split_ind = read.opt('XI')
+        num_mappings = read.opt('IH')
+        mapping_ind = read.opt('HI')        
+        # if query name changes we have completely finished
+        # the fragment and can reset the read data
+        if num_reads > 0 and qname != prev_qname:
+            yield pe_reads
+            # reset state variables
+            pe_reads = ([], [])
+            num_reads = 0
+        prev_qname = qname
+        # initialize mate hits
+        if len(pe_reads[mate]) == 0:
+            pe_reads[mate].extend([list() for x in xrange(num_split_partitions)])
+        mate_reads = pe_reads[mate]
+        # initialize hit segments
+        if len(mate_reads[partition_ind]) == 0:
+            mate_reads[partition_ind].extend([list() for x in xrange(num_splits)])
+        split_reads = mate_reads[partition_ind][split_ind]
+        # initialize segment mappings
+        if len(split_reads) == 0:
+            split_reads.extend([None for x in xrange(num_mappings)])
+        # add segment to hit/mate/read
+        split_reads[mapping_ind] = read
+        num_reads += 1
+    if num_reads > 0:
+        yield pe_reads
+        
+def realign_genome_reads(input_bam_file, output_bam_file, gene_file):
+    # build a map of gene name to genome coords
+    logging.info("Reading gene index")
+    infh = pysam.Samfile(input_bam_file, "rb")    
+    gene_tid_list = get_gene_tids(infh)
+    gene_genome_map, gene_trees = build_gene_maps(infh, gene_file)
+    outfh = pysam.Samfile(output_bam_file, "wb", template=input_bam_file)
+
+            
+    for pe_reads in parse_unpaired_reads(bamfh, gene_tid_list):
+        pass
+
 
 def main():
     from optparse import OptionParser
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = OptionParser("usage: %prog [options] <bam> <out.bedpe>")
-    parser.add_option('--max-fragment-length', dest="max_fragment_length", 
-                      type="int", default=1000)
-    parser.add_option('--library-type', dest="library_type", default="fr")
     parser.add_option("--index", dest="index_dir",
                       help="Path to chimerascan index directory")
-    parser.add_option("--contam-refs", dest="contam_refs", default=None)
-    parser.add_option("--unmapped", dest="unmapped_fastq_file", default=None)    
     options, args = parser.parse_args()
     input_bam_file = args[0]
-    output_bedpe_file = args[1]
-    gene_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)
-    library_type = parse_library_type(options.library_type)    
-    discordant_reads_to_chimeras(input_bam_file, output_bedpe_file, gene_file, 
-                                 options.max_fragment_length, library_type,
-                                 options.contam_refs, options.unmapped_fastq_file)
+    output_bam_file = args[1]
+    gene_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)    
+    realign_genome_reads(input_bam_file, output_bam_file, gene_file)
 
 if __name__ == '__main__':
     main()
-
-
-
-#
-#def select_best_segments(seg_list):
-#    # sort by number of unmapped segments
-#    sorted_segs = []
-#    for segs in seg_list:
-#        num_unmapped_segs = sum(1 if r.is_unmapped else 0 for r in segs)
-#        sorted_segs.append((num_unmapped_segs, segs))
-#    sorted_segs = sorted(sorted_segs, key=operator.itemgetter(0))
-#    best_num_unmapped_segs = sorted_segs[0][0]
-#    best_segs = []
-#    for num_unmapped_segs, segs in sorted_segs:
-#        if num_unmapped_segs > best_num_unmapped_segs:
-#            break
-#        best_segs.append(segs)
-#    return best_segs

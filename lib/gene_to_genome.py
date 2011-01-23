@@ -3,16 +3,41 @@ Created on Oct 25, 2010
 
 @author: mkiyer
 '''
+import collections
 import logging
-import itertools
-import argparse
 
-import pysam
 import cPickle as pickle
 
+# local libraries
+from bx.intersection import Interval, IntervalTree
+import pysam
+
+# local imports
+import config
 from seq import DNA_reverse_complement
 from feature import GeneFeature
 from base import parse_multihit_alignments
+
+def build_gene_maps(samfh, genefile):
+    rname_tid_map = dict((rname,i) for i,rname in enumerate(samfh.references))
+    gene_genome_map = [None] * len(samfh.references)
+    gene_trees = collections.defaultdict(lambda: IntervalTree())    
+    # build gene and genome data structures for fast lookup
+    for g in GeneFeature.parse(open(genefile)):
+        name = config.GENE_REF_PREFIX + g.tx_name
+        if name not in rname_tid_map:
+            continue
+        if g.chrom not in rname_tid_map:
+            continue
+        gene_tid = rname_tid_map[name]
+        # get reference index in sam file
+        chrom_tid = rname_tid_map[g.chrom]        
+        # store gene by reference id in sam file
+        gene_genome_map[gene_tid] = g
+        # add gene to interval tree
+        gene_interval = Interval(g.tx_start, g.tx_end, strand=g.strand, value=g.tx_name)
+        gene_trees[chrom_tid].insert_interval(gene_interval)
+    return gene_genome_map, gene_trees
 
 def build_gene_to_genome_map(gene_feature_file, rname_prefix=None):
     # create arrays to map genes in bed file to genome 
@@ -288,6 +313,8 @@ def transcriptome_to_genome(input_sam_file, output_sam_file, gene_to_genome_map)
 
 
 def main():
+    # TODO: switch from argparse to OptionParser for backwards compatibility
+    import argparse
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")    
     parser = argparse.ArgumentParser()

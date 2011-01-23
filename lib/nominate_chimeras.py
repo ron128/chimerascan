@@ -85,7 +85,7 @@ def get_chimera_type(fiveprime_gene, threeprime_gene, gene_trees):
         distance = start3p - end5p
         between_interval = Interval(end5p, start3p)
     else:
-        distance = start5p - end3p
+        distance = end3p - start5p
         between_interval = Interval(end3p, start5p)
     # check whether there are genes intervening between the
     # chimera candidates

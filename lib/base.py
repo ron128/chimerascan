@@ -113,33 +113,6 @@ def get_refs_from_bowtie_index(bowtie_index, split=True):
             refs.append((refname, int(fields[2])))
     return refs
 
-#Translation table for reverse Complement, with ambiguity codes
-DNA_COMPLEMENT = string.maketrans( "ACGTRYKMBDHVacgtrykmbdhv", "TGCAYRMKVHDBtgcayrmkvhdb" )
-RNA_COMPLEMENT = string.maketrans( "ACGURYKMBDHVacgurykmbdhv", "UGCAYRMKVHDBugcayrmkvhdb" )
-#Translation table for DNA <--> RNA
-DNA_TO_RNA = string.maketrans( "Tt", "Uu" )
-RNA_TO_DNA = string.maketrans( "Uu", "Tt" )
-
-#reverse sequence string
-def reverse( sequence ):
-    return sequence[::-1]
-#complement DNA sequence string
-def DNA_complement( sequence ):
-    return sequence.translate( DNA_COMPLEMENT )
-#complement RNA sequence string
-def RNA_complement( sequence ):
-    return sequence.translate( RNA_COMPLEMENT )
-#returns the reverse complement of the sequence
-def DNA_reverse_complement( sequence ):
-    sequence = reverse( sequence )
-    return DNA_complement( sequence )
-def RNA_reverse_complement( self, sequence ):
-    sequence = reverse( sequence )
-    return RNA_complement( sequence )
-def to_DNA( sequence ):
-    return sequence.translate( DNA_TO_RNA )
-def to_RNA( sequence ):
-    return sequence.translate( RNA_TO_DNA )
 
 
 
