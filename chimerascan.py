@@ -102,8 +102,6 @@ def main():
                       type="int", default=config.BASE_PROCESSORS)
     parser.add_option("--index", dest="index_dir",
                       help="Path to chimerascan index directory")
-#    parser.add_option("--samtools-bin", dest="samtools_bin", 
-#                      default="samtools", help="Path to 'samtools' program")
     parser.add_option("--bowtie-build-bin", dest="bowtie_build_bin", 
                       default="bowtie-build", 
                       help="Path to 'bowtie-build' program")
@@ -131,7 +129,13 @@ def main():
                       help="Largest expected fragment length (reads less"
                       " than this fragment length are assumed to be "
                       " genomically contiguous")
-    parser.add_option('--library', dest="library_type", default="fr")    
+    parser.add_option('--library', dest="library_type", default="fr")
+    parser.add_option("--anchor-min", type="int", dest="anchor_min", default=0,
+                      help="Minimum junction overlap required to call spanning reads")
+    parser.add_option("--anchor-max", type="int", dest="anchor_max", default=5,
+                      help="Junction overlap below which to enforce mismatch checks")
+    parser.add_option("--anchor-mismatches", type="int", dest="anchor_mismatches", default=0,
+                      help="Number of mismatches allowed within anchor region")
     options, args = parser.parse_args()
     check_command_line_args(options, args, parser)
     # extract command line arguments
@@ -330,7 +334,9 @@ def main():
     else:
         logging.info("Merging spanning and encompassing read alignments")
         merge_spanning_alignments(junc_bam_file, junc_map_file, chimera_bedpe_file,
-                                  spanning_read_length, anchor_min=0, anchor_max=0,
+                                  spanning_read_length, 
+                                  anchor_min=0, 
+                                  anchor_max=0,
                                   anchor_mismatches=0)
     retcode = JOB_SUCCESS
     sys.exit(retcode)
