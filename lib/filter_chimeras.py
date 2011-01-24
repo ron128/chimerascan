@@ -3,212 +3,147 @@ Created on Jan 23, 2011
 
 @author: mkiyer
 '''
-import logging
 import collections
-import numpy as np
-
-import pysam
+import logging
+import operator
+import subprocess
+import tempfile
+import os
 
 # awk '$8 >= 2' ./mcf7_30LEJAAXX_7/chimeras.bedpe | sort -k19,19gr -k20,20gr | cut -f7-14,18-21 | less
 
-# local imports
 
-# constants
-JUNC_MAP_QNAME_COLUMN = 14
-SEQ_FIELD_DELIM = ';'
-
-def read_chimera_mapping_file(filename):
-    chimera_refs = collections.defaultdict(lambda: [])
-    for line in open(filename):
+class Chimera(object):
+    @staticmethod
+    def from_tabular(line):
+        c = Chimera()
         fields = line.strip().split('\t')
-        chimera_id = fields[0]
-        bedpe_fields = fields[1:]        
-        chimera_refs[chimera_id].append(bedpe_fields)
-    return dict(chimera_refs)
-
-def parse_sr_sam_file(bamfh):
-    reads = []
-    # reads must be binned by qname, mate, hit, and segment
-    # so initialize to mate 0, hit 0, segment 0
-    num_reads = 0
-    prev_qname = None
-    for read in bamfh:
-        # get read attributes
-        qname = read.qname
-        mate = 0 if read.is_read1 else 1
-        # get hit/segment/mapping tags
-        num_split_partitions = read.opt('NH')
-        partition_ind = read.opt('XH')
-        num_splits = read.opt('XN')
-        split_ind = read.opt('XI')
-        num_mappings = read.opt('IH')
-        mapping_ind = read.opt('HI')        
-        # if query name changes we have completely finished
-        # the fragment and can reset the read data
-        if num_reads > 0 and qname != prev_qname:
-            yield reads
-            # reset state variables
-            reads = []
-            num_reads = 0
-        prev_qname = qname
-        # initialize hits
-        if len(reads) == 0:
-            reads.extend([list() for x in xrange(num_split_partitions)])
-        # initialize hit segments
-        if len(reads[partition_ind]) == 0:
-            reads[partition_ind].extend([list() for x in xrange(num_splits)])
-        split_reads = reads[partition_ind][split_ind]
-        # initialize segment mappings
-        if len(split_reads) == 0:
-            split_reads.extend([None for x in xrange(num_mappings)])
-        # add segment to hit/mate/read
-        split_reads[mapping_ind] = read
-        num_reads += 1
-    if num_reads > 0:
-        yield reads
-
-def get_mismatch_positions(md):
-    x = 0
-    pos = []
-    for y in xrange(len(md)):
-        if md[y].isalpha():
-            offset = int(md[x:y])
-            pos.append(offset)
-            x = y + 1
-    return pos
-
-def filter_reads_by_anchor(reads, junc_positions, anchors,
-                           anchor_min, anchor_max, max_anchor_mismatches):
-    for read in reads:
-        if read.is_unmapped:
-            continue
-        # filter out reads with small anchor sequence
-        aligned_length = read.aend - read.pos  
-        junc_pos = junc_positions[read.rname]
-        # check if the read spans the junction
-        read_ok = True
-        if read.aend <= junc_pos or read.pos >= junc_pos:
-            # does not span
-            read_ok = False
+        c.tx5p = fields[0]
+        c.start5p = fields[1]
+        c.end5p = fields[2]
+        c.tx3p = fields[3]
+        c.start3p = fields[4]
+        c.end3p = fields[5]
+        c.name = fields[6]
+        c.gene5p, c.gene3p = fields[6].split('-', 1)
+        c.encompassing_reads = int(fields[7])
+        c.strand5p, c.strand3p = fields[8:10]
+        c.chimera_type = fields[10]
+        if fields[11] == "None":
+            c.distance = None
         else:
-            left_anchor_bp = junc_pos - read.pos
-            right_anchor_bp = read.aend - junc_pos
-            # keep track of minimum number of bp spanning the chimera
-            anchor = min(left_anchor_bp, right_anchor_bp)
-            anchors[read.rname][anchor - 1] += 1
-            if anchor < anchor_min:
-                # not enough anchor
-                read_ok = False
-            elif anchor < anchor_max:
-                # find anchor interval
-                if left_anchor_bp < anchor_max:
-                    anchor_interval = (0, left_anchor_bp)
-                else:
-                    anchor_interval = (aligned_length - right_anchor_bp, aligned_length)      
-                # get mismatch positions
-                mmpos = get_mismatch_positions(read.opt('MD'))
-                # see if mismatches lie in anchor interval
-                anchor_mm = [pos for pos in mmpos
-                             if pos >= anchor_interval[0] and pos < anchor_interval[1]]
-                if len(anchor_mm) > max_anchor_mismatches:
-                    # mismatches within anchor position
-                    read_ok = False
-        if read_ok:
-            yield read
+            c.distance = int(fields[11])
+        c.exons5p = fields[12]
+        c.exons3p = fields[13]
+        c.encompassing_ids = fields[14]
+        c.encompassing_seq5p = fields[15]
+        c.encompassing_seq3p = fields[16]
+        c.spanning_reads = int(fields[17])
+        c.encomp_and_spanning = int(fields[18])
+        c.total_reads = int(fields[19])
+        c.junction_hist = map(int, fields[20].split(','))
+        c.spanning_seq = fields[21]
+        c.spanning_ids = fields[22]
+        return c
+    
+    def to_tabular(self):
+        fields = [self.tx5p, self.start5p, self.end5p,
+                  self.tx3p, self.start3p, self.end3p,
+                  self.name, self.encompassing_reads,
+                  self.strand5p, self.strand3p, self.chimera_type,
+                  self.distance, self.exons5p, self.exons3p,
+                  self.encompassing_ids, self.encompassing_seq5p, self.encompassing_seq3p,
+                  self.spanning_reads, self.encomp_and_spanning, self.total_reads, 
+                  ','.join(map(str, self.junction_hist)), 
+                  self.spanning_seq, self.spanning_ids]
+        return '\t'.join(map(str, fields))
 
-def join_spanning_reads(bam_file, junc_map,
-                        original_read_length,
-                        anchor_min, anchor_max,
-                        max_anchor_mismatches):
-    # map reference names to numeric ids
-    bamfh = pysam.Samfile(bam_file, "rb")
-    rname_tid_map = dict((rname,i) for i,rname in enumerate(bamfh.references))
-    anchors = {}
-    junc_positions = {}
-    max_anchor = int((original_read_length + 1)/2)
-    for chimera_name in junc_map.iterkeys():
-        left_junc_length = int(chimera_name.split(":")[1])
-        chimera_id = rname_tid_map[chimera_name]
-        junc_positions[chimera_id] = left_junc_length
-        anchors[chimera_id] = np.zeros(max_anchor, dtype=np.int)
-    # count read alignments to chimera junctions
-    chimera_counts = collections.defaultdict(lambda: 0)
-    chimera_reads = collections.defaultdict(lambda: [])
-    num_multiple_partitions = 0
-    num_splits = 0
-    num_filtered = 0
-    for alignments in parse_sr_sam_file(bamfh):
-        filtered_reads = []
-        if len(alignments) > 1:
-            num_multiple_partitions += 1
-        for partition in alignments:
-            if len(partition) > 1:
-                num_splits += 1
-                # TODO: skip reads that split into multiple partitions
-                # since the junctions should be contiguous
-                continue
-            for split_reads in partition:
-                func = filter_reads_by_anchor(split_reads, junc_positions, anchors,
-                                              anchor_min, anchor_max, max_anchor_mismatches)
-                filtered_reads.extend(func)
-        if len(filtered_reads) == 0:
-            # no reads passed filter
-            num_filtered += 1
+def make_temp(base_dir, suffix=''):
+    fd,name = tempfile.mkstemp(suffix=suffix, prefix='tmp', dir=base_dir)
+    os.close(fd)
+    return name
+
+def filter_isoforms(input_file, tmp_dir):
+    # sort by 5'/3' fusion name
+    logging.debug("Sorting chimeras by 5'/3' gene name")
+    tmpfile = make_temp(tmp_dir, ".bedpe")    
+    fh = open(tmpfile, "w")
+    subprocess.call(["sort", "-k7,7", input_file], stdout=fh)
+    fh.close()
+    # parse sorted file
+    logging.debug("Choosing highest coverage isoforms for each gene pair")
+    chimeras = []
+    for line in open(tmpfile):
+        c = Chimera.from_tabular(line)
+        if len(chimeras) > 0 and chimeras[-1][1].name != c.name:
+            # sort chimeras by total reads
+            best_chimera = sorted(chimeras, key=operator.itemgetter(0))[-1][1]
+            yield best_chimera
+            chimeras = []
+        chimeras.append((c.total_reads, c))
+    if len(chimeras) > 0:
+        best_chimera = sorted(chimeras, key=operator.itemgetter(0))[-1][1]
+        yield best_chimera
+    # remove temporary file
+    os.remove(tmpfile)
+
+def filter_overlapping_genes(chimeras):
+    logging.debug("Filtering overlapping genes")
+    for chimera in chimeras:
+        if chimera.distance == 0:
             continue
-        for read in filtered_reads:
-            chimera_counts[read.rname] += 1
-            chimera_reads[read.rname].append((read.qname,read.seq))
-    bamfh.close()
+        yield chimera
 
-    # assign junction coverage to chimera candidates
-    for chimera_name,bedpe_records in junc_map.iteritems():
-        chimera_id = rname_tid_map[chimera_name]        
-        cov = chimera_counts[chimera_id]
-        read_tuples = chimera_reads[chimera_id]
-        spanning_qnames = set(read_tuple[0] for read_tuple in read_tuples)
-        if len(read_tuples) == 0:
-            read_tuples = [("None", "None")]
-        for fields in bedpe_records:
-            # intersect encompassing with spanning reads to see overlap
-            encompassing_qnames = fields[JUNC_MAP_QNAME_COLUMN].split(SEQ_FIELD_DELIM)
-            union_cov = len(spanning_qnames.union(encompassing_qnames))
-            intersect_cov = len(spanning_qnames.intersection(encompassing_qnames))
-            #both_cov = sum(1 for read_tuple in read_tuples if read_tuple[0] in set(encompassing_qnames))
-            fields += [cov, intersect_cov, union_cov, ','.join(map(str,anchors[chimera_id])),
-                       SEQ_FIELD_DELIM.join([read_tuple[1] for read_tuple in read_tuples]),
-                       SEQ_FIELD_DELIM.join([read_tuple[0] for read_tuple in read_tuples])]
-            yield fields
+def filter_coverage(chimeras, coverage):
+    logging.debug("Filtering coverage < %d" % (coverage))
+    for chimera in chimeras:
+        if chimera.total_reads < coverage:
+            continue
+        yield chimera
 
-def merge_spanning_alignments(bam_file, junc_map_file, output_file,
-                              read_length, anchor_min, anchor_max,
-                              anchor_mismatches):
-    junc_map = read_chimera_mapping_file(junc_map_file)
-    f = open(output_file, "w")
-    for bedpe_fields in join_spanning_reads(bam_file, junc_map,
-                                            read_length,
-                                            anchor_min,
-                                            anchor_max, 
-                                            anchor_mismatches):
-        print >>f, '\t'.join(map(str, bedpe_fields))
-    f.close()
+def filter_chimeras(input_bedpe_file, output_bedpe_file, coverage=2):
+    # setup multiple filters
+    it1 = filter_isoforms(input_bedpe_file, os.path.dirname(output_bedpe_file))
+    it2 = filter_overlapping_genes(it1)
+    it3 = filter_coverage(it2, coverage)
+    # filter candidates
+    logging.debug("Sorting chimeras by read coverage")
+    chimeras = list(it3)
+    sorted_chimeras = sorted(chimeras, key=operator.attrgetter("encomp_and_spanning", "total_reads"), reverse=True)
+    outfh = open(output_bedpe_file, "w")
+    for c in sorted_chimeras:
+        print >>outfh, c.to_tabular()
+    outfh.close()
+    return
+
+    encomp_dict = collections.defaultdict(lambda: 0)
+    spanning_dict = collections.defaultdict(lambda: 0)
+    total_dict = collections.defaultdict(lambda: 0)
+    # profile results
+    for line in open(input_bedpe_file):
+        c = Chimera.from_tabular(line)
+        encomp_dict[c.encompassing_reads] += 1
+        spanning_dict[c.spanning_reads] += 1
+        total_dict[c.total_reads] += 1    
+    import numpy as np
+    sorted_keys = sorted(encomp_dict)
+    arr = np.array(sorted_keys[-1], dtype=np.int)
+    for x in xrange(sorted_keys[-1]):
+        arr[x] = encomp_dict[x]
+        print x, encomp_dict[x]
+
 
 def main():
     from optparse import OptionParser
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")    
-    parser = OptionParser("usage: %prog [options] <in.bam> <junc_map> <out.txt>")    
-    parser.add_option("--rlen", type="int", dest="read_length")
-    parser.add_option("--anchor-min", type="int", dest="anchor_min", default=0)
-    parser.add_option("--anchor-max", type="int", dest="anchor_max", default=0)
-    parser.add_option("--anchor-mismatches", type="int", dest="anchor_mismatches", default=0)
+    parser = OptionParser("usage: %prog [options] <chimeras.bedpe> <filtered_chimeras.bedpe>")
+    parser.add_option("--overlap", action="store_true")
+    parser.add_option("--encompassing-prob", type="float", dest="encomp_prob", default=0.95)
+    parser.add_option("--spanning-prob", type="float", dest="spanning_prob", default=0.95)
     options, args = parser.parse_args()
-    bam_file = args[0]
-    junc_map_file = args[1]
-    output_file = args[2]
-    merge_spanning_alignments(bam_file, junc_map_file, output_file,
-                              options.read_length, 
-                              options.anchor_min, 
-                              options.anchor_max,
-                              options.anchor_mismatches)
+    input_bedpe_file = args[0]
+    output_bedpe_file = args[1]
+    filter_chimeras(input_bedpe_file, output_bedpe_file)
 
 if __name__ == '__main__': main()
