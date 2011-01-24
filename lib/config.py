@@ -30,6 +30,7 @@ MAXMULTIMAP_FASTQ_FILES = ("maxmulti_1.fq", "maxmulti_2.fq")
 DISCORDANT_BAM_FILE = "discordant_reads.bam"
 DISCORDANT_PAIRED_BAM_FILE = "discordant_reads_paired.bam"
 DISCORDANT_BEDPE_FILE = "discordant_reads.bedpe"
+EXTENDED_DISCORDANT_BEDPE_FILE = "discordant_reads.extended.bedpe"
 SORTED_DISCORDANT_BEDPE_FILE = "discordant_reads.srt.bedpe"
 SPANNING_FASTQ_FILE = "putative_spanning_reads.fq"
 ENCOMPASSING_CHIMERA_BEDPE_FILE = "encompassing_chimeras.bedpe"

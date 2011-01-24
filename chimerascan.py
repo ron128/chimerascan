@@ -23,6 +23,7 @@ from lib.nominate_chimeras import nominate_chimeras
 from lib.bedpe_to_fasta import bedpe_to_junction_fasta
 from lib.merge_spanning_alignments import merge_spanning_alignments
 from lib.sort_discordant_reads import sort_discordant_reads
+from lib.extend_sequences import extend_sequences
 
 def check_command_line_args(options, args, parser):
     # check command line arguments
@@ -54,10 +55,10 @@ def check_command_line_args(options, args, parser):
         parser.error("Output directory name '%s' exists and is not a valid directory" % 
                      (output_dir))
     # check that samtools binary exists
-    if check_executable(options.samtools_bin):
-        logging.debug("Checking for 'samtools' binary... found")
-    else:
-        parser.error("samtools binary not found or not executable")
+    #if check_executable(options.samtools_bin):
+    #    logging.debug("Checking for 'samtools' binary... found")
+    #else:
+    #    parser.error("samtools binary not found or not executable")
     # check that bowtie-build program exists
     if check_executable(options.bowtie_build_bin):
         logging.debug("Checking for 'bowtie-build' binary... found")
@@ -101,8 +102,8 @@ def main():
                       type="int", default=config.BASE_PROCESSORS)
     parser.add_option("--index", dest="index_dir",
                       help="Path to chimerascan index directory")
-    parser.add_option("--samtools-bin", dest="samtools_bin", 
-                      default="samtools", help="Path to 'samtools' program")
+#    parser.add_option("--samtools-bin", dest="samtools_bin", 
+#                      default="samtools", help="Path to 'samtools' program")
     parser.add_option("--bowtie-build-bin", dest="bowtie_build_bin", 
                       default="bowtie-build", 
                       help="Path to 'bowtie-build' program")
@@ -123,7 +124,7 @@ def main():
                       default=0)    
     parser.add_option("--quals", dest="fastq_format")
     parser.add_option("--min-fragment-length", type="int", 
-                      dest="min_fragment_length", default=50,
+                      dest="min_fragment_length", default=0,
                       help="Smallest expected fragment length")
     parser.add_option("--max-fragment-length", type="int", 
                       dest="max_fragment_length", default=600,
@@ -222,33 +223,45 @@ def main():
     # Find discordant reads step
     #
     discordant_bedpe_file = os.path.join(output_dir, config.DISCORDANT_BEDPE_FILE)
-    spanning_fastq_file = os.path.join(output_dir, config.SPANNING_FASTQ_FILE)
-    if (up_to_date(discordant_bedpe_file, paired_bam_file) and
-        up_to_date(spanning_fastq_file, paired_bam_file)):    
-        logging.info("[SKIPPED] Discordant BEDPE file exists")
+    if (up_to_date(discordant_bedpe_file, paired_bam_file)):
+        logging.info("[SKIPPED] Finding discordant reads")
     else:
         logging.info("Finding discordant reads")
         # TODO: add contam refs
-        discordant_reads_to_chimeras(paired_bam_file, discordant_bedpe_file, gene_feature_file,
-                                     options.max_fragment_length, library_type,
-                                     contam_refs=None,
-                                     unmapped_fastq_file=spanning_fastq_file)
-    sys.exit(0)
+        discordant_reads_to_chimeras(paired_bam_file, 
+                                     discordant_bedpe_file, 
+                                     gene_feature_file,
+                                     options.max_fragment_length, 
+                                     library_type,
+                                     contam_refs=None)
+    #
+    # Extract full sequences of the discordant reads
+    #
+    extended_discordant_bedpe_file = os.path.join(output_dir, config.EXTENDED_DISCORDANT_BEDPE_FILE)
+    spanning_fastq_file = os.path.join(output_dir, config.SPANNING_FASTQ_FILE)
+    if (up_to_date(spanning_fastq_file, discordant_bedpe_file) and
+        up_to_date(extended_discordant_bedpe_file, discordant_bedpe_file)):
+        logging.info("[SKIPPED] Retrieving full length sequences for realignment")
+    else:
+        logging.info("Retrieving full length sequences for realignment")
+        extend_sequences(unaligned_fastq_files, discordant_bedpe_file,
+                         extended_discordant_bedpe_file,
+                         spanning_fastq_file)
     #
     # Sort discordant reads
     #
     sorted_discordant_bedpe_file = os.path.join(output_dir, config.SORTED_DISCORDANT_BEDPE_FILE)
-    if (up_to_date(sorted_discordant_bedpe_file, discordant_bedpe_file)):
-        logging.info("[SKIPPED] Sorted discordant BEDPE file exists")
+    if (up_to_date(sorted_discordant_bedpe_file, extended_discordant_bedpe_file)):
+        logging.info("[SKIPPED] Sorting discordant BEDPE file")
     else:        
-        logging.info("Sorting discordant reads")
+        logging.info("Sorting discordant BEDPE file")
         sort_discordant_reads(discordant_bedpe_file, sorted_discordant_bedpe_file)        
     #
     # Nominate chimeras step
     #
     encompassing_bedpe_file = os.path.join(output_dir, config.ENCOMPASSING_CHIMERA_BEDPE_FILE)        
     if (up_to_date(encompassing_bedpe_file, sorted_discordant_bedpe_file)):
-        logging.info("[SKIPPED] Encompassing chimeras BEDPE file exists")
+        logging.info("[SKIPPED] Aggregating discordant reads across genes")
     else:        
         logging.info("Aggregating discordant reads across genes")
         infh = open(sorted_discordant_bedpe_file, "r")
@@ -291,11 +304,11 @@ def main():
     junc_bam_file = os.path.join(output_dir, config.JUNC_READS_BAM_FILE)
     if (up_to_date(junc_bam_file, bowtie_spanning_index) and
         up_to_date(junc_bam_file, spanning_fastq_file)):
-        logging.info("[SKIPPED] Spanning read alignment exists")
+        logging.info("[SKIPPED] Aligning junction spanning ")
     else:            
-        logging.info("Aligning junction-spanning reads")
+        logging.info("Aligning junction spanning reads")
         align([spanning_fastq_file], 
-              "phred33-quals", 
+              options.fastq_format,
               bowtie_spanning_index,
               junc_bam_file, 
               bowtie_bin=options.bowtie_bin, 
@@ -313,7 +326,7 @@ def main():
     chimera_bedpe_file = os.path.join(output_dir, config.CHIMERA_BEDPE_FILE)
     if (up_to_date(chimera_bedpe_file, junc_bam_file) and
         up_to_date(chimera_bedpe_file, junc_map_file)):
-        logging.info("[SKIPPED] Chimera BEDPE file exists")
+        logging.info("[SKIPPED] Merging spanning and encompassing read alignments")
     else:
         logging.info("Merging spanning and encompassing read alignments")
         merge_spanning_alignments(junc_bam_file, junc_map_file, chimera_bedpe_file,
