@@ -255,7 +255,7 @@ def main():
         logging.info("[SKIPPED] Sorting discordant BEDPE file")
     else:        
         logging.info("Sorting discordant BEDPE file")
-        sort_discordant_reads(discordant_bedpe_file, sorted_discordant_bedpe_file)        
+        sort_discordant_reads(extended_discordant_bedpe_file, sorted_discordant_bedpe_file)        
     #
     # Nominate chimeras step
     #

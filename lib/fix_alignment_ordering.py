@@ -93,7 +93,7 @@ def fix_segmented_alignment_ordering(samfh, fastq_iter, is_paired=True, maxlen=1
             read.is_read1 = False
             read.is_read2 = True
         # check if this read is already in the buffer
-        if read.qname not in qname_read_dict:
+        if qname not in qname_read_dict:
             # if buffer full empty the first entries
             while len(buf) >= maxlen:
                 # get first qname in buf
@@ -105,18 +105,18 @@ def fix_segmented_alignment_ordering(samfh, fastq_iter, is_paired=True, maxlen=1
             while True:
                 # get next qname from fastq file and add it to the queue
                 next_qname = qname_iter.next()
-                buf.append(next_qname)
-                # initialize qname entry
-                qname_read_dict[next_qname] = buf_init_func(num_segs)
+                if next_qname not in qname_read_dict:
+                    # initialize qname entry
+                    buf.append(next_qname)
+                    qname_read_dict[next_qname] = buf_init_func(num_segs)
                 # if the next qname in the fastq file is the same as the
                 # read qname, then we can exit the loop
                 if next_qname == read.qname:
                     break
+        #print 'READ1', read.is_read1, 'QNAME BEFORE', read.qname, qname_read_dict[read.qname]  
         # add read to buffer
-        qname_read_dict[read.qname][mate][seg].append(read)
+        qname_read_dict[qname][mate][seg].append(read)
+        #print 'QNAME AFTER', qname, qname_read_dict[read.qname]
     # empty remaining entries in buffer
     while len(buf) > 0:
         yield qname_read_dict[buf.popleft()]
-
-
-

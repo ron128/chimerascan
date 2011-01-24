@@ -3,17 +3,10 @@ Created on Jan 7, 2011
 
 @author: mkiyer
 '''
-import sys
-import tempfile
-import os
 import logging
 import collections
-import subprocess
-import multiprocessing
-import shutil
 
 import pysam
-from segment_reads import parse_qname
 from fix_alignment_ordering import fix_segmented_alignment_ordering
 
 def build_segment_alignment_dict(aln_dict, reads, seg_num):
@@ -94,8 +87,8 @@ def find_valid_segment_alignments(read_mappings):
     unmapped_seg_reads = {}
     unmapped_inds = set()
     for seg_num, seg_mappings in enumerate(read_mappings):
-        # make an unmapped version of each segment to use in joining
         if len(seg_mappings) == 1 and seg_mappings[0].is_unmapped == True:
+            # make an unmapped version of each segment to use in joining
             unmapped_seg_reads[seg_num] = seg_mappings[0]
             unmapped_inds.add(seg_num)
         else:
