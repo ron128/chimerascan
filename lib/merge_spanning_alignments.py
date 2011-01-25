@@ -12,7 +12,7 @@ import pysam
 # local imports
 
 # constants
-JUNC_MAP_QNAME_COLUMN = 14
+JUNC_MAP_QNAME_COLUMN = 18
 SEQ_FIELD_DELIM = ';'
 
 def read_chimera_mapping_file(filename):

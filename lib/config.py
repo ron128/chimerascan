@@ -27,6 +27,7 @@ UNALIGNED_FASTQ_PARAM = "unaligned.fq"
 UNALIGNED_FASTQ_FILES = ("unaligned_1.fq", "unaligned_2.fq")
 MAXMULTIMAP_FASTQ_PARAM = "maxmulti.fq"
 MAXMULTIMAP_FASTQ_FILES = ("maxmulti_1.fq", "maxmulti_2.fq")
+ISIZE_STATS_FILE = "isize_stats.txt"
 DISCORDANT_BAM_FILE = "discordant_reads.bam"
 DISCORDANT_PAIRED_BAM_FILE = "discordant_reads_paired.bam"
 DISCORDANT_BEDPE_FILE = "discordant_reads.bedpe"

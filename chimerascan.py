@@ -24,6 +24,7 @@ from lib.bedpe_to_fasta import bedpe_to_junction_fasta
 from lib.merge_spanning_alignments import merge_spanning_alignments
 from lib.sort_discordant_reads import sort_discordant_reads
 from lib.extend_sequences import extend_sequences
+from lib.profile_insert_size import profile_isize_stats
 
 def check_command_line_args(options, args, parser):
     # check command line arguments
@@ -54,12 +55,6 @@ def check_command_line_args(options, args, parser):
     if os.path.exists(output_dir) and (not os.path.isdir(output_dir)):
         parser.error("Output directory name '%s' exists and is not a valid directory" % 
                      (output_dir))
-    # check that samtools binary exists
-    #if check_executable(options.samtools_bin):
-    #    logging.debug("Checking for 'samtools' binary... found")
-    #else:
-    #    parser.error("samtools binary not found or not executable")
-    # check that bowtie-build program exists
     if check_executable(options.bowtie_build_bin):
         logging.debug("Checking for 'bowtie-build' binary... found")
     else:
@@ -94,12 +89,19 @@ def up_to_date(outfile, infile):
         return False    
     return os.path.getmtime(outfile) >= os.path.getmtime(infile)
 
+def write_default_isize_stats(filename, min_isize, max_isize):
+    mean = int((max_isize - min_isize) / 2.0)
+    pass
+
 def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = OptionParser("usage: %prog [options] <mate1.fq> <mate2.fq> <output_dir>")
     parser.add_option("-p", "--processors", dest="num_processors", 
                       type="int", default=config.BASE_PROCESSORS)
+    parser.add_option("--keep-tmp", dest="keep_tmp", action="store_true", 
+                      default=False,
+                      help="Do not delete intermediate files from run") 
     parser.add_option("--index", dest="index_dir",
                       help="Path to chimerascan index directory")
     parser.add_option("--bowtie-build-bin", dest="bowtie_build_bin", 
@@ -125,7 +127,7 @@ def main():
                       dest="min_fragment_length", default=0,
                       help="Smallest expected fragment length")
     parser.add_option("--max-fragment-length", type="int", 
-                      dest="max_fragment_length", default=600,
+                      dest="max_fragment_length", default=1000,
                       help="Largest expected fragment length (reads less"
                       " than this fragment length are assumed to be "
                       " genomically contiguous")
@@ -144,7 +146,12 @@ def main():
     # create output dir if it does not exist
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-        logging.info("Created output directory: %s" % (output_dir))    
+        logging.info("Created output directory: %s" % (output_dir))
+    # create log dir if it does not exist
+    log_dir = os.path.join(output_dir, "log")
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+        logging.debug("Created directory for log files: %s" % (log_dir))        
     # gather and parse run parameters
     library_type = parse_library_type(options.library_type)    
     gene_feature_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)
@@ -187,6 +194,29 @@ def main():
         if retcode != 0:
             logging.error("Bowtie failed with error code %d" % (retcode))    
             sys.exit(retcode)
+    #
+    # Get insert size distribution
+    #
+    isize_stats_file = os.path.join(output_dir, config.ISIZE_STATS_FILE)
+    if up_to_date(isize_stats_file, aligned_bam_file):
+        logging.info("[SKIPPED] Profiling insert size distribution")
+        f = open(isize_stats_file, "r")
+        isize_stats = f.next().strip().split('\t')
+        isize_mean, isize_median, isize_mode, isize_std = isize_stats         
+        f.close()
+    else:
+        logging.info("Profiling insert size distribution")
+        max_isize_samples = 1e6
+        bamfh = pysam.Samfile(aligned_bam_file, "rb")
+        isize_stats = profile_isize_stats(bamfh,
+                                          min_fragment_length,
+                                          options.max_fragment_length,
+                                          max_samples=max_isize_samples)
+        isize_mean, isize_median, isize_mode, isize_std = isize_stats
+        bamfh.close()
+        f = open(isize_stats_file, "w")
+        print >>f, '\t'.join(map(str, [isize_mean, isize_median, isize_mode, isize_std]))
+        f.close()    
     #
     # Discordant reads alignment step
     #
@@ -301,7 +331,9 @@ def main():
     else:        
         logging.info("Building bowtie index for junction-spanning reads")
         args = [options.bowtie_build_bin, junc_fasta_file, bowtie_spanning_index]
-        subprocess.call(args)
+        f = open(os.path.join(log_dir, "bowtie_build.log"), "w")
+        subprocess.call(args, stdout=f, stderr=f)
+        f.close()
     #
     # Align unmapped reads across putative junctions
     #
@@ -338,6 +370,10 @@ def main():
                                   anchor_min=0, 
                                   anchor_max=0,
                                   anchor_mismatches=0)
+    #
+    # Apply final filters
+    #
+    
     retcode = JOB_SUCCESS
     sys.exit(retcode)
 

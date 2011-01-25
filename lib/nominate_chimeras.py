@@ -190,6 +190,7 @@ def nominate_chimeras(infh, outfh, gene_file,
              len(reads),
              gene5p.strand, gene3p.strand,
              chimera_type, distance,
+             start5p, end5p, start3p, end3p,
              '%d-%d' % (firstexon5p_num, lastexon5p_num),
              '%d-%d' % (firstexon3p_num, lastexon3p_num),
              qnames, seqs5p, seqs3p]
