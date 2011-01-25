@@ -49,9 +49,6 @@ class EmpiricalCdf3D(object):
                     total += self.D[xval][yval][zval]
         return total
 
-    def __call__(self, x, y, z):
-        return self.CDF[x][y][z] / float(self.n)
-
     def __init__(self, data_iter):
         # use dict as sparse matrix for now
         self.D = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 0)))
@@ -73,8 +70,10 @@ class EmpiricalCdf3D(object):
                 zkeys = sorted(self.D[xval][yval].iterkeys())
                 for zval in zkeys:
                     c = self._count(xval, yval, zval)
-                    print xval, yval, zval, c                     
                     self.CDF[xval][yval][zval] = c 
+
+    def __call__(self, x, y, z):
+        return self.CDF[x][y][z] / float(self.n)
 
 
 if __name__ == '__main__':
@@ -85,6 +84,6 @@ if __name__ == '__main__':
     import itertools
     x = EmpiricalCdf3D(itertools.izip(X,Y,Z))
     print x.n    
-    print x.cdf(4, 4, 4)
+    print x(4, 4, 4)
 
     

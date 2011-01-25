@@ -25,6 +25,7 @@ from lib.merge_spanning_alignments import merge_spanning_alignments
 from lib.sort_discordant_reads import sort_discordant_reads
 from lib.extend_sequences import extend_sequences
 from lib.profile_insert_size import profile_isize_stats
+from lib.filter_chimeras import filter_chimeras
 
 def check_command_line_args(options, args, parser):
     # check command line arguments
@@ -359,13 +360,14 @@ def main():
     #
     # Merge spanning and encompassing read information
     #
-    chimera_bedpe_file = os.path.join(output_dir, config.CHIMERA_BEDPE_FILE)
-    if (up_to_date(chimera_bedpe_file, junc_bam_file) and
-        up_to_date(chimera_bedpe_file, junc_map_file)):
+    raw_chimera_bedpe_file = os.path.join(output_dir, config.RAW_CHIMERA_BEDPE_FILE)
+    if (up_to_date(raw_chimera_bedpe_file, junc_bam_file) and
+        up_to_date(raw_chimera_bedpe_file, junc_map_file)):
         logging.info("[SKIPPED] Merging spanning and encompassing read alignments")
     else:
         logging.info("Merging spanning and encompassing read alignments")
-        merge_spanning_alignments(junc_bam_file, junc_map_file, chimera_bedpe_file,
+        merge_spanning_alignments(junc_bam_file, junc_map_file, 
+                                  raw_chimera_bedpe_file,
                                   spanning_read_length, 
                                   anchor_min=0, 
                                   anchor_max=0,
@@ -373,7 +375,17 @@ def main():
     #
     # Apply final filters
     #
-    
+    chimera_bedpe_file = os.path.join(output_dir, config.CHIMERA_BEDPE_FILE)
+    if (up_to_date(chimera_bedpe_file, raw_chimera_bedpe_file)):
+        logging.info("[SKIPPED] Filtering chimeras")
+    else:
+        logging.info("Filtering chimeras")
+        filter_chimeras(raw_chimera_bedpe_file, 
+                        chimera_bedpe_file,
+                        isoforms=False,
+                        overlap=False,
+                        max_isize=None,
+                        prob=0.05)            
     retcode = JOB_SUCCESS
     sys.exit(retcode)
 
