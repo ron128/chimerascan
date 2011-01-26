@@ -21,7 +21,7 @@ from base import parse_library_type
 from seq import DNA_reverse_complement
 from gene_to_genome import build_gene_maps, get_gene_tids
 
-def parse_unpaired_reads(bamfh):
+def parse_unpaired_reads(bamfh, gene_tid_list):
     pe_reads = ([], [])
     # reads must be binned by qname, mate, hit, and segment
     # so initialize to mate 0, hit 0, segment 0
@@ -31,6 +31,9 @@ def parse_unpaired_reads(bamfh):
         # ignore paired reads
         if read.is_proper_pair:
             continue
+        # treat genome reads as unmapped
+        if gene_tid_list[read.rname] is None:
+            read.is_unmapped = True
         # get read attributes
         qname = read.qname
         mate = 0 if read.is_read1 else 1

@@ -65,7 +65,6 @@ def parse_reads(bamfh):
     if num_reads > 0:
         yield pe_reads
 
-
 # Mapping codes
 NONMAPPING = 0
 MULTIMAPPING = 1
@@ -103,36 +102,35 @@ class ReadCluster(object):
         self.strand = strand
         self.split_read_dict = split_read_dict
     
+    def update_missing(self, other_dict):
+        for ind, reads in other_dict.iteritems():
+            if ind not in self.split_read_dict:
+                self.split_read_dict[ind] = reads
+                 
     @staticmethod
     def get_nonmapping(split_read_dict):
         yield ReadCluster(-1, 0, 0, 0, split_read_dict)
 
-
-def interval_overlap(chrom1, start1, end1, chrom2, start2, end2):
-    if chrom1 != chrom2:
-        return False
-    return (start1 < end2) and (start2 < end1)    
-
 class RefMap(object):
     def __init__(self, rname, max_dist):
         self.rname = rname
-        self.cluster_tree = ClusterTree(max_dist,1)
+        self.cluster_trees = (ClusterTree(max_dist,1),
+                              ClusterTree(max_dist,1))                             
         self.reads = []
 
     def add_read(self, r):
-        self.cluster_tree.insert(r.pos, r.aend, len(self.reads))
+        strand = int(r.is_reverse)
+        self.cluster_trees[strand].insert(r.pos, r.aend, len(self.reads))
         self.reads.append(r)
 
     def get_read_clusters(self):
-        for start, end, read_inds in self.cluster_tree.getregions():
-            strand_split_read_dicts = (collections.defaultdict(lambda: []),
-                                       collections.defaultdict(lambda: []))
-            # organize reads by split index
-            for i in read_inds:
-                r = self.reads[i]
-                strand = int(r.is_reverse)
-                strand_split_read_dicts[strand][r.opt(RTAG_SPLIT_IND)].append(r)
-            for strand, split_read_dict in strand_split_read_dicts:
+        for strand, cluster_tree in enumerate(self.cluster_trees):
+            for start, end, read_inds in cluster_tree.getregions():
+                split_read_dict = collections.defaultdict(lambda: [])
+                # organize reads by split index
+                for i in read_inds:
+                    r = self.reads[i]
+                    split_read_dict[r.opt(RTAG_SPLIT_IND)].append(r)
                 if len(split_read_dict) > 0:
                     yield ReadCluster(self.rname, start, end, strand, split_read_dict)
 
@@ -142,7 +140,7 @@ class DiscordantPair(object):
         pass
 
         
-def bin_partition_by_reference(partition_splits, max_isize):
+def find_split_read_clusters(partition_splits, max_indel_size, max_multihits):
     refmaps = {}
     split_mapping_codes = []
     unmapped_read_dict = collections.defaultdict(lambda: [])
@@ -150,28 +148,101 @@ def bin_partition_by_reference(partition_splits, max_isize):
         mapping_codes = set()                         
         for r in split_reads:
             # keep track of mapping results for reads in this split
-            mapping_codes.add(get_mapping_code(r))
+            #print 'IND', split_ind, 'mapping code', _mapping_code_strings[get_mapping_code(r, max_multihits)]            
+            mapping_codes.add(get_mapping_code(r, max_multihits))
             if r.is_unmapped:
                 unmapped_read_dict[split_ind].append(r)
                 continue
             # cluster reads by reference names
             if r.rname not in refmaps:
-                refmaps[r.rname] = RefMap(r.rname, max_isize)
+                refmaps[r.rname] = RefMap(r.rname, max_indel_size)
             refmaps[r.rname].add_read(r)
         split_mapping_codes.append(mapping_codes)
+    # search read clusters to find concordant clusters
+    rclusters = []
+    ind_clust_map = collections.defaultdict(lambda: set())
     for rname, refmap in refmaps.iteritems():
-        rclusters = list(RefMap.get_read_clusters())
-    
+        for rclust in refmap.get_read_clusters():
+            # add to master list of read clusters
+            clust_id = len(rclusters)
+            rclusters.append(rclust)
+            # build an index from split index to list of read clusters
+            # that contain that index 
+            for ind in rclust.split_read_dict:
+                ind_clust_map[ind].add(clust_id)
+            # fill in missing splits in cluster with unmapped reads
+            # AFTER adding indexes to map so that they do not affect
+            # detection of discordant reads
+            rclust.update_missing(unmapped_read_dict)
+    # now walk through split indexes in order and find split points
+    start_ind = 0
+    last_mapped_ind = 0
+    current_clusters = set()
+    concordant_clust_ids = []
+    for split_ind in xrange(len(partition_splits)):
+        # if there are no clusters then this index
+        # is unmapped and not useful
+        if split_ind not in ind_clust_map:
+            continue  
+        # get read clusters at this index
+        clust_ids = set(ind_clust_map[split_ind])
+        if len(current_clusters) == 0:
+            # initialize the current clusters to the 
+            # first mapped index
+            current_clusters.update(clust_ids)
+        elif current_clusters.isdisjoint(clust_ids):
+            # save the set of concordant clusters and the split index
+            concordant_clust_ids.append((start_ind, split_ind, current_clusters))
+            # initialize new clusters
+            current_clusters = clust_ids            
+            start_ind = last_mapped_ind + 1
+        else:
+            # intersect index clusters together to 
+            # reduce number of current clusters
+            current_clusters.intersection_update(clust_ids)
+        # keep track of the last mapped index so that any
+        # unmapped indexes in between can be attributed to 
+        # both the 5' and 3' split genes
+        last_mapped_ind = split_ind
+    # cleanup the last set of clusters
+    if len(current_clusters) > 0:
+        concordant_clust_ids.append((start_ind, split_ind+1, current_clusters))
+    # convert from clusters to read segments
+    concordant_clusters = []
+    for start_ind, end_ind, clust_ids in concordant_clust_ids:
+        concordant_clusters.append((start_ind, end_ind, tuple(rclusters[id] for id in clust_ids)))
+#        print 'START', start_ind, 'END', end_ind, 'IDS', concordant_clust_ids
+#        print 'LEN', len(rclusters)
+#        for id in clust_ids:
+#            c = rclusters[id]
+#            print 'CLUSTER'
+#            for i in xrange(start_ind, end_ind):
+#                print c.split_read_dict[i]
+    # fill in unmapped reads within cluster
+    #rclust.update_missing(unmapped_read_dict)        
+    #print 'UNMAPPED', dict(unmapped_read_dict)
+    #print 'IND', split_ind, split_mapping_codes[split_ind], ind_clust_map[split_ind]
+    return concordant_clusters
 
-def bin_alignments_by_reference(pe_reads, max_isize):
+
+def bin_alignments_by_reference(pe_reads, max_indel_size, max_isize, max_multihits):
     for mate, partitions in enumerate(pe_reads):
+        print 'MATE', mate
         for partition_ind, partition_splits in enumerate(partitions):
-            bin_partition_by_reference(partition_splits, max_isize)
+            print 'PARTITION', partition_ind
+            print 'NUM SPLITS', len(partition_splits)            
+            find_split_read_clusters(partition_splits, max_isize, max_multihits)
 
 
 def find_discordant_reads(bamfh, max_indel_size, max_isize, max_multihits):
     for pe_reads in parse_reads(bamfh):
-        print pe_reads
+        bin_alignments_by_reference(pe_reads, max_indel_size, max_isize, max_multihits)
+
+def interval_overlap(chrom1, start1, end1, chrom2, start2, end2):
+    if chrom1 != chrom2:
+        return False
+    return (start1 < end2) and (start2 < end1)    
+
 
 def main():
     from optparse import OptionParser
@@ -202,6 +273,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-

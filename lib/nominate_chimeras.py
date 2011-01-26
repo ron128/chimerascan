@@ -33,10 +33,9 @@ def get_exon_interval(g, pos):
         if exon_pos + exon_size >= pos:
             break
         exon_pos += exon_size
-        exon_num += 1
-    print g
-    print 'exon_pos', exon_pos, 'exon_size', exon_size, 'pos', pos
-    assert exon_pos + exon_size >= pos
+        exon_num += 1    
+    if exon_pos + exon_size < pos:
+        logging.warning("exon_pos %d + exon_size %d < pos %d - clipping to end of gene" % (exon_pos, exon_size, pos))
     return exon_num, exon_pos, exon_pos + exon_size
 
 def get_chimera_type(fiveprime_gene, threeprime_gene, gene_trees):
