@@ -106,9 +106,6 @@ def find_concordant_pairs(ref_dict, min_isize, max_isize,
                 concordant_pairs.append((r1, r2))
     return concordant_pairs
 
-def get_insert_size():
-    pass
-
 def select_best_pairs(mate1_reads, mate2_reads,
                       min_fragment_length,
                       max_fragment_length,

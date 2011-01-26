@@ -34,6 +34,8 @@ def get_exon_interval(g, pos):
             break
         exon_pos += exon_size
         exon_num += 1
+    print g
+    print 'exon_pos', exon_pos, 'exon_size', exon_size, 'pos', pos
     assert exon_pos + exon_size >= pos
     return exon_num, exon_pos, exon_pos + exon_size
 

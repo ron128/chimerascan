@@ -22,9 +22,6 @@ from seq import DNA_reverse_complement
 from gene_to_genome import build_gene_maps, get_gene_tids
 from alignment_parser import parse_unpaired_reads
 
-# constants
-#ChimeraMate = collections.namedtuple('ChimeraMate',
-#                                     ['interval', 'seq', 'qual', 'is_spanning'])
 
 class ChimeraMate(object):
     __slots__ = ('interval', 'seq', 'qual', 'is_spanning')
@@ -97,58 +94,6 @@ class Chimera(object):
         discordant_type = Chimera._discordant_types.index(fields[16])        
         read1_is_5prime = bool(int(fields[17]))        
         return Chimera(fields[6], discordant_type, mate5p, mate3p, read1_is_5prime)
-
-
-
-#def rescue_genome_mappings(pe_reads, gene_tid_list, gene_trees):
-#    for mate, partitions in enumerate(pe_reads):
-#        for partition in partitions:
-#            splits5p = []
-#            splits3p = []
-#            codes5p = set()
-#            codes3p = set()
-#            for split_reads in partition:
-#                reads5p = []
-#                reads3p = []
-#                # TODO: we select reads in the best 'strata', that is, the
-#                # set of reads with fewest mismatches to the reference.  is
-#                # this the best strategy, or should other metrics be employed
-#                # to choose from among multimapping reads?
-#                best_reads = select_best_mismatches(split_reads)
-#                for r in best_reads:
-#                    if r.is_unmapped:
-#                        reads3p.append(r)
-#                        reads5p.append(r)
-#                        if r.rname != -1:
-#                            code = GENOME
-#                        elif r.opt('XM') > 0:
-#                            code = MULTIMAP
-#                        else:
-#                            code = NM
-#                        codes5p.add(code)
-#                        codes3p.add(code)
-#                    else:
-#                        if r.is_reverse:
-#                            # determine sense/antisense by assuming that
-#                            # 5' reads are sense and 3' reads are antisense                    
-#                            reads3p.append(r)
-#                            codes3p.add(MAP)
-#                        else:
-#                            reads5p.append(r)
-#                            codes5p.add(MAP)
-#                splits5p.append(reads5p)
-#                splits3p.append(reads3p)
-#            if all(len(reads) > 0 for reads in splits5p):
-#                yield 0, codes5p, splits5p
-#            if all(len(reads) > 0 for reads in splits3p):
-#                yield 1, codes3p, splits3p    
-#            # TODO: for now, we treat genomic reads as unmapped because they
-#            # require further processing.  by treating unmapped we allow them
-#            # to be consider as mis-mapped spanning reads in future steps,
-#            # and allow the other segments in the paired-end fragment to 
-#            # determine  
-#            if tid_list[read.rname] is None:
-#                read.is_unmapped = True
 
 
 def select_best_mismatches(reads, mismatch_tolerance=0):
@@ -251,6 +196,37 @@ def find_first_split(splits):
         split_ind += 1
     return rname_dict, mapped_inds, split_ind
 
+def make_chimera_mates(mate_splits, splits, gene_genome_map):
+    '''
+    returns a 3-tuple:
+    * list of ChimeraMate objects,
+    * whether the read has unmapped segments, and 
+    * index of discordant splice
+    '''
+    refdict, mapped_inds, split_ind = find_first_split(splits)
+    # read must have at least one mapped segment
+    if len(mapped_inds) == 0:
+        # this read has no mappings
+        return [], True, split_ind
+    # read has mappings, so extract information about the read    
+    has_unmapped_splits = not set(xrange(len(mate_splits))).issubset(mapped_inds)
+    span = mapped_inds[-1] < (len(mate_splits) - 1)
+    seq, qual = get_seq_and_qual(mate_splits)    
+    mates = []
+    for rname, inddict in refdict.iteritems():
+        g = gene_genome_map[rname]
+        # TODO: there are cases where putative small rearrangements
+        # create aberrant mappings of single reads to a gene, such
+        # that it is plausible that the first segment aligns to a 
+        # position larger than the last segment.  This is counterintuitive
+        # and raises the need for indel and rearrangement calling prior to
+        # fusion calling.  we mitigate this here by simply sorting the 
+        # alignments in ascending order by position
+        start, end = get_start_end_pos(mapped_inds, inddict)
+        interval = Interval(start, end, chrom=g.tx_name, strand=g.strand)
+        mates.append(ChimeraMate(interval, seq, qual, span))
+    return mates, has_unmapped_splits, split_ind
+
 
 #def cluster_reads(splits, max_isize):    
 #    trees = collections.defaultdict(lambda: ClusterTree(max_isize,1))
@@ -322,47 +298,19 @@ def get_seq_and_qual(splits):
 #    return "@%s\n%s\n+%s\n%s" % (qname, seq, qname, qual)
 #    #return ">%s\n%s" % (qname, seq)
 
-def get_nonmapping_bedpe_string(pe_reads, read1_span, read2_span):
+def get_nonmapping_bedpe_string(pe_reads, read1_unmapped, read2_unmapped):
+    # ensure one or other is unmapped
+    assert read1_unmapped ^ read2_unmapped
     qname = pe_reads[0][0][0][0].qname
     seq1, qual1 = get_seq_and_qual(pe_reads[0][0])
-    seq2, qual2 = get_seq_and_qual(pe_reads[1][0])    
+    seq2, qual2 = get_seq_and_qual(pe_reads[1][0])
     fields = ['*', 0, 0, '*', 0, 0, qname, 1, 0, 0, seq1, seq2, 
-              qual1, qual2, int(read1_span), int(read2_span),
+              qual1, qual2, int(read1_unmapped), int(read2_unmapped),
               Chimera._discordant_types[Chimera.NONMAPPING], 1]
     return '\t'.join(map(str, fields))
 
 
-def make_chimera_mates(mate_splits, splits, gene_genome_map):
-    '''
-    returns a 3-tuple:
-    * list of ChimeraMate objects,
-    * whether the read has unmapped segments, and 
-    * index of discordant splice
-    '''
-    refdict, mapped_inds, split_ind = find_first_split(splits)
-    # read must have at least one mapped segment
-    if len(mapped_inds) == 0:
-        # this read has no mappings
-        return [], True, split_ind
-    # read has mappings, so extract information about the read    
-    has_unmapped_splits = not set(xrange(len(mate_splits))).issubset(mapped_inds)
-    span = mapped_inds[-1] < (len(mate_splits) - 1)
-    seq, qual = get_seq_and_qual(mate_splits)    
-    mates = []
-    for rname, inddict in refdict.iteritems():
-        g = gene_genome_map[rname]
-        # TODO: there are cases where putative small rearrangements
-        # create aberrant mappings of single reads to a gene, such
-        # that it is plausible that the first segment aligns to a 
-        # position larger than the last segment.  This is counterintuitive
-        # and raises the need for indel and rearrangement calling prior to
-        # fusion calling.  we mitigate this here by simply sorting the 
-        # alignments in ascending order by position
-        start, end = get_start_end_pos(mapped_inds, inddict)
-        interval = Interval(start, end, chrom=g.tx_name, strand=g.strand)
-        mates.append(ChimeraMate(interval, seq, qual, span))
-    return mates, has_unmapped_splits, split_ind
-    
+
 def gen_chimera_candidates(splits5p, splits3p, gene_genome_map, read1_is_5prime):
     '''
     generator function yield (True, False, False, Chimera) objects if this is a 
@@ -491,10 +439,6 @@ def discordant_reads_to_chimeras(input_bam_file, output_bedpe_file, gene_file,
         mate_mapping_codes = (set(), set())
         for mate, mate_partitions in enumerate(pe_reads):
             for strand, mapping_codes, splits in process_partition(mate_partitions):
-                #print 'MATE', mate, 'STRAND', strand, 'CODES', mapping_codes
-                #for i,s in enumerate(splits):
-                #    for r in s:
-                #        print 'INDEX', i, r
                 mate_mapping_codes[mate].update(mapping_codes)
                 if MAP in mapping_codes:
                     hits[strand][mate].append(splits)
@@ -573,20 +517,3 @@ def main():
 if __name__ == '__main__':
     main()
 
-
-
-#
-#def select_best_segments(seg_list):
-#    # sort by number of unmapped segments
-#    sorted_segs = []
-#    for segs in seg_list:
-#        num_unmapped_segs = sum(1 if r.is_unmapped else 0 for r in segs)
-#        sorted_segs.append((num_unmapped_segs, segs))
-#    sorted_segs = sorted(sorted_segs, key=operator.itemgetter(0))
-#    best_num_unmapped_segs = sorted_segs[0][0]
-#    best_segs = []
-#    for num_unmapped_segs, segs in sorted_segs:
-#        if num_unmapped_segs > best_num_unmapped_segs:
-#            break
-#        best_segs.append(segs)
-#    return best_segs

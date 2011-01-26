@@ -71,7 +71,55 @@ def realign_genome_reads(input_bam_file, output_bam_file, gene_file):
                 for reads in splits:
                     for r in realign_split_reads(reads, gene_tid_list, exon_trees):
                         outfh.write(r)
-
+#def rescue_genome_mappings(pe_reads, gene_tid_list, gene_trees):
+#    for mate, partitions in enumerate(pe_reads):
+#        for partition in partitions:
+#            splits5p = []
+#            splits3p = []
+#            codes5p = set()
+#            codes3p = set()
+#            for split_reads in partition:
+#                reads5p = []
+#                reads3p = []
+#                # TODO: we select reads in the best 'strata', that is, the
+#                # set of reads with fewest mismatches to the reference.  is
+#                # this the best strategy, or should other metrics be employed
+#                # to choose from among multimapping reads?
+#                best_reads = select_best_mismatches(split_reads)
+#                for r in best_reads:
+#                    if r.is_unmapped:
+#                        reads3p.append(r)
+#                        reads5p.append(r)
+#                        if r.rname != -1:
+#                            code = GENOME
+#                        elif r.opt('XM') > 0:
+#                            code = MULTIMAP
+#                        else:
+#                            code = NM
+#                        codes5p.add(code)
+#                        codes3p.add(code)
+#                    else:
+#                        if r.is_reverse:
+#                            # determine sense/antisense by assuming that
+#                            # 5' reads are sense and 3' reads are antisense                    
+#                            reads3p.append(r)
+#                            codes3p.add(MAP)
+#                        else:
+#                            reads5p.append(r)
+#                            codes5p.add(MAP)
+#                splits5p.append(reads5p)
+#                splits3p.append(reads3p)
+#            if all(len(reads) > 0 for reads in splits5p):
+#                yield 0, codes5p, splits5p
+#            if all(len(reads) > 0 for reads in splits3p):
+#                yield 1, codes3p, splits3p    
+#            # TODO: for now, we treat genomic reads as unmapped because they
+#            # require further processing.  by treating unmapped we allow them
+#            # to be consider as mis-mapped spanning reads in future steps,
+#            # and allow the other segments in the paired-end fragment to 
+#            # determine  
+#            if tid_list[read.rname] is None:
+#                read.is_unmapped = True
 
 def main():
     from optparse import OptionParser
