@@ -4,7 +4,8 @@ Created on Jan 8, 2011
 @author: mkiyer
 '''
 
-from lib.base import DNA_reverse_complement, parse_library_type
+from lib.seq import DNA_reverse_complement
+from lib.base import parse_library_type
 
 def parse_fasta(line_iter):    
     line = line_iter.next()

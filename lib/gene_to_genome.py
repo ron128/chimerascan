@@ -18,6 +18,9 @@ from seq import DNA_reverse_complement
 from feature import GeneFeature
 from base import parse_multihit_alignments
 
+def is_gene(ref_name):
+    return ref_name.startswith(config.GENE_REF_PREFIX)
+
 def get_gene_tids(bamfh):
     gene_tids = []
     for ref in bamfh.references:

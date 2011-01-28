@@ -3,6 +3,7 @@ Created on Jan 22, 2011
 
 @author: mkiyer
 '''
+from base import SamTags
 
 def parse_pe_sam_file(bamfh):
     pe_reads = ([], [])
@@ -15,12 +16,12 @@ def parse_pe_sam_file(bamfh):
         qname = read.qname
         mate = 0 if read.is_read1 else 1
         # get hit/segment/mapping tags
-        num_split_partitions = read.opt('NH')
-        partition_ind = read.opt('XH')
-        num_splits = read.opt('XN')
-        split_ind = read.opt('XI')
-        num_mappings = read.opt('IH')
-        mapping_ind = read.opt('HI')        
+        num_split_partitions = read.opt(SamTags.RTAG_NUM_PARTITIONS)
+        partition_ind = read.opt(SamTags.RTAG_PARTITION_IND)
+        num_splits = read.opt(SamTags.RTAG_NUM_SPLITS)
+        split_ind = read.opt(SamTags.RTAG_SPLIT_IND)
+        num_mappings = read.opt(SamTags.RTAG_NUM_MAPPINGS)
+        mapping_ind = read.opt(SamTags.RTAG_MAPPING_IND)
         # if query name changes we have completely finished
         # the fragment and can reset the read data
         if num_reads > 0 and qname != prev_qname:

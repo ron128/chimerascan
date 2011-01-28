@@ -6,8 +6,11 @@ Created on Jan 7, 2011
 import logging
 import collections
 
+# local imports
 import pysam
 from fix_alignment_ordering import fix_segmented_alignment_ordering
+from base import SamTags
+import config
 
 def build_segment_alignment_dict(aln_dict, reads, seg_num):
     aln_seg_dict = {}
@@ -249,6 +252,19 @@ def make_joined_read(mate, reads, tags=None):
     return a
 
 
+# Reference Types
+REF_GENOME = 0
+REF_GENE = 1
+
+def get_tid_ref_types(bamfh):
+    tid_types = []
+    for ref in bamfh.references:
+        if ref.startswith(config.GENE_REF_PREFIX):
+            tid_types.append(REF_GENE)
+        else:
+            tid_types.append(REF_GENOME)
+    return tid_types
+
 def join_segmented_alignments(input_sam_file, input_fastq_file, output_bam_file, is_paired):
     # setup debugging logging messages
     debug_count = 0
@@ -258,6 +274,7 @@ def join_segmented_alignments(input_sam_file, input_fastq_file, output_bam_file,
     infh = pysam.Samfile(input_sam_file, "r")
     #header = infh.header
     outfh = pysam.Samfile(output_bam_file, "wb", template=infh)
+    tid_type_map = get_tid_ref_types(outfh)
     #outfh = pysam.Samfile("-", "w", template=infh)
     # iterate through paired-end alignments
     logging.info("Processing paired alignments...")
@@ -281,16 +298,28 @@ def join_segmented_alignments(input_sam_file, input_fastq_file, output_bam_file,
                 #print 'HIT', hit_index, 'SPLITS', len(split_hits)
                 for split_index, seg_hits in enumerate(split_hits):
                     num_seg_hits = len(seg_hits)
+                    split_reads = []
+                    multimaps = 0
                     #print 'SPLIT', split_index, 'HITS', num_seg_hits
                     for seg_index, seg_reads in enumerate(seg_hits):                        
                         # make SAM record for each segment
-                        tags = [('NH', num_hits),
-                                ('XH', hit_index),
-                                ('XN', num_splits),
-                                ('XI', split_index),
-                                ('IH', num_seg_hits),
-                                ('HI', seg_index)]                        
+                        tags = [(SamTags.RTAG_NUM_PARTITIONS, num_hits),
+                                (SamTags.RTAG_PARTITION_IND, hit_index),
+                                (SamTags.RTAG_NUM_SPLITS, num_splits),
+                                (SamTags.RTAG_SPLIT_IND, split_index),
+                                (SamTags.RTAG_NUM_MAPPINGS, num_seg_hits),
+                                (SamTags.RTAG_MAPPING_IND, seg_index)]                        
                         r = make_joined_read(mate, seg_reads, tags=tags)
+                        split_reads.append(r)
+                        # TODO: keep track of multimaps using the number of 
+                        # genome hits as a proxy (this is not perfect, since 
+                        # splice junction reads could be multimapping
+                        if tid_type_map[r.rname] == REF_GENOME:
+                            multimaps += 1
+                    # output reads now that multimappings have been computed
+                    for r in split_reads:
+                        if not r.is_unmapped:
+                            r.tags = r.tags + [("NH", multimaps)]                         
                         outfh.write(r)
 
 if __name__ == '__main__':

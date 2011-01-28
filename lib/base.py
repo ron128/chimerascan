@@ -7,6 +7,16 @@ import os
 import string
 import subprocess
 
+# custom read tags
+class SamTags:
+    RTAG_NUM_PARTITIONS = "XP"
+    RTAG_PARTITION_IND = "XH"
+    RTAG_NUM_SPLITS = "XN"
+    RTAG_SPLIT_IND = "XI"
+    RTAG_NUM_MAPPINGS = "IH"
+    RTAG_MAPPING_IND = "HI"
+    RTAG_BOWTIE_MULTIMAP = "XM"
+
 def parse_library_type(library_type):
     s1 = 0 if library_type[0] == 'f' else 1
     s2 = 0 if library_type[1] == 'f' else 1

@@ -17,7 +17,7 @@ from bx.cluster import ClusterTree
 
 # local imports
 import config
-from base import parse_library_type
+from base import parse_library_type, SamTags
 from seq import DNA_reverse_complement
 from gene_to_genome import build_gene_maps, get_gene_tids
 
@@ -38,12 +38,12 @@ def parse_unpaired_reads(bamfh, gene_tid_list):
         qname = read.qname
         mate = 0 if read.is_read1 else 1
         # get hit/segment/mapping tags
-        num_split_partitions = read.opt('NH')
-        partition_ind = read.opt('XH')
-        num_splits = read.opt('XN')
-        split_ind = read.opt('XI')
-        num_mappings = read.opt('IH')
-        mapping_ind = read.opt('HI')
+        num_split_partitions = read.opt(SamTags.RTAG_NUM_PARTITIONS)
+        partition_ind = read.opt(SamTags.RTAG_PARTITION_IND)
+        num_splits = read.opt(SamTags.RTAG_NUM_SPLITS)
+        split_ind = read.opt(SamTags.RTAG_SPLIT_IND)
+        num_mappings = read.opt(SamTags.RTAG_NUM_MAPPINGS)
+        mapping_ind = read.opt(SamTags.RTAG_MAPPING_IND)
         # if query name changes we have completely finished
         # the fragment and can reset the read data
         if num_reads > 0 and qname != prev_qname:
@@ -346,7 +346,7 @@ def get_seq_and_qual(splits):
 
 def get_nonmapping_bedpe_string(pe_reads, read1_unmapped, read2_unmapped):
     # ensure one or other is unmapped
-    assert read1_unmapped ^ read2_unmapped
+    #assert read1_unmapped ^ read2_unmapped
     qname = pe_reads[0][0][0][0].qname
     seq1, qual1 = get_seq_and_qual(pe_reads[0][0])
     seq2, qual2 = get_seq_and_qual(pe_reads[1][0])
@@ -389,7 +389,7 @@ def gen_chimera_candidates(splits5p, splits3p, gene_genome_map, read1_is_5prime)
         spanning3p = has_unmapped_splits
     if concordant5p or concordant3p:
         yield False, spanning5p, spanning3p, None
-        return    
+        return
     # make chimera candidates
     qname = splits5p[0][0].qname    
     # determine the type of discordant read and also whether the reads could
