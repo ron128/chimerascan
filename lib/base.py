@@ -17,6 +17,12 @@ class SamTags:
     RTAG_MAPPING_IND = "HI"
     RTAG_BOWTIE_MULTIMAP = "XM"
 
+def parse_bool(s):    
+    return True if s[0].lower() == "t" else False
+
+def parse_string_none(s):
+    return None if s == "None" else s
+
 def parse_library_type(library_type):
     s1 = 0 if library_type[0] == 'f' else 1
     s2 = 0 if library_type[1] == 'f' else 1

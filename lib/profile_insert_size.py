@@ -100,7 +100,7 @@ def get_hist_stats(a):
     std = (std / float(n-1))**0.5
     return mean, median, mode, std
 
-def profile_isize_stats(bamfh, min_isize, max_isize, max_samples=None, min_samples=1000):
+def profile_isize_stats(bamfh, min_isize, max_isize, max_samples=None, min_samples=50):
     isize_array = profile_insert_sizes(bamfh, min_isize, max_isize, 
                                        max_samples=max_samples)
     # if number of samples is small, use approximation instead

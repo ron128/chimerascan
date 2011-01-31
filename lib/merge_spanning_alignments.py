@@ -10,6 +10,7 @@ import numpy as np
 import pysam
 
 # local imports
+from alignment_parser import parse_sr_sam_file
 
 # constants
 JUNC_MAP_QNAME_COLUMN = 18
@@ -23,47 +24,6 @@ def read_chimera_mapping_file(filename):
         bedpe_fields = fields[1:]        
         chimera_refs[chimera_id].append(bedpe_fields)
     return dict(chimera_refs)
-
-def parse_sr_sam_file(bamfh):
-    reads = []
-    # reads must be binned by qname, mate, hit, and segment
-    # so initialize to mate 0, hit 0, segment 0
-    num_reads = 0
-    prev_qname = None
-    for read in bamfh:
-        # get read attributes
-        qname = read.qname
-        mate = 0 if read.is_read1 else 1
-        # get hit/segment/mapping tags
-        num_split_partitions = read.opt('NH')
-        partition_ind = read.opt('XH')
-        num_splits = read.opt('XN')
-        split_ind = read.opt('XI')
-        num_mappings = read.opt('IH')
-        mapping_ind = read.opt('HI')        
-        # if query name changes we have completely finished
-        # the fragment and can reset the read data
-        if num_reads > 0 and qname != prev_qname:
-            yield reads
-            # reset state variables
-            reads = []
-            num_reads = 0
-        prev_qname = qname
-        # initialize hits
-        if len(reads) == 0:
-            reads.extend([list() for x in xrange(num_split_partitions)])
-        # initialize hit segments
-        if len(reads[partition_ind]) == 0:
-            reads[partition_ind].extend([list() for x in xrange(num_splits)])
-        split_reads = reads[partition_ind][split_ind]
-        # initialize segment mappings
-        if len(split_reads) == 0:
-            split_reads.extend([None for x in xrange(num_mappings)])
-        # add segment to hit/mate/read
-        split_reads[mapping_ind] = read
-        num_reads += 1
-    if num_reads > 0:
-        yield reads
 
 def get_mismatch_positions(md):
     x = 0
