@@ -10,7 +10,7 @@ import sys
 # local imports
 import chimerascan.pysam as pysam
 from chimerascan.lib.base import get_read_length
-from fix_alignment_ordering import fix_alignment_ordering
+from fix_alignment_ordering import fix_pe_alignment_ordering, fix_sr_alignment_ordering
 
 def align_pe_full(fastq_files, 
                   bowtie_index,
@@ -99,24 +99,35 @@ def align_sr_full(fastq_file,
     return aln_p.wait()
 
 
-def sam_stdin_to_bam(output_bam_file, input_fastq_file, 
-                     multihits, 
-                     is_paired=True,
-                     keep_unmapped=True):
+def sam_stdin_to_bam(output_bam_file, input_fastq_file, multihits, 
+                     is_paired=True, keep_unmapped=True):
     samfh = pysam.Samfile("-", "r")
     bamfh = pysam.Samfile(output_bam_file, "wb", template=samfh)    
     num_unmapped = 0
     num_multihits = 0
-    for pe_reads in fix_alignment_ordering(samfh, 
-                                           open(input_fastq_file), 
-                                           is_paired=is_paired):
-        for reads in pe_reads:
+    if is_paired:
+        for pe_reads in fix_pe_alignment_ordering(samfh, 
+                                                  open(input_fastq_file), 
+                                                  is_paired=is_paired):
+            for reads in pe_reads:
+                for r in reads:
+                    if r.is_unmapped:
+                        xm_tag = r.opt('XM')
+                        if xm_tag < multihits:
+                            num_unmapped += 1
+                            if not keep_unmapped:
+                                continue
+                        num_multihits += 1
+                    bamfh.write(r)
+    else:
+        for reads in fix_sr_alignment_ordering(samfh, open(input_fastq_file)): 
             for r in reads:
                 if r.is_unmapped:
                     xm_tag = r.opt('XM')
                     if xm_tag < multihits:
                         num_unmapped += 1
-                        continue
+                        if not keep_unmapped:
+                            continue
                     num_multihits += 1
                 bamfh.write(r)
     bamfh.close()

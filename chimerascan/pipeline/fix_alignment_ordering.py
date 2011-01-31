@@ -30,7 +30,7 @@ def parse_fastq_qname(line_iter):
     except StopIteration:
         pass
 
-def fix_alignment_ordering(samfh, fastq_iter, is_paired=True, maxlen=100000):
+def fix_pe_alignment_ordering(samfh, fastq_iter, is_paired=True, maxlen=100000):
     num_mates = 2 if is_paired else 1    
     # function for initializing new buffer list
     buf_init_func = lambda: tuple(list() for m in xrange(num_mates))
@@ -67,7 +67,6 @@ def fix_alignment_ordering(samfh, fastq_iter, is_paired=True, maxlen=100000):
     # empty remaining entries in buffer
     while len(buf) > 0:
         yield qname_read_dict[buf.popleft()]
-
 
 def fix_segmented_alignment_ordering(samfh, fastq_iter, is_paired=True, maxlen=100000):
     num_mates = 2 if is_paired else 1    
@@ -120,6 +119,65 @@ def fix_segmented_alignment_ordering(samfh, fastq_iter, is_paired=True, maxlen=1
         # add read to buffer
         qname_read_dict[qname][mate][seg].append(read)
         #print 'QNAME AFTER', qname, qname_read_dict[read.qname]
+    # empty remaining entries in buffer
+    while len(buf) > 0:
+        yield qname_read_dict[buf.popleft()]
+
+
+def parse_fastq_qname_mate(line_iter):
+    mate_re = re.compile(r'/(\d)$')    
+    try:
+        while True:
+            # qname
+            qname = line_iter.next().rstrip()[1:]
+            qname,mate = mate_re.split(qname)[0:2]
+            # skip 3 lines
+            line_iter.next()
+            line_iter.next()
+            line_iter.next()
+            yield qname, int(mate)
+    except StopIteration:
+        pass
+
+def fix_sr_alignment_ordering(samfh, fastq_iter, maxlen=100000):
+    # initialize the qname dictionary to match the fastq file    
+    buf = collections.deque()
+    qname_read_dict = {}
+    qname_iter = parse_fastq_qname(fastq_iter)    
+    qname_mate_re = re.compile(r'/(\d)$')    
+    for read in samfh:
+        # get mate from SAM file
+        read_qname, read_mate = qname_mate_re.split(read.qname)[0:2]
+        read_mate = int(read_mate)
+        # set flags
+        read.qname = read_qname
+        if read_mate == 0:
+            read.is_read1 = True
+        elif read_mate == 1:
+            read.is_read2 = True
+        else:
+            assert False
+        # check if this read is already in the buffer
+        if read.qname not in qname_read_dict:
+            # if buffer full empty the first entries
+            while len(buf) >= maxlen:
+                # get first qname in buf
+                first_qname = buf.popleft()
+                # return reads at this qname, then delete them
+                yield qname_read_dict[first_qname]
+                del qname_read_dict[first_qname]
+            # add new qnames to buffer
+            while True:                
+                # get next qname from fastq file and add it to the queue
+                next_qname = qname_iter.next()
+                buf.append(next_qname)
+                qname_read_dict[next_qname] = list()
+                # if the next qname in the fastq file is the same as the
+                # read qname, then we can exit the loop
+                if next_qname == read.qname:
+                    break
+        # add read to buffer
+        qname_read_dict[read.qname].append(read)
     # empty remaining entries in buffer
     while len(buf) > 0:
         yield qname_read_dict[buf.popleft()]

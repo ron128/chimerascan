@@ -9,10 +9,10 @@ import logging
 from nominate_chimeras import Chimera, parse_discordant_reads
 from find_discordant_reads import DiscordantType
 
-#def to_fastq(mate, qname, seq, qual):
-#    return "@%s/%d\n%s\n+%s/%d\n%s" % (qname, mate+1, seq, qname, mate+1, qual)
 def to_fastq(mate, qname, seq, qual):
-    return "@%s\n%s\n+%s\n%s" % (qname, seq, qname, qual)
+    return "@%s/%d\n%s\n+%s/%d\n%s" % (qname, mate+1, seq, qname, mate+1, qual)
+#def to_fastq(mate, qname, seq, qual):
+#    return "@%s\n%s\n+%s\n%s" % (qname, seq, qname, qual)
 
 def is_spanning(start, end, juncs):
     return any(start < j < end for j in juncs)
