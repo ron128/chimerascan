@@ -15,18 +15,18 @@ import pysam
 import lib.config as config
 from lib.config import JOB_SUCCESS, JOB_ERROR
 from lib.base import check_executable, get_read_length, parse_library_type
-from lib.align_full import align_pe_full
-from lib.align_segments import align, determine_read_segments
-from lib.merge_read_pairs import merge_read_pairs
-from lib.find_discordant_reads import find_discordant_reads
-from lib.extend_sequences import extend_sequences
-from lib.sort_discordant_reads import sort_discordant_reads
-from lib.nominate_chimeras import nominate_chimeras
-from lib.nominate_spanning_reads import nominate_spanning_reads
-from lib.bedpe_to_fasta import bedpe_to_junction_fasta
-from lib.merge_spanning_alignments import merge_spanning_alignments
-from lib.profile_insert_size import profile_isize_stats
-from lib.filter_chimeras import filter_chimeras
+from pipeline.align_full import align_pe_full
+from pipeline.align_segments import align, determine_read_segments
+from pipeline.merge_read_pairs import merge_read_pairs
+from pipeline.find_discordant_reads import find_discordant_reads
+from pipeline.extend_sequences import extend_sequences
+from pipeline.sort_discordant_reads import sort_discordant_reads
+from pipeline.nominate_chimeras import nominate_chimeras
+from pipeline.nominate_spanning_reads import nominate_spanning_reads
+from pipeline.bedpe_to_fasta import bedpe_to_junction_fasta
+from pipeline.merge_spanning_alignments import merge_spanning_alignments
+from pipeline.profile_insert_size import profile_isize_stats
+from pipeline.filter_chimeras import filter_chimeras
 
 def check_command_line_args(options, args, parser):
     # check command line arguments

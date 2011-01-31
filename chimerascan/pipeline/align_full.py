@@ -8,9 +8,10 @@ import subprocess
 import sys
 
 # local imports
-import pysam
-from base import get_read_length
+from ..lib import pysam as pysam
+from ..lib.base import get_read_length
 from fix_alignment_ordering import fix_alignment_ordering
+
 
 def align_pe_full(fastq_files, 
                   bowtie_index,
