@@ -15,7 +15,7 @@ def to_fastq(mate, qname, seq, qual):
 def is_spanning(start, end, juncs):
     return any(start < j < end for j in juncs)
 
-def check_fragment(frag, tx5p, tx3p):
+def check_fragment(frag, tx5p, tx3p, nonmapping=True):
     # mates that have two split segments mapping discordantly
     # are automatically considered for spanning read detection
     write5p = frag.discordant_type.discordant5p
@@ -30,8 +30,13 @@ def check_fragment(frag, tx5p, tx3p):
         write3p = is_spanning(frag.clust3p.pad_start, 
                               frag.clust3p.pad_end,
                               tx5p[frag.clust3p.rname])
-    # check "one-mapper" fragments
-    if frag.discordant_type.code == DiscordantType.CONCORDANT_SINGLE:
+    if nonmapping and (frag.discordant_type.code == DiscordantType.NONMAPPING):
+        # TODO: automatically completely non-mapping reads that may
+        # be double-overlapping spanning reads, but only do this in
+        # single-segment mode to increase sensitivity
+        write5p = True
+        write3p = True
+    elif frag.discordant_type.code == DiscordantType.CONCORDANT_SINGLE:
         # one of mates mapped and other is unmapped, so check
         # the mapped mate and see whether it matches a chimera
         # candidate 

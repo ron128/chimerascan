@@ -91,10 +91,6 @@ def up_to_date(outfile, infile):
         return False    
     return os.path.getmtime(outfile) >= os.path.getmtime(infile)
 
-def write_default_isize_stats(filename, min_isize, max_isize):
-    mean = int((max_isize - min_isize) / 2.0)
-    pass
-
 def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -154,10 +150,15 @@ def main():
         os.makedirs(output_dir)
         logging.info("Created output directory: %s" % (output_dir))
     # create log dir if it does not exist
-    log_dir = os.path.join(output_dir, "log")
+    log_dir = os.path.join(output_dir, config.LOG_DIR)
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
         logging.debug("Created directory for log files: %s" % (log_dir))        
+    # create tmp dir if it does not exist
+    tmp_dir = os.path.join(output_dir, config.TMP_DIR)
+    if not os.path.exists(tmp_dir):
+        os.makedirs(tmp_dir)
+        logging.debug("Created directory for tmp files: %s" % (tmp_dir))
     # gather and parse run parameters
     library_type = parse_library_type(options.library_type)    
     gene_feature_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)
@@ -174,8 +175,8 @@ def main():
     # align in paired-end mode, trying to resolve as many reads as possible
     # this effectively rules out the vast majority of reads as candidate
     # fusions
-    unaligned_fastq_param = os.path.join(output_dir, config.UNALIGNED_FASTQ_PARAM)
-    maxmultimap_fastq_param = os.path.join(output_dir, config.MAXMULTIMAP_FASTQ_PARAM)
+    unaligned_fastq_param = os.path.join(tmp_dir, config.UNALIGNED_FASTQ_PARAM)
+    maxmultimap_fastq_param = os.path.join(tmp_dir, config.MAXMULTIMAP_FASTQ_PARAM)
     aligned_bam_file = os.path.join(output_dir, config.ALIGNED_READS_BAM_FILE)
     if all(up_to_date(aligned_bam_file, fq) for fq in fastq_files):
         logging.info("[SKIPPED] Alignment results exist")
@@ -226,8 +227,8 @@ def main():
     #
     # Discordant reads alignment step
     #
-    discordant_bam_file = os.path.join(output_dir, config.DISCORDANT_BAM_FILE)
-    unaligned_fastq_files = [os.path.join(output_dir, fq) for fq in config.UNALIGNED_FASTQ_FILES]
+    discordant_bam_file = os.path.join(tmp_dir, config.DISCORDANT_BAM_FILE)
+    unaligned_fastq_files = [os.path.join(tmp_dir, fq) for fq in config.UNALIGNED_FASTQ_FILES]
     # get the segments used in discordant alignment to know the effective
     # read length used to align.  we used this to set the 'padding' during
     # spanning read discovery
@@ -273,7 +274,7 @@ def main():
     #
     # Find discordant reads step
     #
-    discordant_bedpe_file = os.path.join(output_dir, config.DISCORDANT_BEDPE_FILE)
+    discordant_bedpe_file = os.path.join(tmp_dir, config.DISCORDANT_BEDPE_FILE)
     padding = original_read_length - segmented_read_length
     if (up_to_date(discordant_bedpe_file, paired_bam_file)):
         logging.info("[SKIPPED] Finding discordant reads")
@@ -333,8 +334,8 @@ def main():
     # Extract junction sequences from chimeras file
     #        
     ref_fasta_file = os.path.join(options.index_dir, config.ALIGN_INDEX + ".fa")
-    junc_fasta_file = os.path.join(output_dir, config.JUNC_REF_FASTA_FILE)
-    junc_map_file = os.path.join(output_dir, config.JUNC_REF_MAP_FILE)
+    junc_fasta_file = os.path.join(tmp_dir, config.JUNC_REF_FASTA_FILE)
+    junc_map_file = os.path.join(tmp_dir, config.JUNC_REF_MAP_FILE)
     spanning_read_length = get_read_length(spanning_fastq_file)    
     if (up_to_date(junc_fasta_file, encompassing_bedpe_file) and
         up_to_date(junc_map_file, encompassing_bedpe_file)):        
@@ -348,8 +349,8 @@ def main():
     #
     # Build a bowtie index to align and detect spanning reads
     #
-    bowtie_spanning_index = os.path.join(output_dir, config.JUNC_BOWTIE_INDEX)
-    bowtie_spanning_index_file = os.path.join(output_dir, config.JUNC_BOWTIE_INDEX_FILE)
+    bowtie_spanning_index = os.path.join(tmp_dir, config.JUNC_BOWTIE_INDEX)
+    bowtie_spanning_index_file = os.path.join(tmp_dir, config.JUNC_BOWTIE_INDEX_FILE)
     if (up_to_date(bowtie_spanning_index_file, junc_fasta_file)):
         logging.info("[SKIPPED] Building bowtie index for junction-spanning reads")
     else:        

@@ -11,6 +11,9 @@ Created on Nov 16, 2010
 JOB_SUCCESS = 0
 JOB_ERROR = 1
 
+LOG_DIR = "log"
+TMP_DIR = "tmp"
+
 BASE_PROCESSORS = 2
 MIN_SEGMENT_LENGTH = 20
 ALIGN_INDEX = 'align_index'
