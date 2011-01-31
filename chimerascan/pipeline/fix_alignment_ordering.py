@@ -159,7 +159,7 @@ def fix_sr_alignment_ordering(samfh, fastq_iter, maxlen=100000):
         else:
             assert False
         # check if this read is already in the buffer
-        if read.qname not in qname_read_dict:
+        if key not in qname_read_dict:
             # if buffer full empty the first entries
             while len(buf) >= maxlen:
                 # get first qname in buf
