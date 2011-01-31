@@ -35,6 +35,7 @@ EXON_JUNCTION_TRIM_BP = 10
 JUNC_REF_FASTA_FILE = "spanning_juncs.fa"
 JUNC_REF_MAP_FILE = "spanning_juncs.txt"
 JUNC_BOWTIE_INDEX = "spanning_juncs"
+JUNC_BOWTIE_INDEX_FILE = "spanning_juncs.1.ebwt"
 JUNC_READS_BAM_FILE = "aligned_junc_reads.bam"
 RAW_CHIMERA_BEDPE_FILE = "chimeras.raw.bedpe"
 CHIMERA_BEDPE_FILE = "chimeras.bedpe"

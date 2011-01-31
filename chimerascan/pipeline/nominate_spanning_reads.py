@@ -9,8 +9,10 @@ import logging
 from nominate_chimeras import Chimera, parse_discordant_reads
 from find_discordant_reads import DiscordantType
 
+#def to_fastq(mate, qname, seq, qual):
+#    return "@%s/%d\n%s\n+%s/%d\n%s" % (qname, mate+1, seq, qname, mate+1, qual)
 def to_fastq(mate, qname, seq, qual):
-    return "@%s/%d\n%s\n+%s/%d\n%s" % (qname, mate+1, seq, qname, mate+1, qual)
+    return "@%s\n%s\n+%s\n%s" % (qname, seq, qname, qual)
 
 def is_spanning(start, end, juncs):
     return any(start < j < end for j in juncs)
@@ -38,10 +40,10 @@ def check_fragment(frag, tx5p, tx3p):
         # TODO: check junction position to further refine decision
         # by omitting reads that are far from the predicted junction
         if (frag.clust5p.rname == "*") and (frag.clust3p.rname in tx3p):
-            print 'CONCORDANT_SINGLE', frag.qname
+            #print 'CONCORDANT_SINGLE', frag.qname
             write5p = True
         if (frag.clust3p.rname == "*") and (frag.clust5p.rname in tx5p):
-            print 'CONCORDANT_SINGLE', frag.qname
+            #print 'CONCORDANT_SINGLE', frag.qname
             write3p = True
     # write the potential spanning reads
     mate = int(frag.read1_is_sense)

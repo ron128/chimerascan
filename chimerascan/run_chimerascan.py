@@ -15,7 +15,7 @@ import lib.config as config
 from lib.config import JOB_SUCCESS, JOB_ERROR
 from lib.base import check_executable, get_read_length, parse_library_type
 
-from pipeline.align_full import align_pe_full
+from pipeline.align_full import align_pe_full, align_sr_full
 from pipeline.align_segments import align, determine_read_segments
 from pipeline.merge_read_pairs import merge_read_pairs
 from pipeline.find_discordant_reads import find_discordant_reads
@@ -315,17 +315,18 @@ def main():
     else:        
         logging.info("Nominating chimeras from discordant reads")
         nominate_chimeras(open(sorted_discordant_bedpe_file, "r"),
-                          open(encompassing_bedpe_file, "w"),                          
+                          open(encompassing_bedpe_file, "w"),
+                          gene_feature_file,                          
                           trim=config.EXON_JUNCTION_TRIM_BP)
     #
     # Nominate spanning reads step
     #
     spanning_fastq_file = os.path.join(output_dir, config.SPANNING_FASTQ_FILE)
-    if up_to_date(spanning_fastq_file, discordant_bedpe_file):
+    if up_to_date(spanning_fastq_file, extended_discordant_bedpe_file):
         logging.info("[SKIPPED] Nominating junction spanning reads")
     else:
         logging.info("Nominating junction spanning reads")
-        nominate_spanning_reads(open(discordant_bedpe_file, 'r'),
+        nominate_spanning_reads(open(extended_discordant_bedpe_file, 'r'),
                                 open(encompassing_bedpe_file, 'r'),
                                 open(spanning_fastq_file, 'w'))    
     #
@@ -348,7 +349,8 @@ def main():
     # Build a bowtie index to align and detect spanning reads
     #
     bowtie_spanning_index = os.path.join(output_dir, config.JUNC_BOWTIE_INDEX)
-    if (up_to_date(bowtie_spanning_index, junc_fasta_file)):
+    bowtie_spanning_index_file = os.path.join(output_dir, config.JUNC_BOWTIE_INDEX_FILE)
+    if (up_to_date(bowtie_spanning_index_file, junc_fasta_file)):
         logging.info("[SKIPPED] Bowtie junction index exists")
     else:        
         logging.info("Building bowtie index for junction-spanning reads")
@@ -360,24 +362,38 @@ def main():
     # Align unmapped reads across putative junctions
     #
     junc_bam_file = os.path.join(output_dir, config.JUNC_READS_BAM_FILE)
-    if (up_to_date(junc_bam_file, bowtie_spanning_index) and
+    if (up_to_date(junc_bam_file, bowtie_spanning_index_file) and
         up_to_date(junc_bam_file, spanning_fastq_file)):
         logging.info("[SKIPPED] Aligning junction spanning ")
     else:            
         logging.info("Aligning junction spanning reads")
-        align([spanning_fastq_file], 
-              options.fastq_format,
-              bowtie_spanning_index,
-              junc_bam_file, 
-              bowtie_bin=options.bowtie_bin, 
-              num_processors=options.num_processors, 
-              segment_length=options.segment_length,
-              segment_trim=False,
-              trim5=options.trim5, 
-              trim3=options.trim3, 
-              multihits=options.multihits,
-              mismatches=options.mismatches, 
-              bowtie_mode=bowtie_mode)
+        retcode = align_sr_full(spanning_fastq_file, 
+                                bowtie_spanning_index,
+                                junc_bam_file,
+                                trim5=options.trim5,
+                                trim3=options.trim3,                                 
+                                num_processors=options.num_processors,
+                                fastq_format=options.fastq_format,
+                                multihits=options.multihits,
+                                mismatches=options.mismatches,
+                                bowtie_bin=options.bowtie_bin,
+                                bowtie_mode=bowtie_mode)
+        if retcode != 0:
+            logging.error("Bowtie failed with error code %d" % (retcode))    
+            sys.exit(retcode)   
+#        align([spanning_fastq_file], 
+#              options.fastq_format,
+#              bowtie_spanning_index,
+#              junc_bam_file, 
+#              bowtie_bin=options.bowtie_bin, 
+#              num_processors=options.num_processors, 
+#              segment_length=options.segment_length,
+#              segment_trim=False,
+#              trim5=options.trim5, 
+#              trim3=options.trim3, 
+#              multihits=options.multihits,
+#              mismatches=options.mismatches, 
+#              bowtie_mode=bowtie_mode)
     #
     # Merge spanning and encompassing read information
     #
@@ -396,17 +412,17 @@ def main():
     #
     # Apply final filters
     #
-    chimera_bedpe_file = os.path.join(output_dir, config.CHIMERA_BEDPE_FILE)
-    if (up_to_date(chimera_bedpe_file, raw_chimera_bedpe_file)):
-        logging.info("[SKIPPED] Filtering chimeras")
-    else:
-        logging.info("Filtering chimeras")
-        filter_chimeras(raw_chimera_bedpe_file, 
-                        chimera_bedpe_file,
-                        isoforms=False,
-                        overlap=False,
-                        max_isize=None,
-                        prob=0.05)            
+#    chimera_bedpe_file = os.path.join(output_dir, config.CHIMERA_BEDPE_FILE)
+#    if (up_to_date(chimera_bedpe_file, raw_chimera_bedpe_file)):
+#        logging.info("[SKIPPED] Filtering chimeras")
+#    else:
+#        logging.info("Filtering chimeras")
+#        filter_chimeras(raw_chimera_bedpe_file, 
+#                        chimera_bedpe_file,
+#                        isoforms=False,
+#                        overlap=False,
+#                        max_isize=None,
+#                        prob=0.05)            
     retcode = JOB_SUCCESS
     sys.exit(retcode)
 

@@ -54,7 +54,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = OptionParser("usage: %prog [options] <chimeras.bedpe> <out.fasta> <out.juncs>")
-    parser.add_option("--rlen", type=int, dest="read_length", default=None)
+    parser.add_option("--rlen", type="int", dest="read_length", default=None)
     parser.add_option("--index", dest="index_dir") 
     options, args = parser.parse_args()
     bedpe_file = args[0]

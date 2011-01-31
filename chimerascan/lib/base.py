@@ -60,16 +60,6 @@ def check_executable(filename):
     devnullfh.close()
     return True
 
-def parse_multihit_sam_file(samfh):    
-    reads = []
-    for read in samfh:        
-        if len(reads) > 0 and read.qname != reads[-1].qname:
-            yield reads
-            reads = []
-        reads.append(read)
-    if len(reads) > 0:
-        yield reads
-
 def parse_multihit_alignments(samfh):
     buf = []
     ind = 0

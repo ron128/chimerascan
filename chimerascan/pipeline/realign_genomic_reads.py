@@ -20,7 +20,7 @@ from chimerascan.lib import config
 from chimerascan.lib.feature import GeneFeature
 from chimerascan.lib.seq import DNA_reverse_complement
 from chimerascan.lib.gene_to_genome import build_gene_maps, get_gene_tids
-from chimerascan.lib.alignment_parser import parse_pe_sam_file
+from chimerascan.lib.alignment_parser import parse_segmented_pe_sam_file
 
 def build_exon_trees(samfh, genefile):
     rname_tid_map = dict((rname,i) for i,rname in enumerate(samfh.references))

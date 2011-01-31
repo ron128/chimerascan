@@ -8,10 +8,9 @@ import subprocess
 import sys
 
 # local imports
-from chimerascan import pysam
+import chimerascan.pysam as pysam
 from chimerascan.lib.base import get_read_length
 from fix_alignment_ordering import fix_alignment_ordering
-
 
 def align_pe_full(fastq_files, 
                   bowtie_index,
@@ -54,35 +53,91 @@ def align_pe_full(fastq_files,
     logging.debug("Bowtie alignment args: %s" % (' '.join(args)))
     aln_p = subprocess.Popen(args, stdout=subprocess.PIPE)
     # pipe the bowtie SAM output to a filter that writes BAM format
-    args = [sys.executable, __file__, output_bam_file, fastq_files[0], str(multihits)]
+    args = [sys.executable, __file__, "--multihits", str(multihits),
+            output_bam_file, fastq_files[0]]
     logging.debug("SAM to BAM converter args: %s" % (' '.join(args)))
     retcode = subprocess.call(args, stdin=aln_p.stdout)
     if retcode != 0:
         return retcode
     return aln_p.wait()
 
-def sam_stdin_to_bam(output_bam_file, input_fastq_file, multihits):
+def align_sr_full(fastq_file, 
+                  bowtie_index,
+                  output_bam_file, 
+                  trim5=0,
+                  trim3=0,
+                  num_processors=1, 
+                  fastq_format="phred33-quals", 
+                  multihits=100, 
+                  mismatches=2, 
+                  bowtie_bin="bowtie", 
+                  bowtie_mode="-n"):
+    read_length = get_read_length(fastq_file)     
+    args = [bowtie_bin, "-q", "-S", 
+            "-p", str(num_processors),
+            "--%s" % fastq_format,
+            "-k", str(multihits),
+            "-m", str(multihits),
+            bowtie_mode, str(mismatches),
+            "--trim5", trim5,
+            "--trim3", trim3]
+    # use the entire read length as the "seed" here
+    if bowtie_mode == "-n":
+        args.extend(["-l", str(read_length)])
+    args += [bowtie_index, fastq_file]
+    #aligned_sam_file]
+    args = map(str, args)
+    logging.debug("Bowtie alignment args: %s" % (' '.join(args)))
+    aln_p = subprocess.Popen(args, stdout=subprocess.PIPE)
+    # pipe the bowtie SAM output to a filter that writes BAM format
+    args = [sys.executable, __file__, "--multihits", str(multihits), "--sr",
+            output_bam_file, fastq_file]
+    logging.debug("SAM to BAM converter args: %s" % (' '.join(args)))
+    retcode = subprocess.call(args, stdin=aln_p.stdout)
+    if retcode != 0:
+        return retcode
+    return aln_p.wait()
+
+
+def sam_stdin_to_bam(output_bam_file, input_fastq_file, 
+                     multihits, 
+                     is_paired=True,
+                     keep_unmapped=True):
     samfh = pysam.Samfile("-", "r")
-    bamfh = pysam.Samfile(output_bam_file, "wb", template=samfh)
-    
-    for pe_reads in fix_alignment_ordering(samfh, open(input_fastq_file), 
-                                           is_paired=True):
+    bamfh = pysam.Samfile(output_bam_file, "wb", template=samfh)    
+    num_unmapped = 0
+    num_multihits = 0
+    for pe_reads in fix_alignment_ordering(samfh, 
+                                           open(input_fastq_file), 
+                                           is_paired=is_paired):
         for reads in pe_reads:
             for r in reads:
+                if r.is_unmapped:
+                    xm_tag = r.opt('XM')
+                    if xm_tag < multihits:
+                        num_unmapped += 1
+                        continue
+                    num_multihits += 1
                 bamfh.write(r)
-#        if r.is_unmapped:
-#            xm_tag = r.opt('XM')
-#            # keep multihits in the BAM file but remove nonmapping reads
-#            # since these will specifically be remapped later
-#            if xm_tag < multihits:
-#                num_unmapped += 1
-#                continue
-#            num_multihits += 1
     bamfh.close()
     samfh.close()
-    #logging.debug("[SAMTOBAM] Filtered %d unmapped reads" % (num_unmapped))
-    #logging.debug("[SAMTOBAM] Allowed %d highly multimapping reads to pass through as unmapped" % (num_multihits))
+    logging.debug("[SAMTOBAM] Filtered %d unmapped reads" % (num_unmapped))
+    logging.debug("[SAMTOBAM] Found %d multimapping (>%d) reads" % 
+                  (num_multihits, multihits))
     logging.info("[SAMTOBAM] Finished converting SAM -> BAM")
 
 if __name__ == '__main__':
-    sam_stdin_to_bam(sys.argv[1], sys.argv[2], int(sys.argv[3]))
+    from optparse import OptionParser
+    logging.basicConfig(level=logging.DEBUG,
+                        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    parser = OptionParser("usage: %prog [options] <chimeras.bedpe> <out.fasta> <out.juncs>")
+    parser.add_option("--multihits", type="int", dest="multihits", default=100)
+    parser.add_option("--sr", action="store_false", dest="is_paired", default=True)
+    parser.add_option("--un", action="store_true", dest="keep_unmapped", default=False)
+    options, args = parser.parse_args()
+    output_bam_file = args[0]
+    input_fastq_file = args[1]
+    sam_stdin_to_bam(output_bam_file, input_fastq_file, 
+                     multihits=options.multihits,
+                     is_paired=options.is_paired,
+                     keep_unmapped=options.keep_unmapped)

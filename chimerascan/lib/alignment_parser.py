@@ -5,7 +5,17 @@ Created on Jan 22, 2011
 '''
 from base import SamTags
 
-def parse_pe_sam_file(bamfh):
+def parse_sr_sam_file(samfh):    
+    reads = []
+    for read in samfh:        
+        if len(reads) > 0 and read.qname != reads[-1].qname:
+            yield reads
+            reads = []
+        reads.append(read)
+    if len(reads) > 0:
+        yield reads
+
+def parse_segmented_pe_sam_file(bamfh):
     pe_reads = ([], [])
     # reads must be binned by qname, mate, hit, and segment
     # so initialize to mate 0, hit 0, segment 0
@@ -47,7 +57,7 @@ def parse_pe_sam_file(bamfh):
     if num_reads > 0:
         yield pe_reads
 
-def parse_sr_sam_file(bamfh):
+def parse_segmented_sr_sam_file(bamfh):
     reads = []
     # reads must be binned by qname, mate, hit, and segment
     # so initialize to mate 0, hit 0, segment 0

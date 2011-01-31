@@ -12,7 +12,7 @@ def parse_fastq_qname(line_iter):
     try:        
         qname = line_iter.next().rstrip()[1:]
         newqname = re.split(r'/\d$', qname)[0]
-        suffix_length = len(qname) - len(newqname)                    
+        suffix_length = len(qname) - len(newqname)
         # skip 3 lines
         line_iter.next()
         line_iter.next()
@@ -39,7 +39,10 @@ def fix_alignment_ordering(samfh, fastq_iter, is_paired=True, maxlen=100000):
     qname_read_dict = {}
     qname_iter = parse_fastq_qname(fastq_iter)
     for read in samfh:
-        mate = 0 if read.is_read1 else 1
+        if is_paired:
+            mate = 0 if read.is_read1 else 1
+        else:
+            mate = 0
         # check if this read is already in the buffer
         if read.qname not in qname_read_dict:
             # if buffer full empty the first entries

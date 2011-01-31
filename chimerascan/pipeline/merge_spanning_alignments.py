@@ -7,14 +7,10 @@ import logging
 import collections
 import numpy as np
 
-
 # local imports
-from chimerascan.lib import pysam
+from chimerascan import pysam
 from chimerascan.lib.alignment_parser import parse_sr_sam_file
-
-# constants
-JUNC_MAP_QNAME_COLUMN = 18
-SEQ_FIELD_DELIM = ';'
+from nominate_chimeras import Chimera
 
 def read_chimera_mapping_file(filename):
     chimera_refs = collections.defaultdict(lambda: [])
@@ -92,23 +88,16 @@ def join_spanning_reads(bam_file, junc_map,
     # count read alignments to chimera junctions
     chimera_counts = collections.defaultdict(lambda: 0)
     chimera_reads = collections.defaultdict(lambda: [])
-    num_multiple_partitions = 0
-    num_splits = 0
+    num_multimaps = 0    
     num_filtered = 0
-    for alignments in parse_sr_sam_file(bamfh):
-        filtered_reads = []
-        if len(alignments) > 1:
-            num_multiple_partitions += 1
-        for partition in alignments:
-            if len(partition) > 1:
-                num_splits += 1
-                # TODO: skip reads that split into multiple partitions
-                # since the junctions should be contiguous
-                continue
-            for split_reads in partition:
-                func = filter_reads_by_anchor(split_reads, junc_positions, anchors,
-                                              anchor_min, anchor_max, max_anchor_mismatches)
-                filtered_reads.extend(func)
+    num_reads = 0
+    for reads in parse_sr_sam_file(bamfh):
+        num_reads += 1
+        if len(reads) > 1:
+            num_multimaps += 1
+        filtered_reads = \
+            list(filter_reads_by_anchor(reads, junc_positions, anchors,
+                                        anchor_min, anchor_max, max_anchor_mismatches))
         if len(filtered_reads) == 0:
             # no reads passed filter
             num_filtered += 1
@@ -116,8 +105,10 @@ def join_spanning_reads(bam_file, junc_map,
         for read in filtered_reads:
             chimera_counts[read.rname] += 1
             chimera_reads[read.rname].append((read.qname,read.seq))
+    logging.info("Reads: %d" % (num_reads))
+    logging.info("Multimapping: %d" % (num_multimaps))
+    logging.info("Failed anchor filter: %d" % (num_filtered))
     bamfh.close()
-
     # assign junction coverage to chimera candidates
     for chimera_name,bedpe_records in junc_map.iteritems():
         chimera_id = rname_tid_map[chimera_name]        
@@ -128,13 +119,13 @@ def join_spanning_reads(bam_file, junc_map,
             read_tuples = [("None", "None")]
         for fields in bedpe_records:
             # intersect encompassing with spanning reads to see overlap
-            encompassing_qnames = fields[JUNC_MAP_QNAME_COLUMN].split(SEQ_FIELD_DELIM)
+            encompassing_qnames = fields[Chimera.QNAME_COL].split(Chimera.SEQ_FIELD_DELIM)
             union_cov = len(spanning_qnames.union(encompassing_qnames))
             intersect_cov = len(spanning_qnames.intersection(encompassing_qnames))
             #both_cov = sum(1 for read_tuple in read_tuples if read_tuple[0] in set(encompassing_qnames))
             fields += [cov, intersect_cov, union_cov, ','.join(map(str,anchors[chimera_id])),
-                       SEQ_FIELD_DELIM.join([read_tuple[1] for read_tuple in read_tuples]),
-                       SEQ_FIELD_DELIM.join([read_tuple[0] for read_tuple in read_tuples])]
+                       Chimera.SEQ_FIELD_DELIM.join([read_tuple[1] for read_tuple in read_tuples]),
+                       Chimera.SEQ_FIELD_DELIM.join([read_tuple[0] for read_tuple in read_tuples])]
             yield fields
 
 def merge_spanning_alignments(bam_file, junc_map_file, output_file,
@@ -186,3 +177,29 @@ if __name__ == '__main__': main()
 #    expected_arr[pos] += 1
 ## perform chi-squared test for coverage uniformity
 #csq, pval = chisquare(observed_arr, expected_arr)
+
+
+#    num_multiple_partitions = 0
+#    num_splits = 0
+#    num_filtered = 0
+#    for alignments in parse_segmented_sr_sam_file(bamfh):
+#        filtered_reads = []
+#        if len(alignments) > 1:
+#            num_multiple_partitions += 1
+#        for partition in alignments:
+#            if len(partition) > 1:
+#                num_splits += 1
+#                # TODO: skip reads that split into multiple partitions
+#                # since the junctions should be contiguous
+#                continue
+#            for split_reads in partition:
+#                func = filter_reads_by_anchor(split_reads, junc_positions, anchors,
+#                                              anchor_min, anchor_max, max_anchor_mismatches)
+#                filtered_reads.extend(func)
+#        if len(filtered_reads) == 0:
+#            # no reads passed filter
+#            num_filtered += 1
+#            continue
+#        for read in filtered_reads:
+#            chimera_counts[read.rname] += 1
+#            chimera_reads[read.rname].append((read.qname,read.seq))

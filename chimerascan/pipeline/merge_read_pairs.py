@@ -7,9 +7,9 @@ import collections
 import logging
 
 # local imports
-from chimerascan import pysam
-from from chimerascan.lib.base import parse_library_type
-from from chimerascan.lib.alignment_parser import parse_pe_sam_file
+import chimerascan.pysam as pysam
+from chimerascan.lib.base import parse_library_type
+from chimerascan.lib.alignment_parser import parse_segmented_pe_sam_file
 
 def map_reads_to_references(pe_reads):
     # bin reads by reference name to find reads that pairs
@@ -121,7 +121,7 @@ def merge_read_pairs(bamfh, output_bamfh, min_isize, max_isize, library_type):
     num_paired = 0
     num_unpaired = 0
     num_fragments = 0
-    for pe_reads in parse_pe_sam_file(bamfh):        
+    for pe_reads in parse_segmented_pe_sam_file(bamfh):        
         ref_dict = map_reads_to_references(pe_reads)
         concordant_pairs = find_concordant_pairs(ref_dict, min_isize, max_isize,
                                                  library_type)        

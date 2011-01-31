@@ -13,7 +13,7 @@ import logging
 import os
 
 # local imports
-from chimerascan.lib.bx.intersection import Interval, IntervalTree
+from chimerascan.bx.intersection import Interval, IntervalTree
 from chimerascan.lib import config
 from chimerascan.lib.feature import GeneFeature
 from find_discordant_reads import DiscordantFragment
@@ -36,6 +36,9 @@ class ChimeraMate(object):
         self.isize = 0
                 
 class Chimera(object):
+    QNAME_COL = 18
+    SEQ_FIELD_DELIM = ';'
+
     def __init__(self):
         self.name = None
         self.chimera_type = 0
@@ -49,9 +52,9 @@ class Chimera(object):
         self.mate3p = ChimeraMate()
 
     def to_list(self):
-        qnames = ';'.join(x for x in self.qnames)
-        seqs1 = ';'.join(x[0] for x in self.seqs)
-        seqs2 = ';'.join(x[1] for x in self.seqs)
+        qnames = self.SEQ_FIELD_DELIM.join(x for x in self.qnames)
+        seqs1 = self.SEQ_FIELD_DELIM.join(x[0] for x in self.seqs)
+        seqs2 = self.SEQ_FIELD_DELIM.join(x[1] for x in self.seqs)
         s = [self.mate5p.tx_name, self.mate5p.junc_pos, self.mate5p.tx_length,
              self.mate3p.tx_name, self.mate3p.junc_pos, self.mate3p.tx_length,
              self.name, self.weighted_cov, 
@@ -92,8 +95,9 @@ class Chimera(object):
         c.mate3p.isize = int(fields[15])        
         c.mate5p.exon_start_num, c.mate5p.exon_end_num = map(int, fields[16].split('-'))
         c.mate3p.exon_start_num, c.mate3p.exon_end_num = map(int, fields[17].split('-'))        
-        c.qnames = fields[18].split(';')
-        c.seqs = zip(fields[19].split(';'), fields[20].split(';'))
+        c.qnames = fields[18].split(Chimera.SEQ_FIELD_DELIM)
+        c.seqs = zip(fields[19].split(Chimera.SEQ_FIELD_DELIM), 
+                     fields[20].split(Chimera.SEQ_FIELD_DELIM))
         return c
     
     @staticmethod
