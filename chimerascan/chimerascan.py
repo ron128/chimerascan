@@ -9,12 +9,12 @@ import sys
 import subprocess
 from optparse import OptionParser
 
-import pysam
-
 # local imports
+import lib.pysam as pysam
 import lib.config as config
 from lib.config import JOB_SUCCESS, JOB_ERROR
 from lib.base import check_executable, get_read_length, parse_library_type
+
 from pipeline.align_full import align_pe_full
 from pipeline.align_segments import align, determine_read_segments
 from pipeline.merge_read_pairs import merge_read_pairs

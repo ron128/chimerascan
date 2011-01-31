@@ -13,8 +13,8 @@ import os
 import logging
 import subprocess
 
-from ..lib.config import MIN_SEGMENT_LENGTH, JOB_SUCCESS
-from ..lib.base import get_read_length
+from chimerascan.lib.config import MIN_SEGMENT_LENGTH, JOB_SUCCESS
+from chimerascan.lib.base import get_read_length
 
 class AlignError(Exception):
     def __init__(self, value):

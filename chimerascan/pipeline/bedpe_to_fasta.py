@@ -8,8 +8,8 @@ import collections
 import os
 
 # local imports
-from ..lib import pysam
-from ..lib import config
+from chimerascan.lib import pysam
+from chimerascan.lib import config
 
 def bedpe_to_junction_fasta(bed_file, reference_seq_file, read_length,
                             fasta_output_fh, junc_output_fh):

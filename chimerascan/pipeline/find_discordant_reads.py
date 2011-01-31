@@ -9,14 +9,14 @@ import logging
 import os
 
 # local libs
-from ..lib import pysam
-from ..lib.bx.intersection import Interval, IntervalTree
-from ..lib.bx.cluster import ClusterTree
+from chimerascan.lib import pysam
+from chimerascan.lib.bx.intersection import Interval, IntervalTree
+from chimerascan.lib.bx.cluster import ClusterTree
 
 # local imports
-from ..lib import config
-from ..lib.base import parse_library_type, parse_bool, parse_string_none, SamTags
-from ..lib.gene_to_genome import build_gene_maps
+from chimerascan.lib import config
+from chimerascan.lib.base import parse_library_type, parse_bool, parse_string_none, SamTags
+from chimerascan.lib.gene_to_genome import build_gene_maps
 
 # Mapping codes
 NONMAPPING = 0
