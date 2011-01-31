@@ -11,8 +11,6 @@ from find_discordant_reads import DiscordantType
 
 def to_fastq(mate, qname, seq, qual):
     return "@%s/%d\n%s\n+%s/%d\n%s" % (qname, mate+1, seq, qname, mate+1, qual)
-#def to_fastq(mate, qname, seq, qual):
-#    return "@%s\n%s\n+%s\n%s" % (qname, seq, qname, qual)
 
 def is_spanning(start, end, juncs):
     return any(start < j < end for j in juncs)
@@ -40,27 +38,18 @@ def check_fragment(frag, tx5p, tx3p):
         # TODO: check junction position to further refine decision
         # by omitting reads that are far from the predicted junction
         if (frag.clust5p.rname == "*") and (frag.clust3p.rname in tx3p):
-            #print 'CONCORDANT_SINGLE', frag.qname
             write5p = True
         if (frag.clust3p.rname == "*") and (frag.clust5p.rname in tx5p):
-            #print 'CONCORDANT_SINGLE', frag.qname
             write3p = True
     # write the potential spanning reads
-    mate = int(frag.read1_is_sense)
-    read1, read2 = None, None
+    reads = [None, None]
     if write5p:
-        fq = to_fastq(mate, frag.qname, frag.clust5p.seq, frag.clust5p.qual)            
-        if frag.read1_is_sense:
-            read1 = fq 
-        else:
-            read2 = fq
+        mate = 0 if frag.read1_is_sense else 1
+        reads[mate] = to_fastq(mate, frag.qname, frag.clust5p.seq, frag.clust5p.qual)
     if write3p:
-        fq = to_fastq(mate, frag.qname, frag.clust3p.seq, frag.clust3p.qual)            
-        if frag.read1_is_sense:
-            read2 = fq 
-        else:
-            read1 = fq
-    return read1, read2
+        mate = 1 if frag.read1_is_sense else 0
+        reads[mate] = to_fastq(mate, frag.qname, frag.clust5p.seq, frag.clust5p.qual)
+    return reads
 
 def nominate_spanning_reads(discordant_reads_fh,
                             chimeras_fh,
@@ -86,12 +75,14 @@ def nominate_spanning_reads(discordant_reads_fh,
             if read2 is not None:
                 print >>fastq_fh, read2
             read1, read2 = None, None
-        prev_qname = qname
+        # skip if reads already found
         if (read1 is not None) and (read2 is not None):
             continue
+        # update read fastq
         r1, r2 = check_fragment(frag, tx5p, tx3p)
         if read1 is None: read1 = r1
         if read2 is None: read2 = r2
+        prev_qname = qname
     if read1 is not None:
         print >>fastq_fh, read1
     if read2 is not None:
