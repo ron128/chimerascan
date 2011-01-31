@@ -10,55 +10,44 @@ import tempfile
 import os
 
 from chimerascan.lib.stats import EmpiricalCdf3D
+from nominate_chimeras import Chimera
 
-class Chimera(object):
+class SpanningChimera(Chimera):
+    def __init__(self):
+        Chimera.__init__(self)
+        self.spanning_reads = 0
+        self.encomp_and_spanning = 0
+        self.total_reads = 0
+        self.junction_hist = None
+        self.spanning_seq = None
+        self.spanning_ids = None
+        
+    def from_list(self, fields):
+        # get the chimera fields
+        Chimera.from_list(self, fields)
+        self.spanning_reads = int(fields[21])
+        self.encomp_and_spanning = int(fields[22])
+        self.total_reads = int(fields[23])
+        self.junction_hist = map(int, fields[24].split(','))
+        self.spanning_seq = fields[25]
+        self.spanning_ids = fields[26]
+
+    def to_list(self):
+        fields = Chimera.to_list(self)
+        fields.extend([self.spanning_reads, self.encomp_and_spanning, 
+                       self.total_reads, 
+                       ','.join(map(str, self.junction_hist)), 
+                       self.spanning_seq, self.spanning_ids])
+        return fields
+
     @staticmethod
-    def from_tabular(line):
-        c = Chimera()
-        fields = line.strip().split('\t')
-        c.tx5p = fields[0]
-        c.start5p = fields[1]
-        c.end5p = fields[2]
-        c.tx3p = fields[3]
-        c.start3p = fields[4]
-        c.end3p = fields[5]
-        c.name = fields[6]
-        c.gene5p, c.gene3p = fields[6].split('-', 1)
-        c.encompassing_reads = int(fields[7])
-        c.strand5p, c.strand3p = fields[8:10]
-        c.chimera_type = fields[10]
-        if fields[11] == "None":
-            c.distance = None
-        else:
-            c.distance = int(fields[11])
-        c.range5p = map(int, fields[12:14])
-        c.range3p = map(int, fields[14:16])
-        c.exons5p = fields[16]
-        c.exons3p = fields[17]
-        c.encompassing_ids = fields[18]
-        c.encompassing_seq5p = fields[19]
-        c.encompassing_seq3p = fields[20]
-        c.spanning_reads = int(fields[21])
-        c.encomp_and_spanning = int(fields[22])
-        c.total_reads = int(fields[23])
-        c.junction_hist = map(int, fields[24].split(','))
-        c.spanning_seq = fields[25]
-        c.spanning_ids = fields[26]
-        return c
-    
-    def to_tabular(self):
-        fields = [self.tx5p, self.start5p, self.end5p,
-                  self.tx3p, self.start3p, self.end3p,
-                  self.name, self.encompassing_reads,
-                  self.strand5p, self.strand3p, self.chimera_type,
-                  self.distance, self.range5p[0], self.range5p[1],
-                  self.range3p[0], self.range3p[1], 
-                  self.exons5p, self.exons3p,
-                  self.encompassing_ids, self.encompassing_seq5p, self.encompassing_seq3p,
-                  self.spanning_reads, self.encomp_and_spanning, self.total_reads, 
-                  ','.join(map(str, self.junction_hist)), 
-                  self.spanning_seq, self.spanning_ids]
-        return '\t'.join(map(str, fields))
+    def parse(line_iter):
+        for line in line_iter:
+            fields = line.strip().split('\t')
+            c = SpanningChimera()
+            c.from_list(fields)
+            yield c
+
 
 def make_temp(base_dir, suffix=''):
     fd,name = tempfile.mkstemp(suffix=suffix, prefix='tmp', dir=base_dir)
@@ -74,8 +63,7 @@ def filter_isoforms(input_file, tmp_dir):
     fh.close()
     # parse sorted file
     chimeras = []
-    for line in open(tmpfile):
-        c = Chimera.from_tabular(line)
+    for c in SpanningChimera.parse(open(tmpfile)):
         if len(chimeras) > 0 and chimeras[-1][1].name != c.name:
             # sort chimeras by total reads
             best_chimera = sorted(chimeras, key=operator.itemgetter(0))[-1][1]
@@ -96,13 +84,11 @@ def filter_overlapping_genes(chimeras):
 
 def filter_insert_size(chimeras, max_isize):
     for c in chimeras:
-        range5p = c.range5p[1] - c.range5p[0]
-        range3p = c.range3p[1] - c.range3p[0]
-        if range5p + range3p <= (2*max_isize):
+        if (c.mate5p.isize + c.mate3p.isize) <= (2*max_isize):
             yield c
         else:
             logging.warning("Removed %s due to insert size %d + %d > %d" %
-                            (c.name, range5p, range3p, 2*max_isize))
+                            (c.name, c.mate5p.isize, c.mate3p.isize, 2*max_isize))
 
 def get_max_anchor(c, anchor_min):
     # histogram maximum length spanning read
@@ -121,11 +107,6 @@ def get_kl_divergence(arr):
     kldiv = sum(x*log(x/expected) for x in arr
                 if x > 0)
     return kldiv
-    
-
-def parse_chimera_bedpe(filename):
-    for line in open(filename):
-        yield Chimera.from_tabular(line)
 
 def parse_chimera_data(chimeras, anchor_min):
     for c in chimeras:
@@ -141,14 +122,15 @@ def filter_chimeras(input_bedpe_file,
                     prob=0.05):    
     # score chimeras
     # build a empirical distribution functions for the chimeras
-    logging.info("Determining empirical distribution of chimeras")
-    ecdf = EmpiricalCdf3D(parse_chimera_data(parse_chimera_bedpe(input_bedpe_file), anchor_min))
+    logging.info("Determining empirical distribution of chimeras")    
+    ecdf = EmpiricalCdf3D(parse_chimera_data(SpanningChimera.parse(open(input_bedpe_file)), 
+                                             anchor_min))
     # add filters
     if not isoforms:
         logging.debug("Choosing highest coverage isoforms for each gene pair")        
         iter = filter_isoforms(input_bedpe_file, os.path.dirname(output_bedpe_file))
     else:
-        iter = parse_chimera_bedpe(input_bedpe_file)
+        iter = SpanningChimera.parse(open(input_bedpe_file))
     if not overlap:
         logging.debug("Filtering overlapping genes")        
         iter = filter_overlapping_genes(iter)    

@@ -64,47 +64,45 @@ class Chimera(object):
              self.mate5p.isize, self.mate3p.isize,
              '%d-%d' % (self.mate5p.exon_start_num, self.mate5p.exon_end_num),
              '%d-%d' % (self.mate3p.exon_start_num, self.mate3p.exon_end_num),
-             qnames, seqs1, seqs2]
+             qnames, seqs1, seqs2]    
         return s
     
-    @staticmethod
-    def from_list(fields):
-        c = Chimera()
-        c.mate5p = ChimeraMate()
-        c.mate3p = ChimeraMate()
-        c.mate5p.tx_name = fields[0]
-        c.mate5p.junc_pos = int(fields[1])
-        c.mate5p.tx_length = int(fields[2])
-        c.mate3p.tx_name = fields[3]
-        c.mate3p.junc_pos = int(fields[4])
-        c.mate3p.tx_length = int(fields[5])
-        c.name = fields[6]
-        c.mate5p.gene_name = c.name.split(CHIMERA_SEP)[0]
-        c.mate3p.gene_name = c.name.split(CHIMERA_SEP)[1]
-        c.weighted_cov = float(fields[7])
-        c.mate5p.strand = fields[8]
-        c.mate3p.strand = fields[9]
-        c.chimera_type = fields[10]
+    def from_list(self, fields):
+        self.mate5p = ChimeraMate()
+        self.mate3p = ChimeraMate()
+        self.mate5p.tx_name = fields[0]
+        self.mate5p.junc_pos = int(fields[1])
+        self.mate5p.tx_length = int(fields[2])
+        self.mate3p.tx_name = fields[3]
+        self.mate3p.junc_pos = int(fields[4])
+        self.mate3p.tx_length = int(fields[5])
+        self.name = fields[6]
+        self.mate5p.gene_name = self.name.split(CHIMERA_SEP)[0]
+        self.mate3p.gene_name = self.name.split(CHIMERA_SEP)[1]
+        self.weighted_cov = float(fields[7])
+        self.mate5p.strand = fields[8]
+        self.mate3p.strand = fields[9]
+        self.chimera_type = fields[10]
         if fields[11] == "None":
-            c.distance = None
+            self.distance = None
         else:
-            c.distance = int(fields[11])
-        c.reads = int(fields[12])
-        c.multimap_cov_hist = map(int,fields[13].split(','))
-        c.mate5p.isize = int(fields[14])
-        c.mate3p.isize = int(fields[15])        
-        c.mate5p.exon_start_num, c.mate5p.exon_end_num = map(int, fields[16].split('-'))
-        c.mate3p.exon_start_num, c.mate3p.exon_end_num = map(int, fields[17].split('-'))        
-        c.qnames = fields[18].split(Chimera.SEQ_FIELD_DELIM)
-        c.seqs = zip(fields[19].split(Chimera.SEQ_FIELD_DELIM), 
+            self.distance = int(fields[11])
+        self.reads = int(fields[12])
+        self.multimap_cov_hist = map(int,fields[13].split(','))
+        self.mate5p.isize = int(fields[14])
+        self.mate3p.isize = int(fields[15])        
+        self.mate5p.exon_start_num, self.mate5p.exon_end_num = map(int, fields[16].split('-'))
+        self.mate3p.exon_start_num, self.mate3p.exon_end_num = map(int, fields[17].split('-'))        
+        self.qnames = fields[18].split(Chimera.SEQ_FIELD_DELIM)
+        self.seqs = zip(fields[19].split(Chimera.SEQ_FIELD_DELIM), 
                      fields[20].split(Chimera.SEQ_FIELD_DELIM))
-        return c
-    
+        
     @staticmethod
     def parse(line_iter):
         for line in line_iter:
             fields = line.strip().split('\t')
-            c = Chimera.from_list(fields)
+            c = Chimera()
+            c.from_list(fields)
             yield c
 
 def parse_discordant_reads(infh):

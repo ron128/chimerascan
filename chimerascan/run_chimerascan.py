@@ -413,17 +413,17 @@ def main():
     #
     # Apply final filters
     #
-#    chimera_bedpe_file = os.path.join(output_dir, config.CHIMERA_BEDPE_FILE)
-#    if (up_to_date(chimera_bedpe_file, raw_chimera_bedpe_file)):
-#        logging.info("[SKIPPED] Filtering chimeras")
-#    else:
-#        logging.info("Filtering chimeras")
-#        filter_chimeras(raw_chimera_bedpe_file, 
-#                        chimera_bedpe_file,
-#                        isoforms=False,
-#                        overlap=False,
-#                        max_isize=None,
-#                        prob=0.05)            
+    chimera_bedpe_file = os.path.join(output_dir, config.CHIMERA_BEDPE_FILE)
+    if (up_to_date(chimera_bedpe_file, raw_chimera_bedpe_file)):
+        logging.info("[SKIPPED] Filtering chimeras")
+    else:
+        logging.info("Filtering chimeras")
+        filter_chimeras(raw_chimera_bedpe_file, 
+                        chimera_bedpe_file,
+                        isoforms=False,
+                        overlap=False,
+                        max_isize=None,
+                        prob=0.05)            
     retcode = JOB_SUCCESS
     sys.exit(retcode)
 
