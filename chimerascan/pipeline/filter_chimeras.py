@@ -145,7 +145,7 @@ def filter_chimeras(input_bedpe_file,
     chimera_scores = []
     for c in chimeras:
         maxspan = get_max_anchor(c, anchor_min)
-        p = ecdf(c.encompassing_reads, c.encomp_and_spanning, maxspan)
+        p = ecdf(c.reads, c.encomp_and_spanning, maxspan)
         chimera_scores.append((1.0 - p, c))
     del chimeras
     # sort chimeras
