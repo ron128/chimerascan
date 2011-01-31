@@ -18,7 +18,7 @@ import version
 # ---- Extension Modules ----------------------------------------------------
 
 def get_pysam_extension_modules():
-    samtools = Extension("lib.pysam.csamtools", # name of extension
+    samtools = Extension("chimerascan.lib.pysam.csamtools", # name of extension
                          ["chimerascan/lib/pysam/csamtools.pyx",
                           "chimerascan/lib/pysam/pysam_util.c"] +\
                           glob.glob( os.path.join( "chimerascan", "lib", "pysam", "samtools", "*.c" )),
@@ -28,11 +28,11 @@ def get_pysam_extension_modules():
                           language="c",
                           define_macros = [('FILE_OFFSET_BITS','64'),
                                            ('_USE_KNETFILE','')])     
-    tabix = Extension("lib.pysam.ctabix", # name of extension
+    tabix = Extension("chimerascan.lib.pysam.ctabix", # name of extension
                       ["chimerascan/lib/pysam/ctabix.pyx" ]  +\
                       glob.glob(os.path.join("chimerascan", "lib", "pysam", "tabix", "*.c")),
                       library_dirs=[],
-                      include_dirs=[ "chimerscan/lib/pysam/tabix", "chimerascan/lib/pysam" ],
+                      include_dirs=[ "chimerascan/lib/pysam/tabix", "chimerascan/lib/pysam" ],
                       libraries=[ "z", ],
                       language="c",
                       )
@@ -40,11 +40,11 @@ def get_pysam_extension_modules():
 
 def get_bx_extension_modules():
     # Interval clustering                
-    bx_cluster = Extension("lib.bx.cluster", 
-                           ["chimerasca/lib/bx/cluster.pyx", "chimerascan/lib/bx/intervalcluster.c"], 
+    bx_cluster = Extension("chimerascan.lib.bx.cluster", 
+                           ["chimerascan/lib/bx/cluster.pyx", "chimerascan/lib/bx/intervalcluster.c"], 
                            include_dirs=["chimerascan/lib/bx"])
     # Interval intersection
-    bx_interval = Extension("lib.bx.intersection",
+    bx_interval = Extension("chimerascan.lib.bx.intersection",
                             ["chimerascan/lib/bx/intersection.pyx" ])
     return bx_cluster, bx_interval
 
