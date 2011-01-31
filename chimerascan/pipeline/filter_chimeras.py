@@ -111,7 +111,7 @@ def get_kl_divergence(arr):
 def parse_chimera_data(chimeras, anchor_min):
     for c in chimeras:
         maxspan = get_max_anchor(c, anchor_min)
-        yield c.encompassing_reads, c.encomp_and_spanning, maxspan
+        yield c.reads, c.encomp_and_spanning, maxspan
     
 def filter_chimeras(input_bedpe_file, 
                     output_bedpe_file,
