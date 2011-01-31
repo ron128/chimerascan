@@ -338,9 +338,9 @@ def main():
     spanning_read_length = get_read_length(spanning_fastq_file)    
     if (up_to_date(junc_fasta_file, encompassing_bedpe_file) and
         up_to_date(junc_map_file, encompassing_bedpe_file)):        
-        logging.info("[SKIPPED] Chimeric junction files exist")
+        logging.info("[SKIPPED] Extracting junction read sequences")
     else:        
-        logging.info("Extracting chimeric junction sequences")
+        logging.info("Extracting junction read sequences")
         bedpe_to_junction_fasta(encompassing_bedpe_file, ref_fasta_file,                                
                                 spanning_read_length, 
                                 open(junc_fasta_file, "w"),
@@ -351,7 +351,7 @@ def main():
     bowtie_spanning_index = os.path.join(output_dir, config.JUNC_BOWTIE_INDEX)
     bowtie_spanning_index_file = os.path.join(output_dir, config.JUNC_BOWTIE_INDEX_FILE)
     if (up_to_date(bowtie_spanning_index_file, junc_fasta_file)):
-        logging.info("[SKIPPED] Bowtie junction index exists")
+        logging.info("[SKIPPED] Building bowtie index for junction-spanning reads")
     else:        
         logging.info("Building bowtie index for junction-spanning reads")
         args = [options.bowtie_build_bin, junc_fasta_file, bowtie_spanning_index]
@@ -364,7 +364,7 @@ def main():
     junc_bam_file = os.path.join(output_dir, config.JUNC_READS_BAM_FILE)
     if (up_to_date(junc_bam_file, bowtie_spanning_index_file) and
         up_to_date(junc_bam_file, spanning_fastq_file)):
-        logging.info("[SKIPPED] Aligning junction spanning ")
+        logging.info("[SKIPPED] Aligning junction spanning reads")
     else:            
         logging.info("Aligning junction spanning reads")
         retcode = align_sr_full(spanning_fastq_file, 

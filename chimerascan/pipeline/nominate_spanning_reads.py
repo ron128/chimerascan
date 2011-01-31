@@ -48,7 +48,7 @@ def check_fragment(frag, tx5p, tx3p):
         reads[mate] = to_fastq(mate, frag.qname, frag.clust5p.seq, frag.clust5p.qual)
     if write3p:
         mate = 1 if frag.read1_is_sense else 0
-        reads[mate] = to_fastq(mate, frag.qname, frag.clust5p.seq, frag.clust5p.qual)
+        reads[mate] = to_fastq(mate, frag.qname, frag.clust3p.seq, frag.clust3p.qual)
     return reads
 
 def nominate_spanning_reads(discordant_reads_fh,
