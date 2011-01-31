@@ -159,7 +159,7 @@ def filter_chimeras(input_bedpe_file,
     for p,c in chimera_scores:
         #if p <= prob:
         kldiv = get_kl_divergence(c.junction_hist)
-        print >>outfh, '\t'.join(['\t'.join(c.to_list()), str(p), str(kldiv)])
+        print >>outfh, '\t'.join(['\t'.join(map(str,c.to_list())), str(p), str(kldiv)])
     outfh.close()
 
 
