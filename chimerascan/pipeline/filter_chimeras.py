@@ -34,10 +34,12 @@ class SpanningChimera(Chimera):
 
     def to_list(self):
         fields = Chimera.to_list(self)
-        fields.extend([self.spanning_reads, self.encomp_and_spanning, 
+        fields.extend([self.spanning_reads, 
+                       self.encomp_and_spanning, 
                        self.total_reads, 
                        ','.join(map(str, self.junction_hist)), 
-                       self.spanning_seq, self.spanning_ids])
+                       self.spanning_seq, 
+                       self.spanning_ids])
         return fields
 
     @staticmethod
@@ -157,7 +159,7 @@ def filter_chimeras(input_bedpe_file,
     for p,c in chimera_scores:
         #if p <= prob:
         kldiv = get_kl_divergence(c.junction_hist)
-        print >>outfh, '\t'.join([c.to_list(), str(p), str(kldiv)])
+        print >>outfh, '\t'.join(['\t'.join(c.to_list()), str(p), str(kldiv)])
     outfh.close()
 
 
