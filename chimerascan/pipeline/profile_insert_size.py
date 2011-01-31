@@ -7,7 +7,7 @@ import array
 import logging
 
 # local imports
-import pysam
+from ..lib import pysam
 
 def parse_pe_sam_file(bamfh):
     pe_reads = ([], [])

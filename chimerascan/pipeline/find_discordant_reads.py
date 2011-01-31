@@ -6,18 +6,17 @@ Created on Jan 25, 2011
 import collections
 import itertools
 import logging
-import operator
 import os
 
 # local libs
-import pysam
-from bx.intersection import Interval, IntervalTree
-from bx.cluster import ClusterTree
+from ..lib import pysam
+from ..lib.bx.intersection import Interval, IntervalTree
+from ..lib.bx.cluster import ClusterTree
 
 # local imports
-import config
-from base import parse_library_type, parse_bool, parse_string_none, SamTags
-from gene_to_genome import build_gene_maps
+from ..lib import config
+from ..lib.base import parse_library_type, parse_bool, parse_string_none, SamTags
+from ..lib.gene_to_genome import build_gene_maps
 
 # Mapping codes
 NONMAPPING = 0

@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 # local imports
-from ..lib import pysam as pysam
+from ..lib import pysam
 from ..lib.base import get_read_length
 from fix_alignment_ordering import fix_alignment_ordering
 

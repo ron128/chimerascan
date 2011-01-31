@@ -13,9 +13,9 @@ import logging
 import os
 
 # local imports
-from bx.intersection import Interval, IntervalTree
-import config
-from feature import GeneFeature
+from ..lib.bx.intersection import Interval, IntervalTree
+from ..lib import config
+from ..lib.feature import GeneFeature
 from find_discordant_reads import DiscordantFragment
 
 # constants

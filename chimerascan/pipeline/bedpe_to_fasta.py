@@ -7,10 +7,9 @@ import logging
 import collections
 import os
 
-import pysam
-
 # local imports
-import config
+from ..lib import pysam
+from ..lib import config
 
 def bedpe_to_junction_fasta(bed_file, reference_seq_file, read_length,
                             fasta_output_fh, junc_output_fh):

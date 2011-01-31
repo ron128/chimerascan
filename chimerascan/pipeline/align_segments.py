@@ -13,8 +13,8 @@ import os
 import logging
 import subprocess
 
-from config import MIN_SEGMENT_LENGTH, JOB_SUCCESS
-from base import get_read_length
+from ..lib.config import MIN_SEGMENT_LENGTH, JOB_SUCCESS
+from ..lib.base import get_read_length
 
 class AlignError(Exception):
     def __init__(self, value):
@@ -145,7 +145,6 @@ def align(fastq_files, fastq_format,
 
 def main():
     from optparse import OptionParser
-    import config
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = OptionParser("usage: %prog [options] <output_dir> <mate1.fq> [<mate2.fq>]")

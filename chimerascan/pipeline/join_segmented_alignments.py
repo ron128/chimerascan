@@ -7,10 +7,11 @@ import logging
 import collections
 
 # local imports
-import pysam
+from ..lib import pysam
+from ..lib import config
+from ..lib.base import SamTags
 from fix_alignment_ordering import fix_segmented_alignment_ordering
-from base import SamTags
-import config
+
 
 def build_segment_alignment_dict(aln_dict, reads, seg_num):
     aln_seg_dict = {}

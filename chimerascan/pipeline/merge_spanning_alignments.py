@@ -7,11 +7,10 @@ import logging
 import collections
 import numpy as np
 
-import pysam
 
 # local imports
-from alignment_parser import parse_sr_sam_file
-
+from ..lib import pysam
+from ..lib.alignment_parser import parse_sr_sam_file
 # constants
 JUNC_MAP_QNAME_COLUMN = 18
 SEQ_FIELD_DELIM = ';'

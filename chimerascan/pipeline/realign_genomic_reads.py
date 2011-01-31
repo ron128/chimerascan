@@ -9,23 +9,18 @@ Created on Jan 11, 2011
 @author: mkiyer
 '''
 import collections
-import itertools
 import logging
-import operator
 import os
-import sys
 
 # local libs
-import pysam
-from bx.intersection import Interval, IntervalTree
-from bx.cluster import ClusterTree
-
-# local imports
-import config
-from feature import GeneFeature
-from seq import DNA_reverse_complement
-from gene_to_genome import build_gene_maps, get_gene_tids
-from alignment_parser import parse_pe_sam_file
+from ..lib import pysam
+from ..lib import config
+from ..lib.bx.intersection import Interval, IntervalTree
+from ..lib.bx.cluster import ClusterTree
+from ..lib.feature import GeneFeature
+from ..lib.seq import DNA_reverse_complement
+from ..lib.gene_to_genome import build_gene_maps, get_gene_tids
+from ..lib.alignment_parser import parse_pe_sam_file
 
 def build_exon_trees(samfh, genefile):
     rname_tid_map = dict((rname,i) for i,rname in enumerate(samfh.references))

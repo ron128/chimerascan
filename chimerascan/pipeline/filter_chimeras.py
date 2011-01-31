@@ -140,7 +140,7 @@ def filter_chimeras(input_bedpe_file,
     # score chimeras
     # build a empirical distribution functions for the chimeras
     logging.info("Determining empirical distribution of chimeras")
-    from empiricalcdf import EmpiricalCdf3D
+    from ..lib.stats import EmpiricalCdf3D
     ecdf = EmpiricalCdf3D(parse_chimera_data(parse_chimera_bedpe(input_bedpe_file), anchor_min))
     # add filters
     if not isoforms:
