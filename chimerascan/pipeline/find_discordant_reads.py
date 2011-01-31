@@ -9,9 +9,9 @@ import logging
 import os
 
 # local libs
-from chimerascan.lib import pysam
-from chimerascan.lib.bx.intersection import Interval, IntervalTree
-from chimerascan.lib.bx.cluster import ClusterTree
+from chimerascan import pysam
+from chimerascan.bx.intersection import Interval, IntervalTree
+from chimerascan.bx.cluster import ClusterTree
 
 # local imports
 from chimerascan.lib import config

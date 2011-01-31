@@ -13,14 +13,14 @@ import logging
 import os
 
 # local libs
-from ..lib import pysam
-from ..lib import config
-from ..lib.bx.intersection import Interval, IntervalTree
-from ..lib.bx.cluster import ClusterTree
-from ..lib.feature import GeneFeature
-from ..lib.seq import DNA_reverse_complement
-from ..lib.gene_to_genome import build_gene_maps, get_gene_tids
-from ..lib.alignment_parser import parse_pe_sam_file
+from chimerascan import pysam
+from chimerascan.bx.intersection import Interval, IntervalTree
+from chimerascan.bx.cluster import ClusterTree
+from chimerascan.lib import config
+from chimerascan.lib.feature import GeneFeature
+from chimerascan.lib.seq import DNA_reverse_complement
+from chimerascan.lib.gene_to_genome import build_gene_maps, get_gene_tids
+from chimerascan.lib.alignment_parser import parse_pe_sam_file
 
 def build_exon_trees(samfh, genefile):
     rname_tid_map = dict((rname,i) for i,rname in enumerate(samfh.references))

@@ -11,8 +11,8 @@ import subprocess
 import sys
 from optparse import OptionParser
 
+# local imports
 import pysam
-
 from lib.feature import GeneFeature
 from lib.seq import DNA_reverse_complement
 from lib.config import JOB_ERROR, JOB_SUCCESS, ALIGN_INDEX, GENE_REF_PREFIX, GENE_FEATURE_FILE

@@ -7,7 +7,7 @@ import array
 import logging
 
 # local imports
-from ..lib import pysam
+from chimerascan import pysam
 
 def parse_pe_sam_file(bamfh):
     pe_reads = ([], [])

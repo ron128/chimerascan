@@ -18,21 +18,21 @@ import version
 # ---- Extension Modules ----------------------------------------------------
 
 def get_pysam_extension_modules():
-    samtools = Extension("chimerascan.lib.pysam.csamtools", # name of extension
-                         ["chimerascan/lib/pysam/csamtools.pyx",
-                          "chimerascan/lib/pysam/pysam_util.c"] +\
-                          glob.glob( os.path.join( "chimerascan", "lib", "pysam", "samtools", "*.c" )),
+    samtools = Extension("chimerascan.pysam.csamtools", # name of extension
+                         ["chimerascan/pysam/csamtools.pyx",
+                          "chimerascan/pysam/pysam_util.c"] +\
+                          glob.glob( os.path.join( "chimerascan", "pysam", "samtools", "*.c" )),
                           library_dirs=[],
-                          include_dirs=[ "chimerascan/lib/pysam/samtools", "chimerascan/lib/pysam" ],
+                          include_dirs=[ "chimerascan/pysam/samtools", "chimerascan/pysam" ],
                           libraries=[ "z", ],
                           language="c",
                           define_macros = [('FILE_OFFSET_BITS','64'),
                                            ('_USE_KNETFILE','')])     
-    tabix = Extension("chimerascan.lib.pysam.ctabix", # name of extension
-                      ["chimerascan/lib/pysam/ctabix.pyx" ]  +\
-                      glob.glob(os.path.join("chimerascan", "lib", "pysam", "tabix", "*.c")),
+    tabix = Extension("chimerascan.pysam.ctabix", # name of extension
+                      ["chimerascan/pysam/ctabix.pyx" ]  +\
+                      glob.glob(os.path.join("chimerascan", "pysam", "tabix", "*.c")),
                       library_dirs=[],
-                      include_dirs=[ "chimerascan/lib/pysam/tabix", "chimerascan/lib/pysam" ],
+                      include_dirs=[ "chimerascan/pysam/tabix", "chimerascan/pysam" ],
                       libraries=[ "z", ],
                       language="c",
                       )
@@ -40,12 +40,12 @@ def get_pysam_extension_modules():
 
 def get_bx_extension_modules():
     # Interval clustering                
-    bx_cluster = Extension("chimerascan.lib.bx.cluster", 
-                           ["chimerascan/lib/bx/cluster.pyx", "chimerascan/lib/bx/intervalcluster.c"], 
-                           include_dirs=["chimerascan/lib/bx"])
+    bx_cluster = Extension("chimerascan.bx.cluster", 
+                           ["chimerascan/bx/cluster.pyx", "chimerascan/bx/intervalcluster.c"], 
+                           include_dirs=["chimerascan/bx"])
     # Interval intersection
-    bx_interval = Extension("chimerascan.lib.bx.intersection",
-                            ["chimerascan/lib/bx/intersection.pyx" ])
+    bx_interval = Extension("chimerascan.bx.intersection",
+                            ["chimerascan/bx/intersection.pyx" ])
     return bx_cluster, bx_interval
 
 def get_extension_modules():
@@ -64,10 +64,10 @@ def main():
           license="MIT",
           platforms="ALL",
           url = "http://chimerascan.googlecode.com",
-          py_modules=["chimerascan/lib/pysam/__init__", 
-                      "chimerascan/lib/pysam/Pileup", 
-                      "chimerascan/lib/pysam/namedtuple",
-                      "chimerascan/lib/pysam/version"],
+          py_modules=["chimerascan/pysam/__init__", 
+                      "chimerascan/pysam/Pileup", 
+                      "chimerascan/pysam/namedtuple",
+                      "chimerascan/pysam/version"],
           ext_modules= get_extension_modules(),
           cmdclass= {'build_ext': build_ext})
 

@@ -7,9 +7,9 @@ import collections
 import logging
 
 # local imports
-from ..lib import pysam
-from from ..lib.base import parse_library_type
-from from ..lib.alignment_parser import parse_pe_sam_file
+from chimerascan import pysam
+from from chimerascan.lib.base import parse_library_type
+from from chimerascan.lib.alignment_parser import parse_pe_sam_file
 
 def map_reads_to_references(pe_reads):
     # bin reads by reference name to find reads that pairs

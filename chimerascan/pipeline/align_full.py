@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 # local imports
-from chimerascan.lib import pysam
+from chimerascan import pysam
 from chimerascan.lib.base import get_read_length
 from fix_alignment_ordering import fix_alignment_ordering
 

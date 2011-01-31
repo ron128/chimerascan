@@ -7,9 +7,9 @@ import logging
 import collections
 
 # local imports
-from ..lib import pysam
-from ..lib import config
-from ..lib.base import SamTags
+from chimerascan import pysam
+from chimerascan.lib import config
+from chimerascan.lib.base import SamTags
 from fix_alignment_ordering import fix_segmented_alignment_ordering
 
 
@@ -278,7 +278,7 @@ def join_segmented_alignments(input_sam_file, input_fastq_file, output_bam_file,
     tid_type_map = get_tid_ref_types(outfh)
     #outfh = pysam.Samfile("-", "w", template=infh)
     # iterate through paired-end alignments
-    logging.info("Processing paired alignments...")
+    logging.info("Processing paired alignments")
     align_iter = fix_segmented_alignment_ordering(infh, 
                                                   open(input_fastq_file), 
                                                   is_paired)    

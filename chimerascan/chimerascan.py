@@ -10,7 +10,7 @@ import subprocess
 from optparse import OptionParser
 
 # local imports
-import lib.pysam as pysam
+import pysam
 import lib.config as config
 from lib.config import JOB_SUCCESS, JOB_ERROR
 from lib.base import check_executable, get_read_length, parse_library_type
