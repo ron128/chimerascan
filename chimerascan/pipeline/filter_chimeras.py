@@ -50,7 +50,6 @@ class SpanningChimera(Chimera):
             c.from_list(fields)
             yield c
 
-
 def make_temp(base_dir, suffix=''):
     fd,name = tempfile.mkstemp(suffix=suffix, prefix='tmp', dir=base_dir)
     os.close(fd)
@@ -103,10 +102,11 @@ def get_max_anchor(c, anchor_min):
 
 def get_kl_divergence(arr):
     from math import log
-    if sum(arr) == 0:
-        return 0    
-    expected = sum(arr) / float(len(arr))
-    kldiv = sum(x*log(x/expected) for x in arr
+    t = sum(arr)
+    if t == 0:
+        return 0
+    expected = t / float(len(arr))
+    kldiv = sum((x/float(t))*log(x/expected) for x in arr
                 if x > 0)
     return kldiv
 
@@ -192,56 +192,3 @@ def main():
 
 if __name__ == '__main__': main()
 
-
-#def filter_hard_coverage(chimeras, coverage):
-#    logging.debug("Filtering coverage < %d" % (coverage))
-#    for chimera in chimeras:
-#        if chimera.total_reads < coverage:
-#            continue
-#        yield chimera
-#
-#def find_empirical_cutoff(dict, cutoff):
-#    sorted_keys = sorted(dict)
-#    total_count = sum(dict[k] for k in sorted_keys)
-#    print dict
-#    prob = 0.0
-#    for bin in sorted_keys:
-#        if prob >= cutoff:
-#            break
-#        count = dict[bin]
-#        prob += count / float(total_count) 
-#    return bin, prob
-#    
-#def dict_to_probs(self, dict):
-#    sorted_keys = sorted(dict)
-#    prob_dict = {}
-#    n = sum(dict[k] for k in sorted_keys)
-#    prob = 0.0
-#    for bin in sorted_keys:
-#        count = dict[bin]
-#        prob_dict[bin] = prob
-#        prob += count / float(n) 
-#    return n, prob_dict
-#
-#def profile_empirical_coverage(chimeras, prob=0.95):
-#    encomp_dict = collections.defaultdict(lambda: 0)
-#    spanning_dict = collections.defaultdict(lambda: 0)
-#    encomp_span_dict = collections.defaultdict(lambda: 0)
-#    # profile results
-#    for c in chimeras:
-#        # histogram encompassing reads per chimera
-#        encomp_dict[c.encompassing_reads] += 1
-#        encomp_span_dict[c.encomp_and_spanning] += 1
-#        # histogram maximum length spanning read
-#        for i in xrange(len(c.junction_hist)-1, -1, -1):
-#            if c.junction_hist[i] > 0:
-#                break
-#        spanning_dict[i] += 1
-#    # find encompassing and spanning read cutoffs
-#    encomp_cutoff, encomp_prob = find_empirical_cutoff(encomp_dict, prob)
-#    span_cutoff, span_prob = find_empirical_cutoff(spanning_dict, prob)
-#    encomp_span_cutoff, encomp_span_prob = find_empirical_cutoff(encomp_span_dict, prob)
-#    logging.info("Encompassing reads >= %d has p=%f" % (encomp_cutoff, encomp_prob))
-#    logging.info("Spanning reads >= %d has p=%f" % (span_cutoff, span_prob))
-#    logging.info("Encompassing/Spanning reads >= %d has p=%f" % (encomp_span_cutoff, encomp_span_prob))
-#    return encomp_cutoff, span_cutoff, encomp_span_cutoff

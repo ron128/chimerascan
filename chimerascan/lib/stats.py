@@ -4,7 +4,17 @@ Created on Jan 30, 2011
 @author: mkiyer
 '''
 import math
+from math import log
 from collections import defaultdict
+
+def kl_divergence(arr):
+    t = sum(arr)
+    if t == 0:
+        return 0
+    expected = t / float(len(arr))
+    kldiv = sum((x/float(t))*log(x/expected) for x in arr
+                if x > 0)
+    return kldiv
 
 def poisson(m):
     '''

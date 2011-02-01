@@ -26,7 +26,7 @@ from pipeline.nominate_spanning_reads import nominate_spanning_reads
 from pipeline.bedpe_to_fasta import bedpe_to_junction_fasta
 from pipeline.merge_spanning_alignments import merge_spanning_alignments
 from pipeline.profile_insert_size import profile_isize_stats
-from pipeline.filter_chimeras import filter_chimeras
+from pipeline.filter_spanning_chimeras import filter_spanning_chimeras
 
 def check_command_line_args(options, args, parser):
     # check command line arguments
@@ -418,12 +418,14 @@ def main():
         logging.info("[SKIPPED] Filtering chimeras")
     else:
         logging.info("Filtering chimeras")
-        filter_chimeras(raw_chimera_bedpe_file, 
-                        chimera_bedpe_file,
-                        isoforms=False,
-                        overlap=False,
-                        max_isize=None,
-                        prob=0.05)            
+        # add standard deviations above the mean
+        max_isize = isize_mean + 4*isize_std
+        filter_spanning_chimeras(raw_chimera_bedpe_file, 
+                                 chimera_bedpe_file,
+                                 gene_feature_file,
+                                 max_multimap=1,
+                                 multimap_cov_ratio=0.10,
+                                 max_isize=max_isize)
     retcode = JOB_SUCCESS
     sys.exit(retcode)
 

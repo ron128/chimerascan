@@ -9,8 +9,8 @@ import logging
 import cPickle as pickle
 
 # local libraries
-from bx.intersection import Interval, IntervalTree
-import pysam
+from chimerascan.bx.intersection import Interval, IntervalTree
+from chimerascan import pysam
 
 # local imports
 import config
