@@ -1,3 +1,10 @@
-We would like to thank Heng Li and the other samtools contributors for their support
-and their hard work. As a wrapper, pysam merely tries to make their code accessible 
-to the python community - the heavy lifting has been done by the samtools developers.
+We would like to thank James Taylor and the bx-python team for the 
+efficient interval tree implementation.  The interval tree and 
+cluster tree implementations are well written and fast and help to
+build the foundation of chimerascan.
+
+We would also like to thank Andreas Heger (andreas.heger) and the 
+'pysam' team for there excellent package.  Pysam is used in almost
+every stage of the chimerascan pipeline and facilitated rapid 
+prototyping and development of the tool.  We appreciate their 
+efforts to make samtools accessible to the python community

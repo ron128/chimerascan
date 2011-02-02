@@ -71,12 +71,13 @@ def main():
     from run_chimerascan import RunConfig
     job_name = sys.argv[1]
     # parse run parameters in config file and command line
+    chimerascan_args = sys.argv[2:]
     runconfig = RunConfig()
-    runconfig.from_args(sys.argv[2:])
+    runconfig.from_args(chimerascan_args)
     args = [sys.executable,
             os.path.join(os.path.dirname(__file__), 
                          "run_chimerascan.py")]
-    args.extend(sys.argv[1:])
+    args.extend(chimerascan_args)
     qsub(job_name, args, 
          runconfig.num_processors, 
          cwd=runconfig.output_dir, 

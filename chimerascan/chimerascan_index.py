@@ -57,8 +57,9 @@ def bed12_to_fasta(gene_feature_file, reference_seq_file):
                (GENE_REF_PREFIX + g.tx_name, g.chrom, start, end, g.strand, g.gene_name, seqlines))
     ref_fa.close()
 
-def create_chimerascan_index(output_dir, genome_fasta_file, gene_feature_file,
-                             samtools_bin, bowtie_build_bin):
+def create_chimerascan_index(output_dir, genome_fasta_file, 
+                             gene_feature_file,
+                             bowtie_build_bin):
     # create output dir if it does not exist
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -78,9 +79,11 @@ def create_chimerascan_index(output_dir, genome_fasta_file, gene_feature_file,
     shutil.copyfile(gene_feature_file, os.path.join(output_dir, GENE_FEATURE_FILE))
     # index the combined fasta file
     logging.info("Indexing FASTA file...")
-    if subprocess.call([samtools_bin, "faidx", index_fasta_file]) != os.EX_OK:
-        logging.error("samtools failed to index the combined fasta file")
-        return JOB_ERROR
+    fh = pysam.Fastafile(index_fasta_file)
+    fh.close()
+    #if subprocess.call([samtools_bin, "faidx", index_fasta_file]) != os.EX_OK:
+    #    logging.error("samtools failed to index the combined fasta file")
+    #    return JOB_ERROR
     # build bowtie index on the combined fasta file
     logging.info("Building bowtie index...")
     bowtie_index_name = os.path.join(output_dir, ALIGN_INDEX)
