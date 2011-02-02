@@ -3,12 +3,26 @@ Created on Jan 5, 2011
 
 @author: mkiyer
 '''
+__author__ = "Matthew Iyer"
+__copyright__ = "Copyright 2011, chimerascan project"
+__credits__ = ["Matthew Iyer", "Christopher Maher"]
+__license__ = "GPL"
+__version__ = "0.3.0"
+__maintainer__ = "Matthew Iyer"
+__email__ = "mkiyer@med.umich.edu"
+__status__ = "beta"
+
 import logging
 import os
 import sys
 import subprocess
 from optparse import OptionParser
 import xml.etree.ElementTree as etree
+
+# check for python version 2.6.0 or greater
+if sys.version_info < (2,6,0):
+    sys.stderr.write("You need python 2.6 or later to run chimerascan\n")
+    sys.exit(1)
 
 # local imports
 import pysam
@@ -52,6 +66,7 @@ DEFAULT_ANCHOR_MISMATCHES = 5
 translate_quals = {'solexa': 'solexa-quals',
                    'illumina': 'solexa1.3-quals',
                    'sanger': 'phred33-quals'}
+quals_help_string = ",".join(translate_quals.keys())
 
 def check_command_line_args(options, args, parser):
     # check command line arguments
@@ -167,12 +182,14 @@ class RunConfig(object):
         self.anchor_mismatches = root.findtext("anchor_mismatches", DEFAULT_ANCHOR_MISMATCHES)
 
     def from_args(self, args):
-        parser = OptionParser("usage: %prog [options] [--config <config_file> "
-                              " | <mate1.fq> <mate2.fq> <output_dir>]")
+        parser = OptionParser(usage="%prog [options] [--config <config_file> "
+                              " | <mate1.fq> <mate2.fq> <output_dir>]",
+                              version="%s" % __version__)
         # standard options
-        parser.add_option("--config", dest="config_file", default=None)
         parser.add_option("--index", dest="index_dir", default=None,
                           help="Path to chimerascan index directory")
+        parser.add_option("--config", dest="config_file",
+                          help="Path to configuration XML file") 
         parser.add_option("-p", "--processors", dest="num_processors", 
                           type="int", default=DEFAULT_NUM_PROCESSORS,
                           help="Number of processor cores to allocate to "
@@ -189,36 +206,58 @@ class RunConfig(object):
                           dest="bowtie_mode_v", default=DEFAULT_BOWTIE_MODE_V,
                           help="Run bowtie with -v to ignore quality scores")
         parser.add_option("--multihits", type="int", dest="multihits", 
-                          default=DEFAULT_MULTIHITS)
-        parser.add_option("--mismatches", type="int", dest="mismatches", 
-                          default=DEFAULT_MISMATCHES)
+                          default=DEFAULT_MULTIHITS, metavar="X",
+                          help="Ignore reads that map to more than X "
+                          "locations [default=%default]")
+        parser.add_option("--mismatches", type="int", dest="mismatches",
+                          default=DEFAULT_MISMATCHES, metavar="X",
+                          help="Aligned reads must have <= X mismatches "
+                          "[default=%default]")
         parser.add_option("--segment-length", type="int", dest="segment_length", 
-                          default=DEFAULT_SEGMENT_LENGTH)
+                          default=DEFAULT_SEGMENT_LENGTH,
+                          help="Size of read segments during discordant " 
+                          "alignment phase [default=%default]")
         parser.add_option("--trim5", type="int", dest="trim5", 
-                          default=DEFAULT_TRIM5)
+                          default=DEFAULT_TRIM5, metavar="N",
+                          help="Trim N bases from 5' end of read")
         parser.add_option("--trim3", type="int", dest="trim3", 
-                          default=DEFAULT_TRIM3)    
-        parser.add_option("--quals", dest="fastq_format", default=DEFAULT_FASTQ_FORMAT)
+                          default=DEFAULT_TRIM3, metavar="N",
+                          help="Trim N bases from 3' end of read")
+        parser.add_option("--quals", dest="fastq_format", 
+                          default=DEFAULT_FASTQ_FORMAT, metavar="FMT",
+                          help="Choose from %s [default=%s]" % 
+                          (quals_help_string, DEFAULT_FASTQ_FORMAT))
         parser.add_option("--min-fragment-length", type="int", 
-                          dest="min_fragment_length", default=DEFAULT_MIN_FRAG_LENGTH,
-                          help="Smallest expected fragment length")
+                          dest="min_fragment_length", 
+                          default=DEFAULT_MIN_FRAG_LENGTH,
+                          help="Smallest expected fragment length "
+                          "[default=%default]")
         parser.add_option("--max-fragment-length", type="int", 
-                          dest="max_fragment_length", default=DEFAULT_MAX_FRAG_LENGTH,
+                          dest="max_fragment_length", 
+                          default=DEFAULT_MAX_FRAG_LENGTH,
                           help="Largest expected fragment length (reads less"
                           " than this fragment length are assumed to be "
                           " genomically contiguous) [default=%default]")
         parser.add_option("--max-indel-size", type="int", 
-                          dest="max_indel_size", default=DEFAULT_MAX_INDEL_SIZE,
-                          help="Tolerate indels less than Nbp "
+                          dest="max_indel_size", 
+                          default=DEFAULT_MAX_INDEL_SIZE,
+                          help="Tolerate indels less than N bp "
                           "[default=%default]", metavar="N")
-        parser.add_option('--library', dest="library_type", default=DEFAULT_LIBRARY_TYPE,
+        parser.add_option('--library', dest="library_type", 
+                          default=DEFAULT_LIBRARY_TYPE,
                           help="Library type ('fr', 'rf') [default=%default]")
-        parser.add_option("--anchor-min", type="int", dest="anchor_min", default=DEFAULT_ANCHOR_MIN,
-                          help="Minimum junction overlap required to call spanning reads")
-        parser.add_option("--anchor-max", type="int", dest="anchor_max", default=DEFAULT_ANCHOR_MAX,
-                          help="Junction overlap below which to enforce mismatch checks")
-        parser.add_option("--anchor-mismatches", type="int", dest="anchor_mismatches", default=DEFAULT_ANCHOR_MISMATCHES,
-                          help="Number of mismatches allowed within anchor region")
+        parser.add_option("--anchor-min", type="int", dest="anchor_min", 
+                          default=DEFAULT_ANCHOR_MIN,
+                          help="Minimum junction overlap required to call "
+                          "spanning reads")
+        parser.add_option("--anchor-max", type="int", dest="anchor_max", 
+                          default=DEFAULT_ANCHOR_MAX,
+                          help="Junction overlap below which to enforce "
+                          "mismatch checks")
+        parser.add_option("--anchor-mismatches", type="int", dest="anchor_mismatches", 
+                          default=DEFAULT_ANCHOR_MISMATCHES,
+                          help="Number of mismatches allowed within anchor "
+                          "region")
         options, args = parser.parse_args(args=args)
         # parse config file options/args
         if options.config_file is not None:
@@ -414,7 +453,7 @@ def run_chimerascan(runconfig):
         f.close()
     else:
         logging.info("Profiling insert size distribution")
-        max_isize_samples = 1e6
+        max_isize_samples = config.MAX_ISIZE_SAMPLES
         bamfh = pysam.Samfile(aligned_bam_file, "rb")
         isize_stats = profile_isize_stats(bamfh,
                                           min_fragment_length,
@@ -582,20 +621,7 @@ def run_chimerascan(runconfig):
                                 bowtie_mode=bowtie_mode)
         if retcode != 0:
             logging.error("Bowtie failed with error code %d" % (retcode))    
-            sys.exit(retcode)   
-#        align([spanning_fastq_file], 
-#              runconfig.fastq_format,
-#              bowtie_spanning_index,
-#              junc_bam_file, 
-#              bowtie_bin=runconfig.bowtie_bin, 
-#              num_processors=runconfig.num_processors, 
-#              segment_length=runconfig.segment_length,
-#              segment_trim=False,
-#              trim5=runconfig.trim5, 
-#              trim3=runconfig.trim3, 
-#              multihits=runconfig.multihits,
-#              mismatches=runconfig.mismatches, 
-#              bowtie_mode=bowtie_mode)
+            sys.exit(retcode)
     #
     # Merge spanning and encompassing read information
     #

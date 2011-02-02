@@ -77,9 +77,9 @@ def profile_insert_sizes(bamfh, min_isize, max_isize, max_samples=None):
                 outside_range += 1
     return isize_array
 
-def get_hist_stats(a):
+def get_hist_stats(a, min_isize=0):
     # find the mode
-    mode = a.index(max(a))
+    mode = a.index(max(a)) + min_isize
     # find the median
     n = sum(a)    
     half_n = n / 2.0
@@ -91,6 +91,7 @@ def get_hist_stats(a):
         count += x
         if median is None and (count >= half_n):
             median = i
+    median += min_isize            
     # find the mean
     mean = mean / float(n)
     # find the standard deviation
@@ -98,20 +99,25 @@ def get_hist_stats(a):
     for i,x in enumerate(a):
         std = std + x*((i - mean)**2)
     std = (std / float(n-1))**0.5
+    mean += min_isize            
     return mean, median, mode, std
 
-def profile_isize_stats(bamfh, min_isize, max_isize, max_samples=None, min_samples=50):
+def profile_isize_stats(bamfh, min_isize, max_isize, max_samples=None):
+    logging.debug("Profiling insert sizes between min_isize=%d and "
+                  " max_isize=%d" % (min_isize, max_isize))
     isize_array = profile_insert_sizes(bamfh, min_isize, max_isize, 
                                        max_samples=max_samples)
     # if number of samples is small, use approximation instead
     n = sum(isize_array)
-    if n < min_samples:
+    if n == 0:
         mean = int((max_isize - min_isize)/2.0)
-        std = int((max_isize - min_isize) / 4.0)
-        logging.warning("Insert size profiling yielded less than %d "
-                        " samples, using approximation instead" % (min_samples))
+        std = int((max_isize - min_isize)/4.0)
+        logging.warning("Insert size profiling yielded 0 samples "
+                        "using approximation instead")
         return mean, mean, mean, std
-    mean, median, mode, std = get_hist_stats(isize_array)
+    mean, median, mode, std = get_hist_stats(isize_array, min_isize)
+    logging.debug("Predicted ISIZE mean=%f, median=%d, mode=%d, stdev=%f" % 
+                  (mean, median, mode, std))
     return mean, median, mode, std
     
 def main():
