@@ -24,15 +24,13 @@ CHIMERA_SEP = "|"
 
 class ChimeraMate(object):
     def __init__(self):
-        self.tx_name = None
-        self.tx_length = 0
-        self.gene_name = None
         self.start = 0
         self.end = 0
+        self.tx_name = None
+        self.gene_name = None
         self.strand = "."
         self.exon_start_num = 0
         self.exon_end_num = 0
-        self.junc_pos = 0
         self.isize = 0
                 
 class Chimera(object):
@@ -55,8 +53,8 @@ class Chimera(object):
         qnames = self.SEQ_FIELD_DELIM.join(x for x in self.qnames)
         seqs1 = self.SEQ_FIELD_DELIM.join(x[0] for x in self.seqs)
         seqs2 = self.SEQ_FIELD_DELIM.join(x[1] for x in self.seqs)
-        s = [self.mate5p.tx_name, self.mate5p.junc_pos, self.mate5p.tx_length,
-             self.mate3p.tx_name, self.mate3p.junc_pos, self.mate3p.tx_length,
+        s = [self.mate5p.tx_name, self.mate5p.start, self.mate5p.end,
+             self.mate3p.tx_name, self.mate3p.start, self.mate3p.end,
              self.name, self.weighted_cov, 
              self.mate5p.strand, self.mate3p.strand,
              self.chimera_type, self.distance, self.reads, 
@@ -71,11 +69,11 @@ class Chimera(object):
         self.mate5p = ChimeraMate()
         self.mate3p = ChimeraMate()
         self.mate5p.tx_name = fields[0]
-        self.mate5p.junc_pos = int(fields[1])
-        self.mate5p.tx_length = int(fields[2])
+        self.mate5p.start = int(fields[1])
+        self.mate5p.end = int(fields[2])
         self.mate3p.tx_name = fields[3]
-        self.mate3p.junc_pos = int(fields[4])
-        self.mate3p.tx_length = int(fields[5])
+        self.mate3p.start = int(fields[4])
+        self.mate3p.end = int(fields[5])
         self.name = fields[6]
         self.mate5p.gene_name = self.name.split(CHIMERA_SEP)[0]
         self.mate3p.gene_name = self.name.split(CHIMERA_SEP)[1]
@@ -318,11 +316,13 @@ def get_chimera_mate(gene, reads, gene_genome_map, trim, is_5prime=True):
     # get exon information
     firstexon_num, firstexon_start, firstexon_end = get_exon_interval(gene, trimstart)
     lastexon_num, lastexon_start, lastexon_end = get_exon_interval(gene, trimend)
-    mate.tx_length = sum(end - start for start, end in gene.exons)
     if is_5prime:
-        mate.junc_pos = lastexon_end
+        mate.start = 0
+        mate.end = lastexon_end
     else:
-        mate.junc_pos = firstexon_start
+        tx_length = sum(end - start for start, end in gene.exons)
+        mate.start = firstexon_start
+        mate.end = tx_length
     mate.exon_start_num = firstexon_num
     mate.exon_end_num = lastexon_num
     return mate

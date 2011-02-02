@@ -6,12 +6,12 @@ Created on Jan 25, 2011
 import collections
 import itertools
 import logging
+import operator
 import os
 
 # local libs
 from chimerascan import pysam
 from chimerascan.bx.intersection import Interval, IntervalTree
-from chimerascan.bx.cluster import ClusterTree
 
 # local imports
 from chimerascan.lib import config
@@ -91,27 +91,62 @@ def parse_reads(bamfh):
     if num_reads > 0:
         yield pe_reads
 
+
 class RefCluster(object):
     def __init__(self, rname, strand, max_dist):
         self.rname = rname
         self.strand = strand
-        self.cluster_tree = ClusterTree(max_dist,1)
         self.vals = []
+        self.max_dist = max_dist
 
     def add(self, start, end, ind, val):
-        self.cluster_tree.insert(start, end, len(self.vals))
-        self.vals.append((val, ind))
+        self.vals.append((start, end, ind, val))
 
     def get_clusters(self):
-        for start, end, inds in self.cluster_tree.getregions():
-            ind_val_dict = collections.defaultdict(lambda: [])
-            # organize reads by split index
-            for i in inds:
-                val,ind = self.vals[i]
-                ind_val_dict[ind].append(val)
-            # TODO: remove assert
-            assert len(ind_val_dict) > 0
+        if len(self.vals) == 0:
+            return
+        # sort values in order of increasing start position
+        self.vals.sort(key=operator.itemgetter(0))
+        # initialize cluster
+        valiter = iter(self.vals)
+        start, end, ind, val = valiter.next()
+        ind_val_dict = collections.defaultdict(lambda: [])
+        ind_val_dict[ind].append(val)
+        # find clusters
+        for next_start, next_end, ind, val in valiter:
+            if next_start > (end + self.max_dist):
+                # this interval is outside bounds of current cluster
+                yield Interval(start, end, chrom=self.rname, strand=self.strand, value=ind_val_dict)
+                ind_val_dict = collections.defaultdict(lambda: [])
+                start = next_start
+            # update values
+            if next_end > end:
+                end = next_end
+            ind_val_dict[ind].append(val)
+        if len(ind_val_dict) > 0:
             yield Interval(start, end, chrom=self.rname, strand=self.strand, value=ind_val_dict)
+
+#from chimerascan.bx.cluster import ClusterTree
+#class RefCluster(object):
+#    def __init__(self, rname, strand, max_dist):
+#        self.rname = rname
+#        self.strand = strand
+#        self.cluster_tree = ClusterTree(max_dist,1)        
+#        self.vals = []
+#
+#    def add(self, start, end, ind, val):
+#        self.cluster_tree.insert(start, end, len(self.vals))
+#        self.vals.append((val, ind))
+#
+#    def get_clusters(self):
+#        for start, end, inds in self.cluster_tree.getregions():
+#            ind_val_dict = collections.defaultdict(lambda: [])
+#            # organize reads by split index
+#            for i in inds:
+#                val,ind = self.vals[i]
+#                ind_val_dict[ind].append(val)
+#            yield Interval(start, end, chrom=self.rname, strand=self.strand, value=ind_val_dict)
+
 
 class ReadCluster(object):
     def __init__(self, interval, start_ind, end_ind, mapped_inds, 
@@ -121,10 +156,12 @@ class ReadCluster(object):
         self.end = interval.end
         self.rname = interval.chrom
         self.strand = interval.strand
-        # minimum multimaps for all reads in cluster
+        self.split_dict = {}
         self.multimaps = None
-        self.split_dict = interval.value
+        # copy split dict from clustered intervals (value)
         for ind,reads in interval.value.iteritems():
+            self.split_dict[ind] = reads
+            # find minimum multimaps for all reads in cluster
             min_multimaps = min(r.opt('NH') for r in reads)
             if (self.multimaps is None) or self.multimaps < min_multimaps:
                 self.multimaps = min_multimaps
@@ -196,7 +233,7 @@ def find_split_points(refmaps, num_clusters):
             # object containing the ReadClusters at that index
             ind_rclust_dict = interval.value 
             for ind in ind_rclust_dict:
-                ind_clust_map[ind].add(clust_id)    
+                ind_clust_map[ind].add(clust_id)
     # now walk through cluster indexes in order to find split points
     start_ind = 0
     mapped_inds = []
@@ -245,8 +282,10 @@ def find_split_read_clusters(partition_splits, max_indel_size, max_multihits):
             # keep track of mapping results for reads in this split
             mapping_codes.add(get_mapping_code(r, max_multihits))
             if r.is_unmapped:
+                #print 'UNMAPPED', 'IND', split_ind, 'READ', r
                 unmapped_read_dict[split_ind].append(r)
                 continue
+            #print 'MAPPED', 'IND', split_ind, 'READ', r
             # cluster reads by reference name and strand
             strand = int(r.is_reverse)            
             rkey = (r.rname, strand)
@@ -472,13 +511,6 @@ class DiscordantFragment(object):
         clust3p = DiscordantCluster.from_list(fields[15:24])
         return DiscordantFragment(qname, discordant_type, read1_is_sense, 
                                   clust5p, clust3p)
-    
-    @property
-    def clust1(self):
-        return self.clust5p if self.read1_is_sense else self.clust3p
-    @property
-    def clust2(self):
-        return self.clust3p if self.read1_is_sense else self.clust5p
 
 
 def interval_to_discordant_cluster(interval, tid_rname_map, gene_genome_map,
@@ -629,11 +661,14 @@ def find_discordant_pairs(pe_reads, tid_rname_map, gene_genome_map,
                           library_type, padding):
     pe_clusters = ([],[])
     mate_mapping_codes = (set(), set())
-    qname = pe_reads[0][0][0][0].qname    
+    qname = pe_reads[0][0][0][0].qname
+    #print 'QNAME', qname 
     # search for discordant read clusters in individual reads first
     # before using paired-end information
     for mate, partitions in enumerate(pe_reads):
+        #print 'MATE', mate, 'PARTITIONS', len(partitions)
         for partition_ind, partition_splits in enumerate(partitions):
+            #print 'PARTITION', partition_ind, 'SPLITS', len(partition_splits)
             # check for discordant reads 
             split_mapping_codes, read_clusters = \
                 find_split_read_clusters(partition_splits, max_indel_size, 
@@ -688,7 +723,7 @@ def find_discordant_reads(bamfh, output_file,
     logging.info("Finding discordant reads")
     refs = bamfh.references
     outfh = open(output_file, "w")
-    for pe_reads in parse_reads(bamfh):
+    for pe_reads in parse_reads(bamfh):    
         pairs = find_discordant_pairs(pe_reads, refs, gene_genome_map, 
                                       max_indel_size, max_isize, 
                                       max_multihits, library_type,
@@ -702,16 +737,15 @@ def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = OptionParser("usage: %prog [options] <bam> <out.bedpe>")
+    parser.add_option("--index", dest="index_dir",
+                      help="Path to chimerascan index directory")
     parser.add_option('--max-fragment-length', dest="max_fragment_length", 
                       type="int", default=1000)
     parser.add_option('--max-indel-size', dest="max_indel_size", 
                       type="int", default=100)
     parser.add_option('--library-type', dest="library_type", default="fr")
-    parser.add_option("--index", dest="index_dir",
-                      help="Path to chimerascan index directory")
     parser.add_option('--multihits', type="int", default=1)
     parser.add_option('--padding', type="int", default=0)
-    parser.add_option("--contam-refs", dest="contam_refs", default=None)    
     options, args = parser.parse_args()
     input_bam_file = args[0]
     output_file = args[1]

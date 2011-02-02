@@ -64,8 +64,8 @@ def nominate_spanning_reads(discordant_reads_fh,
     tx5p = collections.defaultdict(lambda: [])
     tx3p = collections.defaultdict(lambda: [])
     for chimera in Chimera.parse(chimeras_fh):
-        tx5p[chimera.mate5p.tx_name].append(chimera.mate5p.junc_pos)
-        tx3p[chimera.mate3p.tx_name].append(chimera.mate3p.junc_pos)
+        tx5p[chimera.mate5p.tx_name].append(chimera.mate5p.end)
+        tx3p[chimera.mate3p.tx_name].append(chimera.mate3p.start)
     # parse discordant reads    
     logging.info("Nominating spanning reads")    
     read1, read2 = None, None

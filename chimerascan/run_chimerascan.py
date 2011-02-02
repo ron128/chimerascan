@@ -449,16 +449,17 @@ def run_chimerascan(runconfig):
         logging.info("[SKIPPED] Profiling insert size distribution")
         f = open(isize_stats_file, "r")
         isize_stats = f.next().strip().split('\t')
-        isize_mean, isize_median, isize_mode, isize_std = isize_stats         
         f.close()
     else:
         logging.info("Profiling insert size distribution")
-        max_isize_samples = config.MAX_ISIZE_SAMPLES
+        max_isize_samples = config.ISIZE_MAX_SAMPLES
         bamfh = pysam.Samfile(aligned_bam_file, "rb")
         isize_stats = profile_isize_stats(bamfh,
                                           min_isize=min_fragment_length,
                                           max_isize=runconfig.max_fragment_length,
                                           max_samples=max_isize_samples)
+    # unpack insert size statistics tuple for use in downstream stages
+    isize_mean, isize_median, isize_mode, isize_std = isize_stats    
     #
     # Discordant reads alignment step
     #
@@ -641,7 +642,7 @@ def run_chimerascan(runconfig):
     else:
         logging.info("Filtering chimeras")
         # add standard deviations above the mean
-        max_isize = isize_mean + 4*isize_std
+        max_isize = isize_mean + config.ISIZE_NUM_STDEVS*isize_std
         filter_spanning_chimeras(raw_chimera_bedpe_file, 
                                  chimera_bedpe_file,
                                  gene_feature_file,

@@ -106,8 +106,8 @@ def build_junc_coverage_map(chimeras, ggmap):
         num_chimeras += 1
         # convert to genomic coords
         # subtract one since 5' junc position is an open interval
-        coord5p = gene_to_genome_pos(c.mate5p.tx_name, c.mate5p.junc_pos - 1, ggmap)
-        coord3p = gene_to_genome_pos(c.mate3p.tx_name, c.mate3p.junc_pos, ggmap)
+        coord5p = gene_to_genome_pos(c.mate5p.tx_name, c.mate5p.end - 1, ggmap)
+        coord3p = gene_to_genome_pos(c.mate3p.tx_name, c.mate3p.start, ggmap)
         # keep track of maximum coverage isoform
         pairkey = (coord5p, coord3p)
         paircov = (c.encomp_and_spanning, c.weighted_cov, c.total_reads)
@@ -145,8 +145,8 @@ def build_junc_permiscuity_map(chimeras, ggmap):
     junc3p_map = collections.defaultdict(lambda: collections.defaultdict(lambda: 0))
     for c in chimeras:
         # subtract one since 5' junc position is an open interval
-        coord5p = gene_to_genome_pos(c.mate5p.tx_name, c.mate5p.junc_pos - 1, ggmap)
-        coord3p = gene_to_genome_pos(c.mate3p.tx_name, c.mate3p.junc_pos, ggmap)
+        coord5p = gene_to_genome_pos(c.mate5p.tx_name, c.mate5p.end - 1, ggmap)
+        coord3p = gene_to_genome_pos(c.mate3p.tx_name, c.mate3p.start, ggmap)
         # keep track of total reads eminating from each 5' junction
         # by keeping a dictionary for each 5' junction to all 3' junctions
         # that stores the maximum coverage at that 5'/3' pair
@@ -170,8 +170,8 @@ def collect_permiscuity_stats(input_file, ggmap):
 
 def calc_permiscuity(c, juncmap5p, juncmap3p, ggmap):
     # subtract one since 5' junc position is an open interval
-    coord5p = gene_to_genome_pos(c.mate5p.tx_name, c.mate5p.junc_pos - 1, ggmap)
-    coord3p = gene_to_genome_pos(c.mate3p.tx_name, c.mate3p.junc_pos, ggmap)
+    coord5p = gene_to_genome_pos(c.mate5p.tx_name, c.mate5p.end - 1, ggmap)
+    coord3p = gene_to_genome_pos(c.mate3p.tx_name, c.mate3p.start, ggmap)
     partners = juncmap5p[coord5p]
     cov = partners[coord3p]
     total_cov = sum(partners.itervalues())

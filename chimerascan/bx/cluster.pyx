@@ -51,6 +51,7 @@ cdef extern from "intervalcluster.h":
     clusternode* clusternode_insert(clustertree *tree, clusternode *node, int start, int end, int id)
     clustertree* create_clustertree(int max_dist, int min_intervals)
     treeitr* clusteritr(clustertree *tree)
+    void freeclusteritr(treeitr *itr)
     void free_tree(clustertree *tree)
 
 cdef class ClusterTree:
@@ -80,11 +81,12 @@ cdef class ClusterTree:
         tree.getregions() returns [(1, 2, [3]), (3, 8, [0, 1, 4]), (9, 10, [2])]
         '''
         cdef treeitr *itr
+        cdef treeitr *head
         cdef interval *ival
         
         regions = []
-        itr = clusteritr(self.tree)
-        
+        head = clusteritr(self.tree)
+        itr = head        
         while (itr):
             ids = []
             ival = itr.node.interval_head
@@ -93,7 +95,8 @@ cdef class ClusterTree:
                 ival = ival.next
 
             regions.append( (itr.node.start, itr.node.end, sorted(ids)) )
-            itr = itr.next
+            itr = itr.next        
+        freeclusteritr(head)  
         return regions
         
     def getlines(self):

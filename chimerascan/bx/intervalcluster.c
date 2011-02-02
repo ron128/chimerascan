@@ -199,6 +199,16 @@ treeitr* clusteritr(clustertree *tree) {
     return NULL;
 }
 
+/* Free an infix iterator */
+void freeclusteritr(treeitr *itr) {
+    if (itr != NULL) {
+    	if (itr->next != NULL) {
+    		freeclusteritr(itr->next);
+    	}
+    	free(itr);
+    }
+}
+
 /* Insert based on the start position of intervals */
 clusternode* clusternode_insert(clustertree *tree, clusternode *node, int start, int end, int id) {
     int oldstart;

@@ -19,25 +19,21 @@ def bedpe_to_junction_fasta(bed_file, reference_seq_file, read_length,
     for line in open(bed_file):
         #print line
         fields = line.strip().split('\t')
-        ref1 = fields[0]
-        offset1 = int(fields[1]) 
-        length1 = int(fields[2])
-        ref2 = fields[3]
-        offset2 = int(fields[4])
-        length2 = int(fields[5])
-        # join end of exon1 with beginning of exon2
-        r1_start = max(offset1 - read_length + 1, 0)
-        r2_end = min(offset2 + read_length - 1, length2)
+        ref5p, start5p, end5p = fields[0], int(fields[1]), int(fields[2])
+        ref3p, start3p, end3p = fields[3], int(fields[4]), int(fields[5])
+        # join end of 5' ref with beginning of 3' ref
+        junc_start5p = max(start5p, end5p - read_length + 1)
+        junc_end3p = min(end3p, start3p + read_length - 1)
         # fetch sequence
-        seq1 = ref_fa.fetch(gene_fasta_prefix + ref1, r1_start, offset1)
-        seq2 = ref_fa.fetch(gene_fasta_prefix + ref2, offset2, r2_end)
-        seq = seq1 + seq2
+        seq5p = ref_fa.fetch(gene_fasta_prefix + ref5p, junc_start5p, end5p)
+        seq3p = ref_fa.fetch(gene_fasta_prefix + ref3p, start3p, junc_end3p)
+        seq = seq5p + seq3p
         if len(seq) < (read_length*2) - 2:
             logging.warning("Could not extract sequence of length >%d from BEDPE, only retrieved sequence of (%d,%d) for gene %s" % 
-                            ((read_length*2)-2, len(seq1), len(seq2), line.strip()))
+                            ((read_length*2)-2, len(seq5p), len(seq3p), line.strip()))
         # add sequence to dictionary and group fusion candidates together
         # if they have the same junction sequence
-        juncs[(len(seq1),seq)].append(fields)
+        juncs[(len(seq5p),seq)].append(fields)
     # now extract the unique junction sequences
     # and write them to a fasta file
     junc_index = 1    
