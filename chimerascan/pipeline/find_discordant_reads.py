@@ -327,8 +327,9 @@ def merge_read_clusters(clusters1, clusters2, max_dist, library_type):
         if used_inds.isdisjoint(ind_tuple):            
             used_inds.update(ind_tuple)
             paired_clusters.append(ind_cluster_dict[ind_tuple])
-        else:
-            logging.warning("TUPLE %s NOT DISJOINT (ALL TUPLES=%s" % (ind_tuple, sorted(ind_cluster_dict, cmp=cmplen)))
+        # TODO: analyze complex mapping tuples further
+        #else:
+        #    logging.warning("TUPLE %s NOT DISJOINT (ALL TUPLES=%s" % (ind_tuple, sorted(ind_cluster_dict, cmp=cmplen)))
     return paired_clusters
 
 

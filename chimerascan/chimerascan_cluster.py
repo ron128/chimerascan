@@ -1,128 +1,87 @@
 '''
-Created on Jan 31, 2011
+Created on Feb 1, 2011
 
 @author: mkiyer
 '''
+import os
+import subprocess
 
+NODE_MEMORY = 45000.0
+NODE_PROCESSORS = 12
+MEM_PER_PROCESSOR = int(float(NODE_MEMORY) / NODE_PROCESSORS)
+QUEUE_NAME = "arul_flux"
 
-translate_quals = {'solexa': 'solexa-quals',
-                   'illumina': 'solexa1.3-quals',
-                   'sanger': 'phred33-quals'}
+def qsub(job_name, args, num_processors, cwd=None, walltime="60:00:00", 
+         pmem=None, deps=None, stdout=None, email_addresses=None):
+    '''
+    job_name: string name of job
+    cmd: string (or list of args) containing command-line arguments for job
+    num_processors: number of processors to submit with (cannot be greater than the number of processors per node)
+    cwd: the "working directory" of the job (allows scripts to access files using relative pathnames)
+    walltime: the walltime passed to qsub
+    pmem: amount of memory allocated to this job
+    deps: 'None' if no dependencies, of a python list of job ids
+    stdout: string filename for storing stdout
+    email_addresses: list of email addresses to send job information
+    '''
+    if isinstance(deps, basestring):
+        deps = [deps]    
+    if isinstance(email_addresses, basestring):
+        email_addresses = [email_addresses]
+    if cwd is None:
+        cwd = os.getcwd()
+    num_processors = min(NODE_PROCESSORS, num_processors)
+    if pmem is None:
+        pmem = MEM_PER_PROCESSOR
+    if stdout is None:
+        stdout = "${PBS_JOBID}"
+    lines = ["#!/bin/sh",
+             "#PBS -N %s" % job_name,
+             "#PBS -l nodes=%d:ppn=%d,walltime=%s,pmem=%dmb" % (1, num_processors, walltime, pmem),
+             "#PBS -l qos=%s" % (QUEUE_NAME),
+             "#PBS -A %s" % (QUEUE_NAME),
+             "#PBS -q flux",
+             "#PBS -V",
+             "#PBS -j oe",
+             "#PBS -o %s/%s" % (cwd, stdout)]
+    if email_addresses is not None:        
+        lines.append("#PBS -m bae")
+        for email_address in email_addresses:
+            lines.append("#PBS -M %s" % email_address)
+    if deps is not None:
+        lines.append("#PBS -W depend=afterok:%s" % (":".join([d for d in deps])))    
+    
+    if isinstance(args, basestring):
+        lines.extend(["cat $PBS_NODEFILE", 
+                  "cd %s" % (cwd),
+                  args])
+    else:
+        lines.extend(["cat $PBS_NODEFILE", 
+                  "cd %s" % (cwd), 
+                  ' '.join(args)])
+    print '\n'.join(lines)
+    p = subprocess.Popen("qsub", stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    p.stdin.write('\n'.join(lines))
+    job_id = p.communicate()[0]
+    #job_id='test'
+    return job_id.strip()
 
-class JobError(Exception):
-    def __init__(self, msg):
-        self.msg = msg
-    def __repr__(self):
-        return "'<%s(msg='%s'" % (self.__class__.__name__, self.msg)
+def main():
+    import sys
+    from run_chimerascan import RunConfig
+    job_name = sys.argv[1]
+    # parse run parameters in config file and command line
+    runconfig = RunConfig()
+    runconfig.from_args(sys.argv[2:])
+    args = [sys.executable,
+            os.path.join(os.path.dirname(__file__), 
+                         "run_chimerascan.py")]
+    args.extend(sys.argv[1:])
+    qsub(job_name, args, 
+         runconfig.num_processors, 
+         cwd=runconfig.output_dir, 
+         walltime="60:00:00")
+    sys.exit(0)
 
-def parse_bool(s):
-    if s is None:
-        return False
-    return True if s.lower() in set(["t", "true", "yes", "y"]) else False
-
-def file_exists_and_is_newer(outfile, mtime):    
-    if os.path.exists(outfile):
-        return os.path.getmtime(outfile) >= mtime
-    return False
-
-def file_exists_and_size_gt(outfile, filesize):    
-    if os.path.exists(outfile):
-        return os.path.getsize(outfile) >= filesize
-    return False
-
-def file_newer(outfile, infile):
-    return file_exists_and_is_newer(outfile, os.path.getmtime(infile))
-
-def file_newer_and_larger(outfile, infile):
-    a = file_exists_and_is_newer(outfile, os.path.getmtime(infile))
-    b = file_exists_and_size_gt(outfile, os.path.getsize(infile))
-    return a and b
-
-class PipelineConfig(object):
-    @staticmethod
-    def from_xml(xmlfile):
-        config = PipelineConfig()
-        tree = etree.parse(xmlfile)        
-        root = tree.getroot()
-        # directories
-        config.output_dir = root.findtext('output_dir')
-        config.tmp_dir = root.findtext('tmp_dir') 
-        # fastqc tools
-        config.fastqc_bin = root.findtext('fastqc_bin')
-        # samtools
-        config.samtools_bin = root.findtext('samtools_bin')
-        # bedtools
-        config.bedtools_path = root.findtext('bedtools_path')
-        # bowtie
-        bowtie_elem = root.find("bowtie")
-        config.bowtie_path = bowtie_elem.get("path")
-        config.bowtie_bin = os.path.join(config.bowtie_path, "bowtie")
-        config.bowtie_build = os.path.join(config.bowtie_path, "bowtie-build")
-        config.bowtie_index = bowtie_elem.findtext("index")
-        config.bowtie_threads = int(bowtie_elem.findtext("processes"))
-        config.multihits = int(bowtie_elem.findtext("multihits"))
-        config.mismatches = int(bowtie_elem.findtext("mismatches"))
-        config.seed_length = int(bowtie_elem.findtext("seed_length"))
-        # genome reference
-        config.ref_fasta_file = root.findtext("ref_fasta_file")
-        # gene alignments 
-        config.gene_bed_file = root.findtext("gene_bed_file")
-        config.gene_name_file = root.findtext("gene_name_file")        
-        config.gene_fasta_prefix = root.findtext("gene_fasta_prefix")
-        config.insert_size_max = int(root.findtext("insert_size_max"))
-        # chimera detection thresholds
-        config.anchor_min = root.findtext("anchor_min")
-        config.anchor_max = root.findtext("anchor_max")
-        config.anchor_mismatches = root.findtext("anchor_mismatches")        
-        return config
-
-class JobConfig(object):
-    @staticmethod
-    def from_xml(job_file, root_output_dir):
-        if not os.path.exists(root_output_dir):
-            logging.error("Cannot create JobConfig because output_dir %s does not exist" % (root_output_dir))
-        j = JobConfig()
-        tree = etree.parse(job_file)    
-        root = tree.getroot()
-        output_dir_elem = root.find("output_dir")
-        j.dst_output_dir = output_dir_elem.text
-        j.remote = parse_bool(output_dir_elem.get("remote"))
-        if j.remote:
-            j.remote_ip = output_dir_elem.get("ip")
-        else:
-            j.remote_ip = None
-        j.name = root.get("name")
-        j.output_dir = os.path.join(root_output_dir, j.name)
-        j.species = root.findtext("species")
-        j.fragment_layout = root.findtext("fragment_layout")
-        j.fragment_length_mean = int(root.findtext("fragment_length_mean"))
-        j.fastq_format = translate_quals[root.findtext("quality_scores")]    
-        j.read_length = int(root.findtext("read_length"))
-        src_fastq_files = {}
-        dst_fastq_files = {}
-        fastq_files = {}
-        for mate_elem in root.findall("fastq_files/*"):
-            mate = int(mate_elem.get("mate"))
-            src_fastq_files[mate] = mate_elem.text
-            ext = os.path.splitext(mate_elem.text)[1]
-            dst_fastq_files[mate] = os.path.join(j.output_dir, "mate%d%s" % (mate,ext))
-            fastq_files[mate] = os.path.join(j.output_dir, "mate%d.fq" % (mate))
-        j.src_fastq_files = [src_fastq_files[mate] for mate in xrange(len(src_fastq_files))]
-        j.dst_fastq_files = [dst_fastq_files[mate] for mate in xrange(len(dst_fastq_files))]
-        j.fastq_files = [fastq_files[mate] for mate in xrange(len(fastq_files))]
-        # alignment step
-        j.chimerascan_dir = os.path.join(j.output_dir, "chimerascan")
-        j.discordant_bam_file = os.path.join(j.chimerascan_dir, DISCORDANT_READS_FILE)
-        j.expression_file = os.path.join(j.chimerascan_dir, EXPRESSION_FILE)
-        # chimera nomination
-        j.chimera_bedpe_file = os.path.join(j.chimerascan_dir, "filtered_chimeras.bedpe.txt")
-        # chimera fasta file
-        j.chimera_fasta_file = os.path.join(j.chimerascan_dir, "chimericjuncs.fa")
-        j.chimera_mapping_file = os.path.join(j.chimerascan_dir, "chimericjunc_mapping.txt")
-        # spanning bowtie index
-        j.bowtie_chimera_index = os.path.splitext(j.chimera_fasta_file)[0]
-        # spanning read output files
-        j.spanning_bowtie_output_files = ["mate%d_spanning_bowtie.txt" % (mate) for mate in xrange(len(fastq_files))]
-        # chimera output file
-        j.spanning_chimera_file = os.path.join(j.chimerascan_dir, "chimeras.bedpe.txt")
-        return j
+if __name__ == '__main__':
+    main()
