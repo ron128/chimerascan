@@ -456,14 +456,9 @@ def run_chimerascan(runconfig):
         max_isize_samples = config.MAX_ISIZE_SAMPLES
         bamfh = pysam.Samfile(aligned_bam_file, "rb")
         isize_stats = profile_isize_stats(bamfh,
-                                          min_fragment_length,
-                                          runconfig.max_fragment_length,
+                                          min_isize=min_fragment_length,
+                                          max_isize=runconfig.max_fragment_length,
                                           max_samples=max_isize_samples)
-        isize_mean, isize_median, isize_mode, isize_std = isize_stats
-        bamfh.close()
-        f = open(isize_stats_file, "w")
-        print >>f, '\t'.join(map(str, [isize_mean, isize_median, isize_mode, isize_std]))
-        f.close()    
     #
     # Discordant reads alignment step
     #
