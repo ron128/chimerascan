@@ -7,6 +7,70 @@ import math
 from math import log
 from collections import defaultdict
 
+def comb(N,k):
+    """
+    This function was taken from scipy 0.9.0rc1
+    
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS 
+    FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE 
+    COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
+    INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES 
+    (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
+    SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) 
+    HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, 
+    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING 
+    IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
+    POSSIBILITY OF SUCH DAMAGE.
+    
+    The number of combinations of N things taken k at a time.
+    This is often expressed as "N choose k".
+
+    Parameters
+    ----------
+    N : int, array
+        Number of things.
+    k : int, array
+        Number of elements taken.
+
+    Returns
+    -------
+    val : int, array
+        The total number of combinations.
+
+    Notes
+    -----
+    - Array arguments accepted only for exact=0 case.
+    - If k > N, N < 0, or k < 0, then a 0 is returned.
+
+    Examples
+    --------
+    >>> k = np.array([3, 4])
+    >>> n = np.array([10, 10])
+    >>> comb(n, k, exact=False)
+    array([ 120.,  210.])
+    >>> comb(10, 3, exact=True)
+    120L
+    """
+    if (k > N) or (N < 0) or (k < 0):
+        return 0L
+    val = 1L
+    for j in xrange(min(k, N-k)):
+        val = (val*(N-j))//(j+1)
+    return val
+
+def normal_pdf(x, m, v):
+    return 1.0/math.sqrt(2*math.pi*v) * math.exp(-(x-m)**2/(2*v))
+
+def binomial_pdf(p, n, k):
+    if n < 100:
+        return comb(n, k) * p**k * p**(n-k)  # Fall back to your current method
+    return normal_pdf(k, n*p, n*p*(1.0-p))
+
+def binomial_cdf(p, n, k):
+    return sum(binomial_pdf(p,n,x) for x in xrange(k))
+
 def kl_divergence(arr):
     t = sum(arr)
     if t == 0:
