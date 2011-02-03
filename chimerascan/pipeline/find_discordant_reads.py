@@ -374,9 +374,9 @@ class DiscordantFragment(object):
                  'code', 'read1_is_sense', 'clust5p', 'clust3p')
     # columns in the tabular output that contain the references
     # (useful for sorting)
-    REF1_COL = 7
-    REF2_COL = 16
-
+    REF1_COL = 6
+    REF2_COL = 15
+    
     # fragment type codes
     NA = 0
     NONMAPPING = 1
@@ -487,6 +487,7 @@ class DiscordantFragment(object):
         f = DiscordantFragment(qname, read1_is_sense, clust5p, clust3p,
                                code=code, is_genome=is_genome)
         f._unpack_flags(flags)
+        return f
         
 
 def interval_to_discordant_cluster(interval, tid_rname_map, gene_genome_map,

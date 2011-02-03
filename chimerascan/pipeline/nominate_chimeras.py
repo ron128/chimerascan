@@ -118,12 +118,12 @@ def parse_discordant_gene_pairs(infh):
     prev_tx5p, prev_tx3p = None,None
     reads = []
     for frag in parse_discordant_reads(infh):
-        if frag.discordant_type.is_genome:
-            continue
-        if frag.clust5p.rname == "*":
-            continue
-        if frag.clust3p.rname == "*":
-            continue
+#        if frag.discordant_type.is_genome:
+#            continue
+#        if frag.clust5p.rname == "*":
+#            continue
+#        if frag.clust3p.rname == "*":
+#            continue
         tx5p = frag.clust5p.rname
         tx3p = frag.clust3p.rname
         if (tx5p, tx3p) != (prev_tx5p, prev_tx3p):

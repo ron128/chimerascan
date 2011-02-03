@@ -192,14 +192,14 @@ class RunConfig(object):
         self.max_indel_size = root.findtext("max_indel_size", DEFAULT_MAX_INDEL_SIZE)
         self.library_type = root.findtext("library_type", DEFAULT_LIBRARY_TYPE)
         # filtering params
-        self.filter_max_multimaps = root.findtext("filter_max_multimaps", DEFAULT_FILTER_MAX_MULTIMAPS)
-        self.filter_multimap_ratio = root.findtext("filter_multimap_ratio", DEFAULT_FILTER_MULTIMAP_RATIO)
-        self.filter_isize_stdevs = root.findtext("filter_isize_stdevs", DEFAULT_FILTER_ISIZE_STDEVS)
-        self.filter_strand_pval = root.findtext("filter_strand_pval", DEFAULT_FILTER_STRAND_PVALUE)
+        self.filter_max_multimaps = int(root.findtext("filter_max_multimaps", DEFAULT_FILTER_MAX_MULTIMAPS))
+        self.filter_multimap_ratio = float(root.findtext("filter_multimap_ratio", DEFAULT_FILTER_MULTIMAP_RATIO))
+        self.filter_isize_stdevs = int(root.findtext("filter_isize_stdevs", DEFAULT_FILTER_ISIZE_STDEVS))
+        self.filter_strand_pval = float(root.findtext("filter_strand_pval", DEFAULT_FILTER_STRAND_PVALUE))
         # spanning read constraints
-        self.anchor_min = root.findtext("anchor_min", DEFAULT_ANCHOR_MIN)
-        self.anchor_max = root.findtext("anchor_min", DEFAULT_ANCHOR_MAX)
-        self.anchor_mismatches = root.findtext("anchor_mismatches", DEFAULT_ANCHOR_MISMATCHES)
+        self.anchor_min = int(root.findtext("anchor_min", DEFAULT_ANCHOR_MIN))
+        self.anchor_max = int(root.findtext("anchor_min", DEFAULT_ANCHOR_MAX))
+        self.anchor_mismatches = int(root.findtext("anchor_mismatches", DEFAULT_ANCHOR_MISMATCHES))
 
     def from_args(self, args):
         parser = OptionParser(usage="%prog [options] [--config <config_file> "
@@ -504,7 +504,7 @@ def run_chimerascan(runconfig):
     if up_to_date(isize_stats_file, aligned_bam_file):
         logging.info("[SKIPPED] Profiling insert size distribution")
         f = open(isize_stats_file, "r")
-        isize_stats = f.next().strip().split('\t')
+        isize_stats = map(float, f.next().strip().split('\t'))
         f.close()
     else:
         logging.info("Profiling insert size distribution")
@@ -514,6 +514,9 @@ def run_chimerascan(runconfig):
                                           min_isize=min_fragment_length,
                                           max_isize=runconfig.max_fragment_length,
                                           max_samples=max_isize_samples)
+        f = open(isize_stats_file, "w")
+        print >>f, '\t'.join(map(str, isize_stats))
+        f.close()
     # unpack insert size statistics tuple for use in downstream stages
     isize_mean, isize_median, isize_mode, isize_std = isize_stats    
     #
@@ -566,8 +569,10 @@ def run_chimerascan(runconfig):
     #
     # Find discordant reads step
     #
-    discordant_gene_bedpe_file = os.path.join(tmp_dir, config.DISCORDANT_GENE_BEDPE_FILE)
-    discordant_genome_bedpe_file = os.path.join(tmp_dir, config.DISCORDANT_GENOME_BEDPE_FILE)
+    discordant_gene_bedpe_file = \
+        os.path.join(tmp_dir, config.DISCORDANT_GENE_BEDPE_FILE)
+    discordant_genome_bedpe_file = \
+        os.path.join(tmp_dir, config.DISCORDANT_GENOME_BEDPE_FILE)
     padding = original_read_length - segmented_read_length
     if (up_to_date(discordant_gene_bedpe_file, paired_bam_file) and
         up_to_date(discordant_genome_bedpe_file, paired_bam_file)):
@@ -586,7 +591,9 @@ def run_chimerascan(runconfig):
     #
     # Extract full sequences of the discordant reads
     #
-    extended_discordant_gene_bedpe_file = os.path.join(runconfig.output_dir, config.EXTENDED_DISCORDANT_GENE_BEDPE_FILE)
+    extended_discordant_gene_bedpe_file = \
+        os.path.join(runconfig.output_dir, 
+                     config.EXTENDED_DISCORDANT_GENE_BEDPE_FILE)
     if up_to_date(extended_discordant_gene_bedpe_file, discordant_gene_bedpe_file):
         logging.info("[SKIPPED] Retrieving full length sequences for realignment")
     else:
@@ -639,7 +646,7 @@ def run_chimerascan(runconfig):
     #
     spanning_fastq_file = os.path.join(runconfig.output_dir, 
                                        config.SPANNING_FASTQ_FILE)
-    if (up_to_date(spanning_fastq_file, unaligned_fastq_files)):
+    if all(up_to_date(spanning_fastq_file, f) for f in unaligned_fastq_files):
         logging.info("[SKIPPED] Preparing junction spanning reads")
     else:
         logging.info("Preparing junction spanning reads")
