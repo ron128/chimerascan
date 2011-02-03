@@ -533,8 +533,8 @@ def run_chimerascan(runconfig):
                                        trim5=runconfig.trim5,
                                        trim3=runconfig.trim3)
     segmented_read_length = segments[-1][1]
-    logging.info("Segmented alignment will use effective read length of %d" % 
-                 (segmented_read_length))
+    logging.debug("Segmented alignment will use effective read length of %d" % 
+                  (segmented_read_length))
     if all(up_to_date(discordant_bam_file, fq) for fq in runconfig.fastq_files):
         logging.info("[SKIPPED] Discordant alignment results exist")
     else:
@@ -744,6 +744,8 @@ def run_chimerascan(runconfig):
         filter_spanning_chimeras(raw_chimera_bedpe_file, 
                                  chimera_bedpe_file,
                                  gene_feature_file)
+    logging.info("Finished run. Chimeras written to file %s" %
+                 (chimera_bedpe_file))
     return JOB_SUCCESS
 
 def main():
