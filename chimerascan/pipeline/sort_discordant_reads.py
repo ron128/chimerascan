@@ -9,19 +9,32 @@ Created on Jan 17, 2011
 @author: mkiyer
 '''
 import logging
+import os
 import subprocess
+
+from find_discordant_reads import DiscordantFragment
+
+SORT_MEMORY = "2g"
 
 def sort_discordant_reads(input_file, output_file):
     outfh = open(output_file, "w")
-    subprocess.call(["sort", "-k7,7", "-k16,16", "-k8,8g", "-k17,17g", input_file], 
-                    stdout=outfh)
+    ref1_key = "-k%d,%d" % (DiscordantFragment.REF1_COL,
+                            DiscordantFragment.REF1_COL)
+    ref2_key = "-k%d,%d" % (DiscordantFragment.REF2_COL,
+                            DiscordantFragment.REF2_COL)
+    tmp_dir = os.path.dirname(output_file)
+    args = ["sort", "-S", SORT_MEMORY, "-T", tmp_dir,
+            "-t", "\t", "-s", ref1_key, ref2_key,
+            input_file]
+    logging.debug("sort command args: %s" % args)
+    subprocess.call(args, stdout=outfh)
     outfh.close()
 
 def main():
     from optparse import OptionParser
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    parser = OptionParser("usage: %prog [options] <chimeras.bedpe> <chimeras.sorted.bedpe>")
+    parser = OptionParser("usage: %prog <chimeras.bedpe> <chimeras.sorted.bedpe>")
     options, args = parser.parse_args()
     input_file = args[0]
     output_file = args[1]
