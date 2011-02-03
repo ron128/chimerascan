@@ -81,9 +81,6 @@ def create_chimerascan_index(output_dir, genome_fasta_file,
     logging.info("Indexing FASTA file...")
     fh = pysam.Fastafile(index_fasta_file)
     fh.close()
-    #if subprocess.call([samtools_bin, "faidx", index_fasta_file]) != os.EX_OK:
-    #    logging.error("samtools failed to index the combined fasta file")
-    #    return JOB_ERROR
     # build bowtie index on the combined fasta file
     logging.info("Building bowtie index...")
     bowtie_index_name = os.path.join(output_dir, ALIGN_INDEX)
@@ -97,9 +94,7 @@ def create_chimerascan_index(output_dir, genome_fasta_file,
 def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    parser = OptionParser("usage: %prog [options] <reference_genome.fa> <gene_models.bed> <index_output_dir>")
-    parser.add_option("--samtools-bin", dest="samtools_bin", default="samtools", 
-                      help="Path to 'samtools' program")
+    parser = OptionParser("usage: %prog [options] <reference_genome.fa> <gene_models.txt> <index_output_dir>")
     parser.add_option("--bowtie-build-bin", dest="bowtie_build_bin", default="bowtie-build", 
                       help="Path to 'bowtie-build' program")
     options, args = parser.parse_args()
@@ -117,11 +112,6 @@ def main():
     # check that output dir is not a regular file
     if os.path.exists(output_dir) and (not os.path.isdir(output_dir)):
         parser.error("Output directory name '%s' exists and is not a valid directory" % (output_dir))
-    # check that samtools binary exists
-    if check_executable(options.samtools_bin):
-        logging.debug("Checking for 'samtools' binary... found")
-    else:
-        parser.error("samtools binary not found or not executable")
     # check that bowtie-build program exists
     if check_executable(options.bowtie_build_bin):
         logging.debug("Checking for 'bowtie-build' binary... found")
@@ -129,7 +119,6 @@ def main():
         parser.error("bowtie-build binary not found or not executable")
     # run main index creation function
     retcode = create_chimerascan_index(output_dir, ref_fasta_file, gene_feature_file,
-                                       options.samtools_bin, 
                                        options.bowtie_build_bin)
     sys.exit(retcode)
 

@@ -74,7 +74,7 @@ def extend_sequences(input_fastq_files,
             print >>bedpe_fh, '\t'.join(map(str, discord_read.to_list()))
         num_lines += 1
     bedpe_fh.close()
-    logging.info("[EXTENDSEQ] Processed %d discordant reads" % (num_lines))
+    logging.info("[extend_sequences] Processed %d discordant reads" % (num_lines))
     
 
 def main():
