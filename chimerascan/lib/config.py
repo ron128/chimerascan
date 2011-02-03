@@ -36,6 +36,8 @@ EXTENDED_DISCORDANT_BEDPE_FILE = "discordant_reads.extended.bedpe"
 SORTED_DISCORDANT_BEDPE_FILE = "discordant_reads.srt.bedpe"
 SPANNING_FASTQ_FILE = "putative_spanning_reads.fq"
 ENCOMPASSING_CHIMERA_BEDPE_FILE = "encompassing_chimeras.bedpe"
+FILTERED_ENCOMPASSING_CHIMERA_BEDPE_FILE = "encompassing_chimeras.filtered.bedpe"
+
 EXON_JUNCTION_TRIM_BP = 10
 JUNC_REF_FASTA_FILE = "spanning_juncs.fa"
 JUNC_REF_MAP_FILE = "spanning_juncs.txt"

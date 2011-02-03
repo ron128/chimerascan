@@ -69,7 +69,7 @@ def binomial_pdf(p, n, k):
     return normal_pdf(k, n*p, n*p*(1.0-p))
 
 def binomial_cdf(p, n, k):
-    return sum(binomial_pdf(p,n,x) for x in xrange(k))
+    return sum(binomial_pdf(p,n,x) for x in xrange(k+1))
 
 def kl_divergence(arr):
     t = sum(arr)

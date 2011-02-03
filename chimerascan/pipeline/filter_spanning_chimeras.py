@@ -188,38 +188,33 @@ def make_temp(base_dir, suffix=''):
     os.close(fd)
     return name
 
-def filter_spanning_chimeras(input_file, output_file, gene_file,
-                             max_multimap=1,
-                             multimap_cov_ratio=0.10,
-                             max_isize=5000):
-    tmpfile1 = make_temp(base_dir=os.path.dirname(output_file),
-                         suffix='.bedpe')
-    logging.debug("Filtering chimeras")
-    fh = open(tmpfile1, "w")
-    for c in SpanningChimera.parse(open(input_file)):
-        res = filter_multimapping(c, max_multimap=max_multimap,
-                                  multimap_cov_ratio=multimap_cov_ratio)
-        res = res and filter_insert_size(c, max_isize)
-        res = res and filter_overlapping(c)
-        if not res:
-            continue
-        print >>fh, '\t'.join(map(str, c.to_list()))
-    fh.close()
-
+def filter_spanning_chimeras(input_file, output_file, gene_file):
+#    tmpfile1 = make_temp(base_dir=os.path.dirname(output_file),
+#                         suffix='.bedpe')
+#    logging.debug("Filtering chimeras")
+#    fh = open(tmpfile1, "w")
+#    for c in SpanningChimera.parse(open(input_file)):
+#        res = filter_multimapping(c, max_multimap=max_multimap,
+#                                  multimap_cov_ratio=multimap_cov_ratio)
+#        res = res and filter_insert_size(c, max_isize)
+#        res = res and filter_overlapping(c)
+#        if not res:
+#            continue
+#        print >>fh, '\t'.join(map(str, c.to_list()))
+#    fh.close()
     logging.debug("Building gene/genome index")
     ggmap = build_gene_to_genome_map(open(gene_file))
     logging.debug("Choosing highest coverage chimeras")
-    tmpfile2 = make_temp(base_dir=os.path.dirname(output_file),
+    tmpfile1 = make_temp(base_dir=os.path.dirname(output_file),
                          suffix='.bedpe')
-    fh = open(tmpfile2, "w")
-    for c in choose_highest_coverage_chimeras(tmpfile1, ggmap):
+    fh = open(tmpfile1, "w")
+    for c in choose_highest_coverage_chimeras(input_file, ggmap):
         print >>fh, '\t'.join(map(str, c.to_list()))
     fh.close()
-
     logging.debug("Finding junction permiscuity")
-    juncmap5p, juncmap3p = collect_permiscuity_stats(tmpfile2, ggmap)
+    juncmap5p, juncmap3p = collect_permiscuity_stats(tmpfile1, ggmap)
     fh = open(output_file, "w")
-    for c in SpanningChimera.parse(open(tmpfile2)):
+    for c in SpanningChimera.parse(open(tmpfile1)):
         frac5p, frac3p = calc_permiscuity(c, juncmap5p, juncmap3p, ggmap)
         kldiv = kl_divergence(c.junction_hist)
         print >>fh, '\t'.join(['\t'.join(map(str,c.to_list())), str(kldiv), 
@@ -227,7 +222,6 @@ def filter_spanning_chimeras(input_file, output_file, gene_file,
     fh.close()
     # delete tmp files
     os.remove(tmpfile1)
-    os.remove(tmpfile2)
 
 
 def main():
@@ -237,27 +231,11 @@ def main():
     parser = OptionParser("usage: %prog [options] <sortedchimeras.bedpe> <chimeras.txt>")
     parser.add_option("--index", dest="index_dir",
                       help="Path to chimerascan index directory")
-    parser.add_option("--max-multimap", type="int", dest="max_multimap", 
-                      default=1, help="Threshold to eliminate multimapping "
-                      "chimeras, where '1' is completely unique, '2' is "
-                      "multimapping to two locations, etc.")
-    parser.add_option("--multimap-ratio", type="float", dest="multimap_cov_ratio",
-                      default=0.10, help="Ratio of weighted coverage to "
-                      "total encompassing reads below which chimeras are "
-                      "considered false positives and removed "
-                      "[default=%default]")
-    parser.add_option("--max-isize", type="float", dest="max_isize",
-                      default=500, help="Maximum predicted insert size of "
-                      "fragments spanning a hypothetical chimeric junction "
-                      "[default=%default]")
     options, args = parser.parse_args()
     gene_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)
     input_file = args[0]
     output_file = args[1]
-    filter_spanning_chimeras(input_file, output_file, gene_file,
-                             max_multimap=options.max_multimap,
-                             multimap_cov_ratio=options.multimap_cov_ratio,
-                             max_isize=options.max_isize)
+    filter_spanning_chimeras(input_file, output_file, gene_file)
 
 if __name__ == "__main__":
     main()

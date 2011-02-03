@@ -14,9 +14,9 @@ __status__ = "beta"
 
 import logging
 import os
-import sys
 import subprocess
-from optparse import OptionParser
+import sys
+from optparse import OptionParser, OptionGroup
 import xml.etree.ElementTree as etree
 
 # check for python version 2.6.0 or greater
@@ -37,11 +37,13 @@ from pipeline.find_discordant_reads import find_discordant_reads
 from pipeline.extend_sequences import extend_sequences
 from pipeline.sort_discordant_reads import sort_discordant_reads
 from pipeline.nominate_chimeras import nominate_chimeras
+from pipeline.filter_encompassing_chimeras import filter_encompassing_chimeras
 from pipeline.nominate_spanning_reads import nominate_spanning_reads
 from pipeline.bedpe_to_fasta import bedpe_to_junction_fasta
 from pipeline.merge_spanning_alignments import merge_spanning_alignments
 from pipeline.profile_insert_size import profile_isize_stats
 from pipeline.filter_spanning_chimeras import filter_spanning_chimeras
+
 
 DEFAULT_NUM_PROCESSORS = config.BASE_PROCESSORS
 DEFAULT_KEEP_TMP = False
@@ -58,6 +60,11 @@ DEFAULT_MAX_FRAG_LENGTH = 1000
 DEFAULT_MAX_INDEL_SIZE = 100
 DEFAULT_FASTQ_FORMAT = "sanger"
 DEFAULT_LIBRARY_TYPE = "fr"
+
+DEFAULT_FILTER_MAX_MULTIMAPS = 2
+DEFAULT_FILTER_MULTIMAP_RATIO = 0.10
+DEFAULT_FILTER_STRAND_PVALUE = 0.01
+DEFAULT_FILTER_ISIZE_STDEVS = 3
 
 DEFAULT_ANCHOR_MIN = 0
 DEFAULT_ANCHOR_MAX = 5
@@ -142,9 +149,16 @@ class RunConfig(object):
         self.max_fragment_length = None
         self.max_indel_size = None
         self.library_type = None
+        # filtering params
+        self.filter_max_multimaps = None
+        self.filter_multimap_ratio = None
+        self.filter_isize_stdevs = None
+        self.filter_strand_pval = None
+        # spanning read constraints
         self.anchor_min = None
         self.anchor_max = None 
         self.anchor_mismatches = None
+        
 
     def from_xml(self, xmlfile):
         tree = etree.parse(xmlfile)        
@@ -177,6 +191,12 @@ class RunConfig(object):
         self.max_fragment_length = root.findtext("max_fragment_length", DEFAULT_MAX_FRAG_LENGTH)
         self.max_indel_size = root.findtext("max_indel_size", DEFAULT_MAX_INDEL_SIZE)
         self.library_type = root.findtext("library_type", DEFAULT_LIBRARY_TYPE)
+        # filtering params
+        self.filter_max_multimaps = root.findtext("filter_max_multimaps", DEFAULT_FILTER_MAX_MULTIMAPS)
+        self.filter_multimap_ratio = root.findtext("filter_multimap_ratio", DEFAULT_FILTER_MULTIMAP_RATIO)
+        self.filter_isize_stdevs = root.findtext("filter_isize_stdevs", DEFAULT_FILTER_ISIZE_STDEVS)
+        self.filter_strand_pval = root.findtext("filter_strand_pval", DEFAULT_FILTER_STRAND_PVALUE)
+        # spanning read constraints
         self.anchor_min = root.findtext("anchor_min", DEFAULT_ANCHOR_MIN)
         self.anchor_max = root.findtext("anchor_min", DEFAULT_ANCHOR_MAX)
         self.anchor_mismatches = root.findtext("anchor_mismatches", DEFAULT_ANCHOR_MISMATCHES)
@@ -258,6 +278,35 @@ class RunConfig(object):
                           default=DEFAULT_ANCHOR_MISMATCHES,
                           help="Number of mismatches allowed within anchor "
                           "region")
+        filter_group = OptionGroup(parser, "Filtering options",
+                                   "Adjust these options to change "
+                                   "filtering behavior") 
+        filter_group.add_option("--filter-multimaps", type="int",
+                                dest="filter_max_multimaps",
+                                default=DEFAULT_FILTER_MAX_MULTIMAPS,
+                                help="Filter chimeras that lack a read "
+                                " with <= HITS alternative hits in both "
+                                " pairs [default=%default]")
+        filter_group.add_option("--filter-multimap-ratio", type="float",
+                                default=DEFAULT_FILTER_MULTIMAP_RATIO,
+                                dest="filter_multimap_ratio", metavar="RATIO",
+                                help="Filter chimeras with a weighted coverage "
+                                "versus total reads ratio <= RATIO "
+                                "[default=%default]")
+        filter_group.add_option("--filter-isize-stdevs", type="int",
+                                default=DEFAULT_FILTER_ISIZE_STDEVS,
+                                dest="filter_isize_stdevs", metavar="N",
+                                help="Filter chimeras where putative insert "
+                                "size is >N standard deviations from the "
+                                "mean [default=%default]")
+        filter_group.add_option("--filter-strand-pvalue", type="float",
+                                default=DEFAULT_FILTER_STRAND_PVALUE,
+                                dest="filter_strand_pval", metavar="p",
+                                help="p-value to reject chimera based on "
+                                " binomial test that balance of +/- strand "
+                                " encompassing reads should be 50/50 "
+                                "[default=%default]")
+        parser.add_option_group(filter_group)        
         options, args = parser.parse_args(args=args)
         # parse config file options/args
         if options.config_file is not None:
@@ -306,12 +355,19 @@ class RunConfig(object):
             self.max_indel_size = options.max_indel_size
         if self.library_type is None:
             self.library_type = options.library_type
-        if self.anchor_min is None:
-            self.anchor_min = options.anchor_min
-        if self.anchor_max is None:
-            self.anchor_max = options.anchor_max 
-        if self.anchor_mismatches is None:
-            self.anchor_mismatches = options.anchor_mismatches
+        # set rest of options, overriding if attribute is undefined
+        # or set to something other than the default 
+        attrs = (("filter_max_multimaps", DEFAULT_FILTER_MAX_MULTIMAPS),
+                 ("filter_multimap_ratio", DEFAULT_FILTER_MULTIMAP_RATIO),
+                 ("filter_isize_stdevs", DEFAULT_FILTER_ISIZE_STDEVS),
+                 ("filter_strand_pval", DEFAULT_FILTER_STRAND_PVALUE),
+                 ("anchor_min", DEFAULT_ANCHOR_MIN),
+                 ("anchor_max", DEFAULT_ANCHOR_MAX),
+                 ("anchor_mismatches", DEFAULT_ANCHOR_MISMATCHES))
+        for attr_name,default_val in attrs:
+            if ((getattr(self, attr_name) is None) or
+                (getattr(options, attr_name) != default_val)):
+                setattr(self, attr_name, getattr(options, attr_name)) 
 
     def check_config(self):
         # check that input fastq files exist
@@ -546,7 +602,7 @@ def run_chimerascan(runconfig):
     #
     # Nominate chimeras step
     #
-    encompassing_bedpe_file = os.path.join(runconfig.output_dir, config.ENCOMPASSING_CHIMERA_BEDPE_FILE)        
+    encompassing_bedpe_file = os.path.join(tmp_dir, config.ENCOMPASSING_CHIMERA_BEDPE_FILE)        
     if (up_to_date(encompassing_bedpe_file, sorted_discordant_bedpe_file)):
         logging.info("[SKIPPED] Nominating chimeras from discordant reads")
     else:        
@@ -556,15 +612,35 @@ def run_chimerascan(runconfig):
                           gene_feature_file,                          
                           trim=config.EXON_JUNCTION_TRIM_BP)
     #
+    # Filter encompassing chimeras step
+    #
+    filtered_encomp_bedpe_file = \
+        os.path.join(runconfig.output_dir,
+                     config.FILTERED_ENCOMPASSING_CHIMERA_BEDPE_FILE)
+    if (up_to_date(filtered_encomp_bedpe_file, encompassing_bedpe_file)):
+        logging.info("[SKIPPED] Filtering encompassing chimeras")
+    else:
+        logging.info("Filtering encompassing chimeras")
+        # add standard deviations above the mean
+        max_isize = isize_mean + runconfig.filter_isize_stdevs*isize_std
+        filter_encompassing_chimeras(encompassing_bedpe_file,
+                                     filtered_encomp_bedpe_file,
+                                     gene_feature_file,
+                                     max_multimap=runconfig.filter_max_multimaps,
+                                     multimap_cov_ratio=runconfig.filter_multimap_ratio,
+                                     max_isize=max_isize,
+                                     strand_pval=runconfig.filter_strand_pval)
+    #
     # Nominate spanning reads step
     #
     spanning_fastq_file = os.path.join(runconfig.output_dir, config.SPANNING_FASTQ_FILE)
-    if up_to_date(spanning_fastq_file, extended_discordant_bedpe_file):
+    if (up_to_date(spanning_fastq_file, extended_discordant_bedpe_file) and 
+        up_to_date(spanning_fastq_file, filtered_encomp_bedpe_file)):
         logging.info("[SKIPPED] Nominating junction spanning reads")
     else:
         logging.info("Nominating junction spanning reads")
         nominate_spanning_reads(open(extended_discordant_bedpe_file, 'r'),
-                                open(encompassing_bedpe_file, 'r'),
+                                open(filtered_encomp_bedpe_file, 'r'),
                                 open(spanning_fastq_file, 'w'))    
     #
     # Extract junction sequences from chimeras file
@@ -573,12 +649,12 @@ def run_chimerascan(runconfig):
     junc_fasta_file = os.path.join(tmp_dir, config.JUNC_REF_FASTA_FILE)
     junc_map_file = os.path.join(tmp_dir, config.JUNC_REF_MAP_FILE)
     spanning_read_length = get_read_length(spanning_fastq_file)    
-    if (up_to_date(junc_fasta_file, encompassing_bedpe_file) and
-        up_to_date(junc_map_file, encompassing_bedpe_file)):        
+    if (up_to_date(junc_fasta_file, filtered_encomp_bedpe_file) and
+        up_to_date(junc_map_file, filtered_encomp_bedpe_file)):        
         logging.info("[SKIPPED] Extracting junction read sequences")
     else:        
         logging.info("Extracting junction read sequences")
-        bedpe_to_junction_fasta(encompassing_bedpe_file, ref_fasta_file,                                
+        bedpe_to_junction_fasta(filtered_encomp_bedpe_file, ref_fasta_file,                                
                                 spanning_read_length, 
                                 open(junc_fasta_file, "w"),
                                 open(junc_map_file, "w"))
@@ -634,7 +710,7 @@ def run_chimerascan(runconfig):
                                   anchor_max=0,
                                   anchor_mismatches=0)
     #
-    # Apply final filters
+    # Final filters
     #
     chimera_bedpe_file = os.path.join(runconfig.output_dir, config.CHIMERA_BEDPE_FILE)
     if (up_to_date(chimera_bedpe_file, raw_chimera_bedpe_file)):
@@ -645,10 +721,7 @@ def run_chimerascan(runconfig):
         max_isize = isize_mean + config.ISIZE_NUM_STDEVS*isize_std
         filter_spanning_chimeras(raw_chimera_bedpe_file, 
                                  chimera_bedpe_file,
-                                 gene_feature_file,
-                                 max_multimap=1,
-                                 multimap_cov_ratio=0.10,
-                                 max_isize=max_isize)
+                                 gene_feature_file)
     return JOB_SUCCESS
 
 def main():
