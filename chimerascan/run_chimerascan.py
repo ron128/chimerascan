@@ -16,6 +16,7 @@ import logging
 import os
 import subprocess
 import sys
+import shutil
 from optparse import OptionParser, OptionGroup
 import xml.etree.ElementTree as etree
 
@@ -38,7 +39,6 @@ from pipeline.extend_sequences import extend_sequences
 from pipeline.sort_discordant_reads import sort_discordant_reads
 from pipeline.nominate_chimeras import nominate_chimeras
 from pipeline.filter_encompassing_chimeras import filter_encompassing_chimeras
-from pipeline.nominate_spanning_reads import nominate_spanning_reads
 from pipeline.bedpe_to_fasta import bedpe_to_junction_fasta
 from pipeline.merge_spanning_alignments import merge_spanning_alignments
 from pipeline.profile_insert_size import profile_isize_stats
@@ -566,14 +566,18 @@ def run_chimerascan(runconfig):
     #
     # Find discordant reads step
     #
-    discordant_bedpe_file = os.path.join(tmp_dir, config.DISCORDANT_BEDPE_FILE)
+    discordant_gene_bedpe_file = os.path.join(tmp_dir, config.DISCORDANT_GENE_BEDPE_FILE)
+    discordant_genome_bedpe_file = os.path.join(tmp_dir, config.DISCORDANT_GENOME_BEDPE_FILE)
     padding = original_read_length - segmented_read_length
-    if (up_to_date(discordant_bedpe_file, paired_bam_file)):
+    if (up_to_date(discordant_gene_bedpe_file, paired_bam_file) and
+        up_to_date(discordant_genome_bedpe_file, paired_bam_file)):
         logging.info("[SKIPPED] Finding discordant reads")
     else:
         logging.info("Finding discordant reads")
         find_discordant_reads(pysam.Samfile(paired_bam_file, "rb"), 
-                              discordant_bedpe_file, gene_feature_file,
+                              discordant_gene_bedpe_file,
+                              discordant_genome_bedpe_file, 
+                              gene_feature_file,
                               max_indel_size=runconfig.max_indel_size,
                               max_isize=runconfig.max_fragment_length,
                               max_multihits=runconfig.multihits,
@@ -582,32 +586,32 @@ def run_chimerascan(runconfig):
     #
     # Extract full sequences of the discordant reads
     #
-    extended_discordant_bedpe_file = os.path.join(runconfig.output_dir, config.EXTENDED_DISCORDANT_BEDPE_FILE)
-    if up_to_date(extended_discordant_bedpe_file, discordant_bedpe_file):
+    extended_discordant_gene_bedpe_file = os.path.join(runconfig.output_dir, config.EXTENDED_DISCORDANT_GENE_BEDPE_FILE)
+    if up_to_date(extended_discordant_gene_bedpe_file, discordant_gene_bedpe_file):
         logging.info("[SKIPPED] Retrieving full length sequences for realignment")
     else:
         logging.info("Retrieving full length sequences for realignment")
         extend_sequences(unaligned_fastq_files, 
-                         discordant_bedpe_file,
-                         extended_discordant_bedpe_file)
+                         discordant_gene_bedpe_file,
+                         extended_discordant_gene_bedpe_file)
     #
     # Sort discordant reads
     #
-    sorted_discordant_bedpe_file = os.path.join(runconfig.output_dir, config.SORTED_DISCORDANT_BEDPE_FILE)
-    if (up_to_date(sorted_discordant_bedpe_file, extended_discordant_bedpe_file)):
+    sorted_discordant_gene_bedpe_file = os.path.join(runconfig.output_dir, config.SORTED_DISCORDANT_GENE_BEDPE_FILE)
+    if (up_to_date(sorted_discordant_gene_bedpe_file, extended_discordant_gene_bedpe_file)):
         logging.info("[SKIPPED] Sorting discordant BEDPE file")
     else:        
         logging.info("Sorting discordant BEDPE file")
-        sort_discordant_reads(extended_discordant_bedpe_file, sorted_discordant_bedpe_file)        
+        sort_discordant_reads(extended_discordant_gene_bedpe_file, sorted_discordant_gene_bedpe_file)        
     #
     # Nominate chimeras step
     #
     encompassing_bedpe_file = os.path.join(tmp_dir, config.ENCOMPASSING_CHIMERA_BEDPE_FILE)        
-    if (up_to_date(encompassing_bedpe_file, sorted_discordant_bedpe_file)):
+    if (up_to_date(encompassing_bedpe_file, sorted_discordant_gene_bedpe_file)):
         logging.info("[SKIPPED] Nominating chimeras from discordant reads")
     else:        
         logging.info("Nominating chimeras from discordant reads")
-        nominate_chimeras(open(sorted_discordant_bedpe_file, "r"),
+        nominate_chimeras(open(sorted_discordant_gene_bedpe_file, "r"),
                           open(encompassing_bedpe_file, "w"),
                           gene_feature_file,                          
                           trim=config.EXON_JUNCTION_TRIM_BP)
@@ -633,15 +637,26 @@ def run_chimerascan(runconfig):
     #
     # Nominate spanning reads step
     #
-    spanning_fastq_file = os.path.join(runconfig.output_dir, config.SPANNING_FASTQ_FILE)
-    if (up_to_date(spanning_fastq_file, extended_discordant_bedpe_file) and 
-        up_to_date(spanning_fastq_file, filtered_encomp_bedpe_file)):
-        logging.info("[SKIPPED] Nominating junction spanning reads")
+    spanning_fastq_file = os.path.join(runconfig.output_dir, 
+                                       config.SPANNING_FASTQ_FILE)
+    if (up_to_date(spanning_fastq_file, unaligned_fastq_files)):
+        logging.info("[SKIPPED] Preparing junction spanning reads")
     else:
-        logging.info("Nominating junction spanning reads")
-        nominate_spanning_reads(open(extended_discordant_bedpe_file, 'r'),
-                                open(filtered_encomp_bedpe_file, 'r'),
-                                open(spanning_fastq_file, 'w'))    
+        logging.info("Preparing junction spanning reads")
+        outfh = open(spanning_fastq_file, "w")
+        for f in unaligned_fastq_files:
+            shutil.copyfileobj(open(f), outfh)
+        outfh.close()
+    # TODO: skip this step for now, and simply realign all the reads
+#    spanning_fastq_file = os.path.join(runconfig.output_dir, config.SPANNING_FASTQ_FILE)
+#    if (up_to_date(spanning_fastq_file, extended_discordant_bedpe_file) and 
+#        up_to_date(spanning_fastq_file, filtered_encomp_bedpe_file)):
+#        logging.info("[SKIPPED] Nominating junction spanning reads")
+#    else:
+#        logging.info("Nominating junction spanning reads")
+#        nominate_spanning_reads(open(extended_discordant_bedpe_file, 'r'),
+#                                open(filtered_encomp_bedpe_file, 'r'),
+#                                open(spanning_fastq_file, 'w'))    
     #
     # Extract junction sequences from chimeras file
     #        
