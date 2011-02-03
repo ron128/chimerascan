@@ -17,52 +17,12 @@ from chimerascan.lib.stats import kl_divergence
 # local imports
 from nominate_chimeras import Chimera, MULTIMAP_BINS
         
-class SpanningChimera(Chimera):
-    def __init__(self):
-        Chimera.__init__(self)
-        self.spanning_reads = 0
-        self.encomp_and_spanning = 0
-        self.total_reads = 0
-        self.junction_hist = None
-        self.spanning_seq = None
-        self.spanning_ids = None
-        
-    def from_list(self, fields):
-        FIRST_COL = Chimera.LAST_COL + 1
-        # get the chimera fields
-        Chimera.from_list(self, fields)
-        self.spanning_reads = int(fields[FIRST_COL])
-        self.encomp_and_spanning = int(fields[FIRST_COL+1])
-        self.total_reads = int(fields[FIRST_COL+2])
-        self.junction_hist = map(int, fields[FIRST_COL+3].split(','))
-        self.spanning_seq = fields[FIRST_COL+4]
-        self.spanning_ids = fields[FIRST_COL+5]
-
-    def to_list(self):
-        fields = Chimera.to_list(self)
-        fields.extend([self.spanning_reads, 
-                       self.encomp_and_spanning, 
-                       self.total_reads, 
-                       ','.join(map(str, self.junction_hist)), 
-                       self.spanning_seq, 
-                       self.spanning_ids])
-        return fields
-
-    @staticmethod
-    def parse(line_iter):
-        for line in line_iter:
-            fields = line.strip().split('\t')
-            c = SpanningChimera()
-            c.from_list(fields)
-            yield c
-
-def filter_multimapping(c, max_multimap=1, 
-                        multimap_cov_ratio=0.0):
+def filter_multimapping(c, max_multimap=1, multimap_cov_ratio=0.0):
     '''
-    generator that returns chimeras that based on the uniqueness of
-    supporting reads.  chimeras supporting multimapping reads with more 
-    than 'max_multimap' hits will be ignored, and chimeras with less
-    than 'weighted_cov_ratio' fraction of coverage to reads will be ignored.
+    returns True/False based on the uniqueness of supporting reads.  
+    chimeras with multimapping reads with more than 'max_multimap' 
+    hits will be ignored, and chimeras with less than 'weighted_cov_ratio' 
+    fraction of coverage to reads will be ignored.
 
     for example, if a chimera has a coverage of 2.0, but has 200 reads,
     the ratio will be 2.0/200 = 1/100.  this suggests that the majority of
@@ -78,11 +38,13 @@ def filter_multimapping(c, max_multimap=1,
             break
     mmap = MULTIMAP_BINS[ind]
     ratio = c.weighted_cov / float(c.encompassing_reads)
-    if (mmap > max_multimap) or (ratio < multimap_cov_ratio):
-        #logging.debug("Excluding chimera with %f cov, %d reads, and %s mmap hist" %
-        #              (c.weighted_cov, c.encompassing_reads, c.multimap_cov_hist))
-        return False
-    return True
+    if (mmap <= max_multimap):
+        return True
+    elif (ratio >= multimap_cov_ratio):
+        return True
+    #logging.debug("Excluding chimera with %f cov, %d reads, and %s mmap hist" %
+    #              (c.weighted_cov, c.encompassing_reads, c.multimap_cov_hist))
+    return False
 
 def filter_insert_size(c, max_isize):
     '''
@@ -92,12 +54,14 @@ def filter_insert_size(c, max_isize):
     '''
     if (c.mate5p.isize + c.mate3p.isize) <= (2*max_isize):
         return True
-    else:
-        #logging.warning("Removed %s due to insert size %d + %d > %d" %
-        #                (c.name, c.mate5p.isize, c.mate3p.isize, 2*max_isize))
-        return False
+    #logging.warning("Removed %s due to insert size %d + %d > %d" %
+    #                (c.name, c.mate5p.isize, c.mate3p.isize, 2*max_isize))
+    return False
 
 def filter_overlapping(c):
+    '''
+    filter chimeras on overlapping genes
+    '''
     return c.distance != 0
 
 def build_junc_coverage_map(chimeras, ggmap):

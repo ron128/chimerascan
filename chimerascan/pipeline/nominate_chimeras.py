@@ -34,15 +34,17 @@ class ChimeraMate(object):
         self.isize = 0
                 
 class Chimera(object):
-    QNAME_COL = 18
+    QNAME_COL = 20
+    LAST_COL = 22
     SEQ_FIELD_DELIM = ';'
 
     def __init__(self):
         self.name = None
         self.chimera_type = 0
         self.distance = None 
-        self.reads = 0
+        self.encompassing_reads = 0
         self.weighted_cov = 0.0
+        self.strand_reads = [0, 0]
         self.multimap_cov_hist = None
         self.qnames = []
         self.seqs = []       
@@ -57,7 +59,8 @@ class Chimera(object):
              self.mate3p.tx_name, self.mate3p.start, self.mate3p.end,
              self.name, self.weighted_cov, 
              self.mate5p.strand, self.mate3p.strand,
-             self.chimera_type, self.distance, self.reads, 
+             self.chimera_type, self.distance, self.encompassing_reads, 
+             self.strand_reads[0], self.strand_reads[1],
              ','.join(map(str,self.multimap_cov_hist)),
              self.mate5p.isize, self.mate3p.isize,
              '%d-%d' % (self.mate5p.exon_start_num, self.mate5p.exon_end_num),
@@ -85,15 +88,17 @@ class Chimera(object):
             self.distance = None
         else:
             self.distance = int(fields[11])
-        self.reads = int(fields[12])
-        self.multimap_cov_hist = map(int,fields[13].split(','))
-        self.mate5p.isize = int(fields[14])
-        self.mate3p.isize = int(fields[15])        
-        self.mate5p.exon_start_num, self.mate5p.exon_end_num = map(int, fields[16].split('-'))
-        self.mate3p.exon_start_num, self.mate3p.exon_end_num = map(int, fields[17].split('-'))        
-        self.qnames = fields[18].split(Chimera.SEQ_FIELD_DELIM)
-        self.seqs = zip(fields[19].split(Chimera.SEQ_FIELD_DELIM), 
-                     fields[20].split(Chimera.SEQ_FIELD_DELIM))
+        self.encompassing_reads = int(fields[12])
+        self.strand_reads[0] = int(fields[13])
+        self.strand_reads[1] = int(fields[14])        
+        self.multimap_cov_hist = map(int,fields[15].split(','))
+        self.mate5p.isize = int(fields[16])
+        self.mate3p.isize = int(fields[17])        
+        self.mate5p.exon_start_num, self.mate5p.exon_end_num = map(int, fields[18].split('-'))
+        self.mate3p.exon_start_num, self.mate3p.exon_end_num = map(int, fields[19].split('-'))        
+        self.qnames = fields[20].split(Chimera.SEQ_FIELD_DELIM)
+        self.seqs = zip(fields[21].split(Chimera.SEQ_FIELD_DELIM), 
+                        fields[22].split(Chimera.SEQ_FIELD_DELIM))
         
     @staticmethod
     def parse(line_iter):
@@ -306,13 +311,12 @@ def get_chimera_mate(gene, reads, gene_genome_map, trim, is_5prime=True):
             ends.append(r.clust3p.end)
     starts = sorted(starts)
     ends = sorted(ends)
-    mate.start = starts[0]
-    mate.end = ends[-1]
     mate.isize = int(scoreatpercentile(ends, 0.95) - scoreatpercentile(starts, 0.05))
     mate.strand = gene.strand
     # TODO: trim to remove unmapped "splash" around exon boundaries
-    trimstart = min(mate.start + trim, mate.end)
-    trimend = max(mate.end - trim, mate.start)
+    firststart, lastend = starts[0], ends[-1]
+    trimstart = min(firststart + trim, lastend)
+    trimend = max(lastend - trim, trimstart + 1)
     # get exon information
     firstexon_num, firstexon_start, firstexon_end = get_exon_interval(gene, trimstart)
     lastexon_num, lastexon_start, lastexon_end = get_exon_interval(gene, trimend)
@@ -345,12 +349,19 @@ def nominate_chimeras(infh, outfh, gene_file, trim=10):
         chimera_type, distance = get_chimera_type(gene5p, gene3p, gene_trees)
         chimera.chimera_type = chimera_type
         chimera.distance = distance
-        # calculate weighted coverage by assigning equal weight to 
-        # multimapping reads
-        uniqueness_vals = map(uniqueness, reads)
-        chimera.reads = len(reads)
+        # calculate weighted coverage and strand balance
+        uniqueness_vals = []
+        for r in reads:
+            # TODO: assign equal weight to multimapping reads for now,
+            # but can use multiple iterations and improve this
+            if r.clust1.strand == "+":
+                chimera.strand_reads[0] += 1
+            else:
+                chimera.strand_reads[1] += 1
+            uniqueness_vals.append(uniqueness(r))
         chimera.weighted_cov = sum((1.0/x) for x in uniqueness_vals)
         chimera.multimap_cov_hist = hist(uniqueness_vals, MULTIMAP_BINS)
+        chimera.encompassing_reads = len(reads)
         # TODO: determine whether fusion likely happens in the intron or 
         # from within the exon itself
         # get qnames and sequences

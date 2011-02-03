@@ -511,6 +511,12 @@ class DiscordantFragment(object):
         clust3p = DiscordantCluster.from_list(fields[15:24])
         return DiscordantFragment(qname, discordant_type, read1_is_sense, 
                                   clust5p, clust3p)
+    @property
+    def clust1(self):
+        return self.clust5p if self.read1_is_sense else self.clust3p
+    @property
+    def clust2(self):
+        return self.clust3p if self.read1_is_sense else self.clust5p
 
 
 def interval_to_discordant_cluster(interval, tid_rname_map, gene_genome_map,
