@@ -39,11 +39,11 @@ def parse_fasta(line_iter):
     yield tag, seq
 
 def generate_library_in_silico(num_reads,
+                               reference_fasta_file,
                                isize_mean=200,
                                isize_std=20,
                                frac_genes=0.9,
-                               frac_genome=0.1,
-                               reference_fasta_file):
+                               frac_genome=0.1):
     '''
     Usage:   wgsim [options] <in.ref.fa> <out.read1.fq> <out.read2.fq>
     
