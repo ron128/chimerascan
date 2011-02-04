@@ -25,7 +25,10 @@ setup_kwargs = {"name": "chimerascan",
                 "license": "GPL3",
                 "platforms": "Linux",
                 "url": "http://chimerascan.googlecode.com",
-                "packages": ["chimerascan"]}
+                "packages": ["chimerascan"],
+                "scripts": ["chimerascan/chimerascan_run.py",
+                            "chimerascan/chimerascan_index.py",
+                            "chimerascan/chimerascan_cluster.py"]}
 
 # ---- Extension Modules ----------------------------------------------------
 
