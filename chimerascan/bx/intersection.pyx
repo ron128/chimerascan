@@ -1,4 +1,7 @@
 """
+Downloaded from:
+https://bitbucket.org/james_taylor/bx-python/wiki/Home
+
 Data structure for performing intersect queries on a set of intervals which
 preserves all information about the intervals (unlike bitset projection methods).
 

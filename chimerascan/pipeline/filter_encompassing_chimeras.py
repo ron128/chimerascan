@@ -51,6 +51,9 @@ def filter_insert_size(c, max_isize):
     estimate the insert size by comparing the reads that map to the
     hypothetical 5'/3' transcript to the insert size distribution and
     remove chimeras that fail to meet this constraint
+
+    returns True if chimera agrees with insert size distribution, 
+    false otherwise
     '''
     if (c.mate5p.isize + c.mate3p.isize) <= (2*max_isize):
         return True
@@ -61,16 +64,22 @@ def filter_insert_size(c, max_isize):
 def filter_overlapping(c):
     '''
     filter chimeras on overlapping genes
+    
+    returns True if chimera is not overlapping, False otherwise
     '''
     return c.distance != 0
 
 def filter_strand_balance(c, pval):
+    '''
+    returns True if binomial test pvalue for strand balance is greater than
+    'pval', False otherwise
+    '''
     p = binomial_cdf(0.5, c.encompassing_reads, min(c.strand_reads))        
     if p <= pval:
         logging.warning("Filtered chimera reads=%d '+'=%d '-'=%d pval=%f" %
                         (c.encompassing_reads, c.strand_reads[0], 
                          c.strand_reads[1], p))
-    return p <= pval
+    return p > pval
 
 def build_junc_permiscuity_map(chimeras, ggmap):
     junc5p_map = collections.defaultdict(lambda: collections.defaultdict(lambda: 0))
@@ -136,7 +145,8 @@ def filter_encompassing_chimeras(input_file, output_file, gene_file,
         res = res and filter_insert_size(c, max_isize)
         res = res and filter_overlapping(c)
         res = res and filter_strand_balance(c, strand_pval)
-        print >>fh, '\t'.join(map(str, c.to_list()))
+        if res:
+            print >>fh, '\t'.join(map(str, c.to_list()))
     fh.close()
 #    tmpfile1 = make_temp(base_dir=os.path.dirname(output_file),
 #                         suffix='.bedpe')

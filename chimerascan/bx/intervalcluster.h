@@ -1,3 +1,8 @@
+/*
+	Downloaded from:
+	https://bitbucket.org/james_taylor/bx-python/wiki/Home
+*/
+	
 typedef struct struct_interval {
     int start;
     int end;

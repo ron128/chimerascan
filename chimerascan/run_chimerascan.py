@@ -2,6 +2,23 @@
 Created on Jan 5, 2011
 
 @author: mkiyer
+
+chimerascan: chimeric transcript discovery using RNA-seq
+
+Copyright (C) 2011 Matthew Iyer
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 __author__ = "Matthew Iyer"
 __copyright__ = "Copyright 2011, chimerascan project"
@@ -653,7 +670,7 @@ def run_chimerascan(runconfig):
         outfh = open(spanning_fastq_file, "w")
         for f in unaligned_fastq_files:
             shutil.copyfileobj(open(f), outfh)
-        outfh.close()
+        outfh.close()        
     # TODO: skip this step for now, and simply realign all the reads
 #    spanning_fastq_file = os.path.join(runconfig.output_dir, config.SPANNING_FASTQ_FILE)
 #    if (up_to_date(spanning_fastq_file, extended_discordant_bedpe_file) and 
