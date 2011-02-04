@@ -86,7 +86,7 @@ def qsub(job_name, args, num_processors, cwd=None, walltime="60:00:00",
 
 def main():
     import sys
-    from run_chimerascan import RunConfig
+    from chimerascan_run import RunConfig
     job_name = sys.argv[1]
     # parse run parameters in config file and command line
     chimerascan_args = sys.argv[2:]
