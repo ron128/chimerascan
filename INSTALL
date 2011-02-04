@@ -1,10 +1,21 @@
+===================
 System Requirements
 ===================
 
-SAMtools depends on the zlib library <http://www.zlib.net>. The latest
-version 1.2.3 is preferred and with the latest version you can compile
-razip and use it to compress a FASTA file. SAMtools' faidx is able to
-index a razip-compressed FASTA file to save diskspace. Older zlib also
+Python 2.6+
+===========
+chimerascan requires python version 2.6 or higher (http://python.org)
+
+Pysam
+=====
+chimerascan is bundled with the Pysam library for interacting with files
+in the SAM format. Please visit (http://code.google.com/p/pysam/) for
+more information on this tool.
+
+SAMtools depends on the zlib library <http://www.zlib.net>. The latest 
+version 1.2.3 is preferred and with the latest version you can compile 
+razip and use it to compress a FASTA file. SAMtools' faidx is able to 
+index a razip-compressed FASTA file to save diskspace. Older zlib also 
 works with SAMtools, but razip cannot be compiled.
 
 The text-based viewer (tview) requires the GNU ncurses library
@@ -16,14 +27,22 @@ manually modifying one line in Makefile.
 Pysam requires pyrex (0.9.8 or greater) and python (2.6 or greater).
 It has not been tested on many other platforms.
 
+Bowtie
+======
+You must have a working bowtie installation to run chimerascan.  The
+current distribution of chimerascan has been tested with bowtie 0.12.7.
+Please visit (http://bowtie-bio.sourceforge.net/index.shtml) for 
+instructions on downloading and installing bowtie.
+
 Compilation
 ===========
 
-Unpack the distribution and enter the pysam directory. Type 
+Unpack the distribution and enter the chimerascan directory. Type 
 
 python setup.py build
 
 to compile.
+
 
 Installation
 ============
@@ -42,9 +61,6 @@ for more options.
 Architecture specific options
 =============================
 
-Pysam has been compiled on various linux systems and works
-with python 2.6 and python 2.5.
-
-Python 2.7 and Python 3 have not been tested.
-
-Windows support does not work yet
+chimerascan has been compiled on and tested on 64-bit RedHat Enterprise
+Linux 5 systems using python 2.6.  Testing on other Linux distributions
+is pending.

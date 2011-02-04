@@ -3,35 +3,40 @@
 # setup.py files to include non-python files such as documentation,
 # data, etc files to distribution. Avoid using MANIFEST.in for that.
 #
+
 include MANIFEST.in
 include COPYING
 include INSTALL
 include KNOWN_BUGS
 include THANKS
-include pysam/csamtools.pxd
-include pysam/ctabix.pxd
-include pysam/pysam_util.h
-include samtools/*.h
-include tabix/*.h
+
+# bx-python
+include chimerascan/bx/intervalcluster.h
+
+# pysam
+include chimerascan/pysam/csamtools.pxd
+include chimerascan/pysam/ctabix.pxd
+include chimerascan/pysam/pysam_util.h
+include chimerascan/pysam/samtools/*.h
+include chimerascan/pysam/tabix/*.h
 
 # pysam tests
-include tests/00README.txt
-include tests/Makefile
-include tests/ex1.fa
-include tests/ex1.sam.gz
-include tests/ex3.sam
-include tests/ex4.sam
-include tests/ex5.sam
-include tests/ex6.sam
-include tests/ex7.sam
-include tests/ex8.sam
-include tests/example.py
-include tests/pysam_test.py
-include tests/segfault_tests.py
+include chimerascan/pysam/tests/00README.txt
+include chimerascan/pysam/tests/Makefile
+include chimerascan/pysam/tests/ex1.fa
+include chimerascan/pysam/tests/ex1.sam.gz
+include chimerascan/pysam/tests/ex3.sam
+include chimerascan/pysam/tests/ex4.sam
+include chimerascan/pysam/tests/ex5.sam
+include chimerascan/pysam/tests/ex6.sam
+include chimerascan/pysam/tests/ex7.sam
+include chimerascan/pysam/tests/ex8.sam
+include chimerascan/pysam/tests/example.py
+include chimerascan/pysam/tests/pysam_test.py
+include chimerascan/pysam/tests/segfault_tests.py
 
 # tabix tests
-include tests/tabix_test.py
-include tests/example.gtf.gz
-include tests/example.gtf.gz.tbi
-
+include chimerascan/pysam/tests/tabix_test.py
+include chimerascan/pysam/tests/example.gtf.gz
+include chimerascan/pysam/tests/example.gtf.gz.tbi
 

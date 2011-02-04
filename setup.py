@@ -57,17 +57,14 @@ def get_extension_modules():
 def main():
     setup(name="chimerascan",
           version=version.__version__,
-          description="chimeric transcript discovery tool",
+          description="chimeric transcript discovery from RNA-seq",
           long_description=__doc__,
           author="Matthew Iyer",
           author_email="mkiyer@umich.edu",
-          license="MIT",
+          license="GPL3",
           platforms="ALL",
           url = "http://chimerascan.googlecode.com",
-          py_modules=["chimerascan/pysam/__init__", 
-                      "chimerascan/pysam/Pileup", 
-                      "chimerascan/pysam/namedtuple",
-                      "chimerascan/pysam/version"],
+          packages=["chimerascan"],
           ext_modules= get_extension_modules(),
           cmdclass= {'build_ext': build_ext})
 
