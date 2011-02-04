@@ -8,3 +8,10 @@ We would also like to thank Andreas Heger (andreas.heger) and the
 every stage of the chimerascan pipeline and facilitated rapid 
 prototyping and development of the tool.  We appreciate their 
 efforts to make samtools accessible to the python community
+
+Christopher Maher wrote the original 'chimerascan' in Perl and was 
+among the first to use a bioinformatics approach to discover gene 
+fusions in cancer.
+
+Finally we would like to thank Arul Chinnaiyan and members of the
+Chinnaiyan Lab for their support.  

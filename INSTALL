@@ -34,6 +34,14 @@ current distribution of chimerascan has been tested with bowtie 0.12.7.
 Please visit (http://bowtie-bio.sourceforge.net/index.shtml) for 
 instructions on downloading and installing bowtie.
 
+Cython (optional)
+=================
+Several C/C++ extension modules in chimerascan are built in Cython.
+To build Cython from source you must download and install Cython from
+(http://cython.org).  The setup-cython.py script is provided to compile
+the Cython code (.pyx) files into C code.  This should not be necessary
+for most users.
+
 Compilation
 ===========
 
