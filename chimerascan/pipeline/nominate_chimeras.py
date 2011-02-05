@@ -44,10 +44,11 @@ class ChimeraMate(object):
         self.exon_start_num = 0
         self.exon_end_num = 0
         self.isize = 0
+        self.frac = 0.0
                 
 class Chimera(object):
-    QNAME_COL = 20
-    LAST_COL = 22
+    QNAME_COL = 22
+    LAST_COL = 24
     SEQ_FIELD_DELIM = ';'
 
     def __init__(self):
@@ -62,6 +63,7 @@ class Chimera(object):
         self.seqs = []       
         self.mate5p = ChimeraMate()
         self.mate3p = ChimeraMate()
+        self.extra_fields = []
 
     def to_list(self):
         qnames = self.SEQ_FIELD_DELIM.join(x for x in self.qnames)
@@ -77,7 +79,9 @@ class Chimera(object):
              self.mate5p.isize, self.mate3p.isize,
              '%d-%d' % (self.mate5p.exon_start_num, self.mate5p.exon_end_num),
              '%d-%d' % (self.mate3p.exon_start_num, self.mate3p.exon_end_num),
-             qnames, seqs1, seqs2]    
+             self.mate5p.frac, self.mate3p.frac,
+             qnames, seqs1, seqs2]
+        s.extend(self.extra_fields)
         return s
     
     def from_list(self, fields):
@@ -107,11 +111,13 @@ class Chimera(object):
         self.mate5p.isize = int(fields[16])
         self.mate3p.isize = int(fields[17])        
         self.mate5p.exon_start_num, self.mate5p.exon_end_num = map(int, fields[18].split('-'))
-        self.mate3p.exon_start_num, self.mate3p.exon_end_num = map(int, fields[19].split('-'))        
-        self.qnames = fields[20].split(Chimera.SEQ_FIELD_DELIM)
-        self.seqs = zip(fields[21].split(Chimera.SEQ_FIELD_DELIM), 
-                        fields[22].split(Chimera.SEQ_FIELD_DELIM))
-        
+        self.mate3p.exon_start_num, self.mate3p.exon_end_num = map(int, fields[19].split('-'))
+        self.mate5p.frac, self.mate3p.frac = map(float, fields[20:22])
+        self.qnames = fields[22].split(Chimera.SEQ_FIELD_DELIM)
+        self.seqs = zip(fields[23].split(Chimera.SEQ_FIELD_DELIM), 
+                        fields[24].split(Chimera.SEQ_FIELD_DELIM))
+        self.extra_fields = fields[25:]
+
     @staticmethod
     def parse(line_iter):
         for line in line_iter:

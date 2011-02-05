@@ -56,7 +56,7 @@ from pipeline.find_discordant_reads import find_discordant_reads
 from pipeline.extend_sequences import extend_sequences
 from pipeline.sort_discordant_reads import sort_discordant_reads
 from pipeline.nominate_chimeras import nominate_chimeras
-from pipeline.filter_encompassing_chimeras import filter_encompassing_chimeras
+from pipeline.filter_chimeras import filter_encompassing_chimeras
 from pipeline.bedpe_to_fasta import bedpe_to_junction_fasta
 from pipeline.merge_spanning_alignments import merge_spanning_alignments
 from pipeline.profile_insert_size import profile_isize_stats

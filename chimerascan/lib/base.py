@@ -21,8 +21,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 import os
-import string
 import subprocess
+import tempfile
 
 # custom read tags
 class SamTags:
@@ -44,6 +44,11 @@ def parse_library_type(library_type):
     s1 = 0 if library_type[0] == 'f' else 1
     s2 = 0 if library_type[1] == 'f' else 1
     return (s1, s2)
+
+def make_temp(base_dir, suffix=''):
+    fd,name = tempfile.mkstemp(suffix=suffix, prefix='tmp', dir=base_dir)
+    os.close(fd)
+    return name
 
 def get_read_length(fastq_file):
     f = open(fastq_file)

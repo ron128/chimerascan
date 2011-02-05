@@ -22,25 +22,25 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 import collections
 import logging
-import operator
-import subprocess
-import tempfile
 import os
 
 # local lib imports
 from chimerascan.lib import config
 from chimerascan.lib.gene_to_genome2 import build_gene_to_genome_map, gene_to_genome_pos
-from chimerascan.lib.stats import kl_divergence
 # local imports
-from nominate_chimeras import Chimera, MULTIMAP_BINS
+from nominate_chimeras import Chimera
         
 class SpanningChimera(Chimera):
+    FIRST_COL = Chimera.LAST_COL + 1
+    LAST_COL = FIRST_COL + 6 
+    
     def __init__(self):
         Chimera.__init__(self)
         self.spanning_reads = 0
         self.encomp_and_spanning = 0
         self.total_reads = 0
         self.junction_hist = None
+        self.junction_kl_div = 0.0
         self.spanning_seq = None
         self.spanning_ids = None
         
@@ -52,8 +52,9 @@ class SpanningChimera(Chimera):
         self.encomp_and_spanning = int(fields[FIRST_COL+1])
         self.total_reads = int(fields[FIRST_COL+2])
         self.junction_hist = map(int, fields[FIRST_COL+3].split(','))
-        self.spanning_seq = fields[FIRST_COL+4]
-        self.spanning_ids = fields[FIRST_COL+5]
+        self.junction_kl_div = float(fields[FIRST_COL+4])
+        self.spanning_seq = fields[FIRST_COL+5]
+        self.spanning_ids = fields[FIRST_COL+6]
 
     def to_list(self):
         fields = Chimera.to_list(self)
@@ -61,6 +62,7 @@ class SpanningChimera(Chimera):
                        self.encomp_and_spanning, 
                        self.total_reads, 
                        ','.join(map(str, self.junction_hist)), 
+                       self.junction_kl_div,
                        self.spanning_seq, 
                        self.spanning_ids])
         return fields
@@ -72,50 +74,6 @@ class SpanningChimera(Chimera):
             c = SpanningChimera()
             c.from_list(fields)
             yield c
-
-def filter_multimapping(c, max_multimap=1, 
-                        multimap_cov_ratio=0.0):
-    '''
-    generator that returns chimeras that based on the uniqueness of
-    supporting reads.  chimeras supporting multimapping reads with more 
-    than 'max_multimap' hits will be ignored, and chimeras with less
-    than 'weighted_cov_ratio' fraction of coverage to reads will be ignored.
-
-    for example, if a chimera has a coverage of 2.0, but has 200 reads,
-    the ratio will be 2.0/200 = 1/100.  this suggests that the majority of
-    reads supporting the candidate are multimapping.
-    
-    however, if there is one completely unique read supporting the candidate,
-    then 1.0 out of 2.0 coverage is accountable to a single read.  so this
-    candidate would pass the 'max_multimap' filter and not be removed
-    '''
-    # get index of first read
-    for ind,x in enumerate(c.multimap_cov_hist):
-        if x > 0:
-            break
-    mmap = MULTIMAP_BINS[ind]
-    ratio = c.weighted_cov / float(c.encompassing_reads)
-    if (mmap > max_multimap) or (ratio < multimap_cov_ratio):
-        #logging.debug("Excluding chimera with %f cov, %d reads, and %s mmap hist" %
-        #              (c.weighted_cov, c.encompassing_reads, c.multimap_cov_hist))
-        return False
-    return True
-
-def filter_insert_size(c, max_isize):
-    '''
-    estimate the insert size by comparing the reads that map to the
-    hypothetical 5'/3' transcript to the insert size distribution and
-    remove chimeras that fail to meet this constraint
-    '''
-    if (c.mate5p.isize + c.mate3p.isize) <= (2*max_isize):
-        return True
-    else:
-        #logging.warning("Removed %s due to insert size %d + %d > %d" %
-        #                (c.name, c.mate5p.isize, c.mate3p.isize, 2*max_isize))
-        return False
-
-def filter_overlapping(c):
-    return c.distance != 0
 
 def build_junc_coverage_map(chimeras, ggmap):
     junc_cov_map = collections.defaultdict(lambda: [None, None, None])
@@ -158,88 +116,14 @@ def choose_highest_coverage_chimeras(input_file, ggmap):
             yield c
     del kept_isoforms_set
 
-def build_junc_permiscuity_map(chimeras, ggmap):
-    junc5p_map = collections.defaultdict(lambda: collections.defaultdict(lambda: 0))
-    junc3p_map = collections.defaultdict(lambda: collections.defaultdict(lambda: 0))
-    for c in chimeras:
-        # subtract one since 5' junc position is an open interval
-        coord5p = gene_to_genome_pos(c.mate5p.tx_name, c.mate5p.end - 1, ggmap)
-        coord3p = gene_to_genome_pos(c.mate3p.tx_name, c.mate3p.start, ggmap)
-        # keep track of total reads eminating from each 5' junction
-        # by keeping a dictionary for each 5' junction to all 3' junctions
-        # that stores the maximum coverage at that 5'/3' pair
-        partners = junc5p_map[coord5p]
-        count = partners[coord3p]
-        partners[coord3p] = max(count, c.weighted_cov)
-        # repeat for 3' partner
-        partners = junc3p_map[coord3p]
-        count = partners[coord5p]
-        partners[coord5p] = max(count, c.weighted_cov)
-        #print '5P', c.mate5p.gene_name, len(partners), sum(partners.itervalues())
-        #print '3P', c.mate3p.gene_name, len(partners), sum(partners.itervalues())
-    return junc5p_map, junc3p_map
-
-def collect_permiscuity_stats(input_file, ggmap):
-    # break name into 5'/3' genes linked in a dictionary
-    logging.debug("Building chimera permiscuity map")
-    juncmap5p, juncmap3p = \
-        build_junc_permiscuity_map(SpanningChimera.parse(open(input_file)), ggmap)
-    return juncmap5p, juncmap3p
-
-def calc_permiscuity(c, juncmap5p, juncmap3p, ggmap):
-    # subtract one since 5' junc position is an open interval
-    coord5p = gene_to_genome_pos(c.mate5p.tx_name, c.mate5p.end - 1, ggmap)
-    coord3p = gene_to_genome_pos(c.mate3p.tx_name, c.mate3p.start, ggmap)
-    partners = juncmap5p[coord5p]
-    cov = partners[coord3p]
-    total_cov = sum(partners.itervalues())
-    frac5p = cov / float(total_cov)
-    partners = juncmap3p[coord3p]
-    cov = partners[coord5p]
-    total_cov = sum(partners.itervalues())
-    frac3p = cov / float(total_cov)
-    return frac5p, frac3p
-
-def make_temp(base_dir, suffix=''):
-    fd,name = tempfile.mkstemp(suffix=suffix, prefix='tmp', dir=base_dir)
-    os.close(fd)
-    return name
-
 def filter_spanning_chimeras(input_file, output_file, gene_file):
-#    tmpfile1 = make_temp(base_dir=os.path.dirname(output_file),
-#                         suffix='.bedpe')
-#    logging.debug("Filtering chimeras")
-#    fh = open(tmpfile1, "w")
-#    for c in SpanningChimera.parse(open(input_file)):
-#        res = filter_multimapping(c, max_multimap=max_multimap,
-#                                  multimap_cov_ratio=multimap_cov_ratio)
-#        res = res and filter_insert_size(c, max_isize)
-#        res = res and filter_overlapping(c)
-#        if not res:
-#            continue
-#        print >>fh, '\t'.join(map(str, c.to_list()))
-#    fh.close()
     logging.debug("Building gene/genome index")
     ggmap = build_gene_to_genome_map(open(gene_file))
     logging.debug("Choosing highest coverage chimeras")
-    tmpfile1 = make_temp(base_dir=os.path.dirname(output_file),
-                         suffix='.bedpe')
-    fh = open(tmpfile1, "w")
-    for c in choose_highest_coverage_chimeras(input_file, ggmap):
-        print >>fh, '\t'.join(map(str, c.to_list()))
-    fh.close()
-    logging.debug("Finding junction permiscuity")
-    juncmap5p, juncmap3p = collect_permiscuity_stats(tmpfile1, ggmap)
     fh = open(output_file, "w")
-    for c in SpanningChimera.parse(open(tmpfile1)):
-        frac5p, frac3p = calc_permiscuity(c, juncmap5p, juncmap3p, ggmap)
-        kldiv = kl_divergence(c.junction_hist)
-        print >>fh, '\t'.join(['\t'.join(map(str,c.to_list())), str(kldiv), 
-                               str(frac5p), str(frac3p)])
+    for c in choose_highest_coverage_chimeras(input_file, ggmap):
+        print >>fh, '\t'.join(['\t'.join(map(str,c.to_list()))])
     fh.close()
-    # delete tmp files
-    os.remove(tmpfile1)
-
 
 def main():
     from optparse import OptionParser
