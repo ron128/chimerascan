@@ -27,8 +27,56 @@ import numpy as np
 # local imports
 from chimerascan import pysam
 from chimerascan.lib.alignment_parser import parse_sr_sam_file
-from chimerascan.lib.stats import kl_divergence
 from nominate_chimeras import Chimera
+
+class SpanningChimera(Chimera):
+    def __init__(self):
+        Chimera.__init__(self)
+        self.spanning_reads = 0
+        self.encomp_and_spanning = 0
+        self.total_reads = 0
+        self.junction_hist = None
+        self.spanning_seq = None
+        self.spanning_ids = None
+        self.junction_kl_div = 0.0
+        
+    def from_list(self, fields):
+        FIRST_COL = Chimera.LAST_COL + 1
+        # get the chimera fields
+        Chimera.from_list(self, fields)
+        self.spanning_reads = int(fields[FIRST_COL])
+        self.encomp_and_spanning = int(fields[FIRST_COL+1])
+        self.total_reads = int(fields[FIRST_COL+2])
+        self.junction_hist = map(int, fields[FIRST_COL+3].split(','))
+        self.spanning_seq = fields[FIRST_COL+4]
+        self.spanning_ids = fields[FIRST_COL+5]
+
+    def to_list(self):
+        fields = Chimera.to_list(self)
+        fields.extend([self.spanning_reads, 
+                       self.encomp_and_spanning, 
+                       self.total_reads, 
+                       ','.join(map(str, self.junction_hist)), 
+                       self.spanning_seq, 
+                       self.spanning_ids])
+        return fields
+
+    @staticmethod
+    def parse(line_iter):
+        for line in line_iter:
+            fields = line.strip().split('\t')
+            c = SpanningChimera()
+            c.from_list(fields)
+            yield c
+
+def read_chimera_mapping_file(filename):
+    chimera_refs = collections.defaultdict(lambda: [])
+    for line in open(filename):
+        fields = line.strip().split('\t')
+        chimera_id = fields[0]
+        bedpe_fields = fields[1:]        
+        chimera_refs[chimera_id].append(bedpe_fields)
+    return dict(chimera_refs)
 
 def get_mismatch_positions(md):
     x = 0
@@ -79,39 +127,13 @@ def filter_reads_by_anchor(reads, junc_positions, anchors,
         if read_ok:
             yield read
 
-
-class SpanningReads(object):
-    def __init__(self):
-        self.junc_tid = None
-        self.left_junc_length = None
-        self.reads = []
-
-def read_junc_mapping_file(junc_map_fh, rname_tid_map):
-    spanning_data = collections.defaultdict(lambda: SpanningReads())
-    for line in open(junc_map_fh):
-        fields = line.strip().split('\t')
-        junc_name, left_junc_length = fields[0].split(":")
-        junc_tid = rname_tid_map[junc_name]        
-        left_junc_length = int(left_junc_length)
-        s = spanning_data[junc_tid]
-        s.junc_tid = junc_tid
-        s.left_junc_length = left_junc_length
-        s.reads = []
-    return spanning_data
-
-
-def join_spanning_reads(bam_file,
-                        junc_mapping_file,
+def join_spanning_reads(bam_file, junc_map,
                         original_read_length,
                         anchor_min, anchor_max,
                         max_anchor_mismatches):
     # map reference names to numeric ids
     bamfh = pysam.Samfile(bam_file, "rb")
     rname_tid_map = dict((rname,i) for i,rname in enumerate(bamfh.references))
-    spanning_data_dict = read_junc_mapping_file(open(junc_mapping_file),
-                                                rname_tid_map)
-
-    
     anchors = {}
     junc_positions = {}
     max_anchor = int((original_read_length + 1)/2)
@@ -150,17 +172,15 @@ def join_spanning_reads(bam_file,
         cov = chimera_counts[chimera_id]
         read_tuples = chimera_reads[chimera_id]
         spanning_qnames = set(read_tuple[0] for read_tuple in read_tuples)
-        kldiv = kl_divergence(anchors[chimera_id])
-
         if len(read_tuples) == 0:
             read_tuples = [("None", "None")]
         for fields in bedpe_records:
             # intersect encompassing with spanning reads to see overlap
             encompassing_qnames = fields[Chimera.QNAME_COL].split(Chimera.SEQ_FIELD_DELIM)
             union_cov = len(spanning_qnames.union(encompassing_qnames))
-            intersect_cov = len(spanning_qnames.intersection(encompassing_qnames))            
-            fields += [cov, intersect_cov, union_cov, 
-                       ','.join(map(str,anchors[chimera_id])), kldiv,
+            intersect_cov = len(spanning_qnames.intersection(encompassing_qnames))
+            #both_cov = sum(1 for read_tuple in read_tuples if read_tuple[0] in set(encompassing_qnames))
+            fields += [cov, intersect_cov, union_cov, ','.join(map(str,anchors[chimera_id])),
                        Chimera.SEQ_FIELD_DELIM.join([read_tuple[1] for read_tuple in read_tuples]),
                        Chimera.SEQ_FIELD_DELIM.join([read_tuple[0] for read_tuple in read_tuples])]
             yield fields
@@ -198,3 +218,45 @@ def main():
                               options.anchor_mismatches)
 
 if __name__ == '__main__': main()
+
+
+
+## test uniformity of reads spanning junction
+#observed_arr = np.array(np.round(positions[chimera_id],0), dtype=np.int)
+#expected_arr = np.zeros(observed_arr.shape[0], dtype=np.int)
+## find integer and fraction parts of expected        
+#expected_int = int(observed_arr.mean())
+#expected_remainder = observed_arr.sum() % observed_arr.shape[0]
+## randomly assign the remaining counts
+#remainder_positions = np.random.randint(0, observed_arr.shape[0],size=expected_remainder)
+#expected_arr[:] = expected_int
+#for pos in remainder_positions:
+#    expected_arr[pos] += 1
+## perform chi-squared test for coverage uniformity
+#csq, pval = chisquare(observed_arr, expected_arr)
+
+
+#    num_multiple_partitions = 0
+#    num_splits = 0
+#    num_filtered = 0
+#    for alignments in parse_segmented_sr_sam_file(bamfh):
+#        filtered_reads = []
+#        if len(alignments) > 1:
+#            num_multiple_partitions += 1
+#        for partition in alignments:
+#            if len(partition) > 1:
+#                num_splits += 1
+#                # TODO: skip reads that split into multiple partitions
+#                # since the junctions should be contiguous
+#                continue
+#            for split_reads in partition:
+#                func = filter_reads_by_anchor(split_reads, junc_positions, anchors,
+#                                              anchor_min, anchor_max, max_anchor_mismatches)
+#                filtered_reads.extend(func)
+#        if len(filtered_reads) == 0:
+#            # no reads passed filter
+#            num_filtered += 1
+#            continue
+#        for read in filtered_reads:
+#            chimera_counts[read.rname] += 1
+#            chimera_reads[read.rname].append((read.qname,read.seq))

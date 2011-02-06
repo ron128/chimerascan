@@ -61,7 +61,7 @@ from pipeline.bedpe_to_fasta import bedpe_to_junction_fasta
 from pipeline.merge_spanning_alignments import merge_spanning_alignments
 from pipeline.profile_insert_size import profile_isize_stats
 from pipeline.filter_spanning_chimeras import filter_spanning_chimeras
-
+from pipeline.rank_chimeras import rank_chimeras
 
 DEFAULT_NUM_PROCESSORS = config.BASE_PROCESSORS
 DEFAULT_KEEP_TMP = False
@@ -745,12 +745,11 @@ def run_chimerascan(runconfig):
         logging.info("Merging spanning and encompassing read alignments")
         merge_spanning_alignments(junc_bam_file, junc_map_file, 
                                   raw_chimera_bedpe_file,
-                                  spanning_read_length, 
                                   anchor_min=0, 
                                   anchor_max=0,
                                   anchor_mismatches=0)
     #
-    # Final filters
+    # Choose best isoform for each junction
     #
     chimera_bedpe_file = os.path.join(runconfig.output_dir, config.CHIMERA_BEDPE_FILE)
     if (up_to_date(chimera_bedpe_file, raw_chimera_bedpe_file)):
@@ -761,9 +760,26 @@ def run_chimerascan(runconfig):
         max_isize = isize_mean + config.ISIZE_NUM_STDEVS*isize_std
         filter_spanning_chimeras(raw_chimera_bedpe_file, 
                                  chimera_bedpe_file,
-                                 gene_feature_file)
+                                 gene_feature_file,
+                                 mate_pval=runconfig.filter_strand_pval)
+    #
+    # Rank chimeras
+    #
+    ranked_chimera_bedpe_file = os.path.join(runconfig.output_dir, 
+                                             config.RANKED_CHIMERA_BEDPE_FILE)
+    if (up_to_date(ranked_chimera_bedpe_file, chimera_bedpe_file)):
+        logging.info("[SKIPPED] Ranking chimeras")
+    else:
+        logging.info("Ranking chimeras")
+        rank_chimeras(chimera_bedpe_file, ranked_chimera_bedpe_file, 0.0)
+        
+    
     logging.info("Finished run. Chimeras written to file %s" %
-                 (chimera_bedpe_file))
+                 (ranked_chimera_bedpe_file))
+    #
+    # Cleanup
+    # 
+    #shutil.rmtree(tmp_dir)
     return JOB_SUCCESS
 
 def main():

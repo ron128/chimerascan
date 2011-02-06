@@ -59,3 +59,6 @@ JUNC_BOWTIE_INDEX_FILE = "spanning_juncs.1.ebwt"
 JUNC_READS_BAM_FILE = "aligned_junc_reads.bam"
 RAW_CHIMERA_BEDPE_FILE = "chimeras.raw.bedpe"
 CHIMERA_BEDPE_FILE = "chimeras.bedpe"
+RANKED_CHIMERA_BEDPE_FILE = "chimeras.ranked.bedpe"
+
+

@@ -28,8 +28,21 @@ import os
 from chimerascan import pysam
 from chimerascan.lib import config
 
+def find_homology(seq1, seq2, num_mismatches):
+    smallest_len = min(len(seq1), len(seq2))
+    mm = 0
+    i = 0
+    for i in xrange(smallest_len):
+        if seq1[i] != seq2[i]:
+            mm += 1
+            if mm > num_mismatches:
+                break
+    #print '\t'.join(map(str, [i, seq1, seq2]))
+    return i
+
 def bedpe_to_junction_fasta(bed_file, reference_seq_file, read_length,
-                            fasta_output_fh, junc_output_fh):
+                            fasta_output_fh, junc_output_fh,
+                            num_mismatches=1):
     gene_fasta_prefix = config.GENE_REF_PREFIX
     ref_fa = pysam.Fastafile(reference_seq_file)
     juncs = collections.defaultdict(lambda: [])
@@ -48,18 +61,31 @@ def bedpe_to_junction_fasta(bed_file, reference_seq_file, read_length,
         if len(seq) < (read_length*2) - 2:
             logging.warning("Could not extract sequence of length >%d from BEDPE, only retrieved sequence of (%d,%d) for gene %s" % 
                             ((read_length*2)-2, len(seq5p), len(seq3p), line.strip()))
+        # fetch continuation sequence of non-fusion gene
+        homolog_end5p = end5p + read_length - 1
+        homolog_start3p = max(0, start3p - read_length + 1)
+        homolog5p = ref_fa.fetch(gene_fasta_prefix + ref3p, homolog_start3p, start3p)
+        homolog3p = ref_fa.fetch(gene_fasta_prefix + ref5p, end5p, homolog_end5p)
+        # find homology between 5' gene and 3' gene
+        homology_length_5p = find_homology(seq5p, homolog5p, num_mismatches)
+        homology_length_3p = find_homology(seq3p, homolog3p, num_mismatches)
         # add sequence to dictionary and group fusion candidates together
         # if they have the same junction sequence
-        juncs[(len(seq5p),seq)].append(fields)
+        juncs[seq].append((len(seq5p), homology_length_5p, homology_length_3p, fields))
     # now extract the unique junction sequences
     # and write them to a fasta file
     junc_index = 1    
-    for junc_seq_info,bedpe_fields in juncs.iteritems():
-        left_seq_length, seq = junc_seq_info
-        junc_name = "BLABBY%07d:%d" % (junc_index,left_seq_length)
-        print >>fasta_output_fh, ">%s\n%s" % (junc_name, seq)
-        for fields in bedpe_fields:
-            print >>junc_output_fh, '\t'.join([junc_name] + fields)
+    for junc_seq,junc_info_list in juncs.iteritems():
+        junc_name = "JUNC%07d" % (junc_index) 
+        # write to fasta file
+        print >>fasta_output_fh, ">%s\n%s" % (junc_name, junc_seq)
+        # create entries in junc map file
+        for junc_info in junc_info_list:
+            left_seq_length, homology_length_5p, homology_length_3p, bedpe_fields = junc_info
+            fields = [junc_name, left_seq_length, 
+                      homology_length_5p, homology_length_3p]
+            fields.extend(bedpe_fields)
+            print >>junc_output_fh, '\t'.join(map(str, fields))
         junc_index += 1
 
 def main():
@@ -68,6 +94,10 @@ def main():
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = OptionParser("usage: %prog [options] <chimeras.bedpe> <out.fasta> <out.juncs>")
     parser.add_option("--rlen", type="int", dest="read_length", default=None)
+    parser.add_option("--homology-mismatches", type="int", 
+                      dest="num_homology_mismatches", default=1,
+                      help="Number of mismatches to tolerate when computing "
+                      "homology between gene and its chimeric partner")
     parser.add_option("--index", dest="index_dir") 
     options, args = parser.parse_args()
     bedpe_file = args[0]
@@ -77,7 +107,8 @@ def main():
     bedpe_to_junction_fasta(bedpe_file, ref_fasta_file,
                             options.read_length,
                             open(output_fasta_file, "w"),
-                            open(output_junc_file, "w"))
+                            open(output_junc_file, "w"),
+                            options.num_homology_mismatches)
 
 if __name__ == '__main__':
     main()
