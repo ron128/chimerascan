@@ -10,7 +10,7 @@ import numpy as np
 # local imports
 from merge_spanning_alignments import SpanningChimera
 
-PERMISCUITY_THRESHOLD = 0.005
+PERMISCUITY_THRESHOLD = 0.01
 
 def get_spanning_read_score(c):
     junc_pos = c.junc_pos
@@ -22,9 +22,9 @@ def get_spanning_read_score(c):
 
 def get_ranking_props(c):
     return (c.weighted_cov,
-            c.encomp_and_spanning,
             get_spanning_read_score(c),
-            int(min(c.mate5p.frac, c.mate3p.frac) > 0.01))       
+            int(min(c.mate5p.frac, c.mate3p.frac) > PERMISCUITY_THRESHOLD))       
+#            c.encomp_and_spanning,
 
 def hist_interp_prob(H, E, X):
     lo_slices = []
@@ -70,7 +70,7 @@ def rank_chimeras(input_file, output_file, prob):
         arr.append(get_ranking_props(c))
     arr = np.array(arr)
     # choose bin sizes
-    maxbins = 100
+    maxbins = 200
     bins = np.zeros(arr.shape[1])
     for d in xrange(arr.shape[1]):
         bins[d] = min(maxbins, len(np.unique(arr[:,d])))

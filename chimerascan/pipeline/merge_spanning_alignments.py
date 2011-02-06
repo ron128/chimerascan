@@ -144,12 +144,20 @@ def filter_anchor_position(read,
         # read spans junction, but might violate anchor constraints        
         left_anchor_bp = junc_pos - read.pos
         right_anchor_bp = read.aend - junc_pos
+        # check 5' homology
+        if left_anchor_bp <= (spanning_data.junc_homology_5p + anchor_min):
+            #logging.debug("Failed 5' homology filter left anchor=%d homology 5p=%d" %
+            #              (left_anchor_bp, spanning_data.junc_homology_5p))
+            passes_filter = False
+        # check 3' homology
+        if right_anchor_bp <= (spanning_data.junc_homology_3p + anchor_min):
+            #logging.debug("Failed 3' homology filter right anchor=%d homology 3p=%d" %
+            #              (right_anchor_bp, spanning_data.junc_homology_3p))
+            passes_filter = False
         # keep track of minimum number of bp spanning the chimera
         anchor = min(left_anchor_bp, right_anchor_bp)
-        if anchor < anchor_min:
-            # not enough anchor
-            passes_filter = False
-        elif anchor < anchor_max:
+        if anchor < anchor_max:
+            # count mismatches in anchor region
             # find anchor interval
             if left_anchor_bp < anchor_max:
                 anchor_interval = (0, left_anchor_bp)
@@ -164,16 +172,6 @@ def filter_anchor_position(read,
             if len(anchor_mm) > max_anchor_mismatches:
                 # mismatches within anchor position
                 passes_filter = False
-        # check 5' homology
-        if left_anchor_bp < spanning_data.junc_homology_5p:
-            #logging.debug("Failed 5' homology filter left anchor=%d homology 5p=%d" %
-            #              (left_anchor_bp, spanning_data.junc_homology_5p))
-            passes_filter = False
-        # check 3' homology
-        if right_anchor_bp < spanning_data.junc_homology_3p:
-            #logging.debug("Failed 3' homology filter right anchor=%d homology 3p=%d" %
-            #              (right_anchor_bp, spanning_data.junc_homology_3p))
-            passes_filter = False
     return passes_filter
 
 def process_spanning_reads(reads, 

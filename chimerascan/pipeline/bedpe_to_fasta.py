@@ -42,7 +42,7 @@ def find_homology(seq1, seq2, num_mismatches):
 
 def bedpe_to_junction_fasta(bed_file, reference_seq_file, read_length,
                             fasta_output_fh, junc_output_fh,
-                            num_mismatches=1):
+                            num_mismatches=2):
     gene_fasta_prefix = config.GENE_REF_PREFIX
     ref_fa = pysam.Fastafile(reference_seq_file)
     juncs = collections.defaultdict(lambda: [])
@@ -95,7 +95,7 @@ def main():
     parser = OptionParser("usage: %prog [options] <chimeras.bedpe> <out.fasta> <out.juncs>")
     parser.add_option("--rlen", type="int", dest="read_length", default=None)
     parser.add_option("--homology-mismatches", type="int", 
-                      dest="num_homology_mismatches", default=1,
+                      dest="num_homology_mismatches", default=2,
                       help="Number of mismatches to tolerate when computing "
                       "homology between gene and its chimeric partner")
     parser.add_option("--index", dest="index_dir") 
