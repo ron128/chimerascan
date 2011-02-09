@@ -88,6 +88,9 @@ DEFAULT_ANCHOR_MIN = 0
 DEFAULT_ANCHOR_MAX = 5
 DEFAULT_ANCHOR_MISMATCHES = 5
 
+DEFAULT_EMPIRICAL_PROB = 0.10
+
+
 translate_quals = {'solexa': 'solexa-quals',
                    'illumina': 'solexa1.3-quals',
                    'sanger': 'phred33-quals'}
@@ -176,6 +179,8 @@ class RunConfig(object):
         self.anchor_min = None
         self.anchor_max = None 
         self.anchor_mismatches = None
+        # empirical probability to output chimeras
+        self.empirical_prob = None
         
 
     def from_xml(self, xmlfile):
@@ -218,7 +223,9 @@ class RunConfig(object):
         self.anchor_min = int(root.findtext("anchor_min", DEFAULT_ANCHOR_MIN))
         self.anchor_max = int(root.findtext("anchor_min", DEFAULT_ANCHOR_MAX))
         self.anchor_mismatches = int(root.findtext("anchor_mismatches", DEFAULT_ANCHOR_MISMATCHES))
-
+        # empirical probability
+        self.empirical_prob = float(root.findtext("empirical_prob", DEFAULT_EMPIRICAL_PROB))
+        
     def from_args(self, args):
         parser = OptionParser(usage="%prog [options] [--config <config_file> "
                               " | <mate1.fq> <mate2.fq> <output_dir>]",
@@ -324,6 +331,10 @@ class RunConfig(object):
                                 " binomial test that balance of +/- strand "
                                 " encompassing reads should be 50/50 "
                                 "[default=%default]")
+        filter_group.add_option("--prob", type="float", metavar="p", 
+                                dest="prob", default=DEFAULT_EMPIRICAL_PROB, 
+                                help="empirical probability threshold for "
+                                "outputting chimeras [default=%default]")        
         parser.add_option_group(filter_group)        
         options, args = parser.parse_args(args=args)
         # parse config file options/args
@@ -381,7 +392,8 @@ class RunConfig(object):
                  ("filter_strand_pval", DEFAULT_FILTER_STRAND_PVALUE),
                  ("anchor_min", DEFAULT_ANCHOR_MIN),
                  ("anchor_max", DEFAULT_ANCHOR_MAX),
-                 ("anchor_mismatches", DEFAULT_ANCHOR_MISMATCHES))
+                 ("anchor_mismatches", DEFAULT_ANCHOR_MISMATCHES),
+                 ("prob", DEFAULT_EMPIRICAL_PROB))
         for attr_name,default_val in attrs:
             if ((getattr(self, attr_name) is None) or
                 (getattr(options, attr_name) != default_val)):
@@ -771,15 +783,17 @@ def run_chimerascan(runconfig):
         logging.info("[SKIPPED] Ranking chimeras")
     else:
         logging.info("Ranking chimeras")
-        rank_chimeras(chimera_bedpe_file, ranked_chimera_bedpe_file, 0.0)
-        
-    
-    logging.info("Finished run. Chimeras written to file %s" %
-                 (ranked_chimera_bedpe_file))
+        rank_chimeras(chimera_bedpe_file, ranked_chimera_bedpe_file,
+                      prob=runconfig.empirical_prob)
     #
     # Cleanup
     # 
     #shutil.rmtree(tmp_dir)
+    #
+    # Done
+    #    
+    logging.info("Finished run. Chimeras written to file %s" %
+                 (ranked_chimera_bedpe_file))
     return JOB_SUCCESS
 
 def main():
