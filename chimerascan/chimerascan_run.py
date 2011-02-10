@@ -331,7 +331,7 @@ class RunConfig(object):
                                 " binomial test that balance of +/- strand "
                                 " encompassing reads should be 50/50 "
                                 "[default=%default]")
-        filter_group.add_option("--prob", type="float", metavar="p", 
+        filter_group.add_option("--empirical-prob", type="float", metavar="p", 
                                 dest="empirical_prob", default=DEFAULT_EMPIRICAL_PROB, 
                                 help="empirical probability threshold for "
                                 "outputting chimeras [default=%default]")        
@@ -393,7 +393,7 @@ class RunConfig(object):
                  ("anchor_min", DEFAULT_ANCHOR_MIN),
                  ("anchor_max", DEFAULT_ANCHOR_MAX),
                  ("anchor_mismatches", DEFAULT_ANCHOR_MISMATCHES),
-                 ("prob", DEFAULT_EMPIRICAL_PROB))
+                 ("empirical_prob", DEFAULT_EMPIRICAL_PROB))
         for attr_name,default_val in attrs:
             if ((getattr(self, attr_name) is None) or
                 (getattr(options, attr_name) != default_val)):
@@ -784,7 +784,7 @@ def run_chimerascan(runconfig):
     else:
         logging.info("Ranking chimeras")
         rank_chimeras(chimera_bedpe_file, ranked_chimera_bedpe_file,
-                      prob=runconfig.empirical_prob)
+                      empirical_prob=runconfig.empirical_prob)
     #
     # Cleanup
     # 

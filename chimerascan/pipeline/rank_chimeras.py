@@ -215,9 +215,11 @@ def get_quantiles(a, probs):
             if len(edges) > 0 and (score == edges[-1]):
                 continue
             edges.append(score)
+    if len(edges) == 1:
+        edges = (0, edges[0])
     return edges
 
-def rank_chimeras(input_file, output_file, prob):
+def rank_chimeras(input_file, output_file, empirical_prob):
     '''
     rank the chimeras according to the empirical distribution
     of encompassing read coverage, spanning read coverage, 
@@ -233,7 +235,7 @@ def rank_chimeras(input_file, output_file, prob):
     bins = []
     for d in xrange(arr.shape[1]):    
         bins.append(get_quantiles(arr[:,d], np.linspace(0, 1, maxbins))) 
-    #print bins
+    print bins
     H, edges = np.histogramdd(arr, bins=bins)
     #N = np.sum(H)
     # now rank each chimera using the empirical distribution
@@ -245,7 +247,7 @@ def rank_chimeras(input_file, output_file, prob):
     outfh = open(output_file, "w")
     sorted_chimera_scores = sorted(chimera_scores, key=operator.itemgetter(0))
     empirical_probs = np.array([x[0] for x in sorted_chimera_scores])
-    prob_cutoff = scoreatpercentile(empirical_probs, prob)
+    prob_cutoff = scoreatpercentile(empirical_probs, empirical_prob)
     for p,c in sorted_chimera_scores:
         if p > prob_cutoff:
             break
@@ -258,13 +260,14 @@ def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = OptionParser("usage: %prog [options] <sortedchimeras.bedpe> <chimeras.txt>")
-    parser.add_option("--prob", type="float", metavar="p", dest="prob", 
-                      default=1.0, help="empirical probability threshold "
+    parser.add_option("--empirical-prob", type="float", metavar="p", 
+                      dest="empirical_prob", default=1.0, 
+                      help="empirical probability threshold "
                       " for outputting chimeras [default=%default]")
     options, args = parser.parse_args()
     input_file = args[0]
     output_file = args[1]
-    rank_chimeras(input_file, output_file, options.prob)
+    rank_chimeras(input_file, output_file, options.empirical_prob)
 
 if __name__ == "__main__":
     main()
