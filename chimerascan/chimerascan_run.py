@@ -251,12 +251,12 @@ class RunConfig(object):
                           dest="bowtie_mode_v", default=DEFAULT_BOWTIE_MODE_V,
                           help="Run bowtie with -v to ignore quality scores")
         parser.add_option("--multihits", type="int", dest="multihits", 
-                          default=DEFAULT_MULTIHITS, metavar="X",
-                          help="Ignore reads that map to more than X "
+                          default=DEFAULT_MULTIHITS, metavar="MMAX",
+                          help="Ignore reads that map to more than MMAX "
                           "locations [default=%default]")
         parser.add_option("--mismatches", type="int", dest="mismatches",
-                          default=DEFAULT_MISMATCHES, metavar="X",
-                          help="Aligned reads must have <= X mismatches "
+                          default=DEFAULT_MISMATCHES, metavar="N",
+                          help="Aligned reads must have <= N mismatches "
                           "[default=%default]")
         parser.add_option("--segment-length", type="int", dest="segment_length", 
                           default=DEFAULT_SEGMENT_LENGTH,
@@ -282,7 +282,7 @@ class RunConfig(object):
                           default=DEFAULT_MAX_FRAG_LENGTH,
                           help="Largest expected fragment length (reads less"
                           " than this fragment length are assumed to be "
-                          " genomically contiguous) [default=%default]")
+                          " unspliced and contiguous) [default=%default]")
         parser.add_option("--max-indel-size", type="int", 
                           dest="max_indel_size", 
                           default=DEFAULT_MAX_INDEL_SIZE,
@@ -294,15 +294,15 @@ class RunConfig(object):
         parser.add_option("--anchor-min", type="int", dest="anchor_min", 
                           default=DEFAULT_ANCHOR_MIN,
                           help="Minimum junction overlap required to call "
-                          "spanning reads")
+                          "spanning reads [default=%default]")
         parser.add_option("--anchor-max", type="int", dest="anchor_max", 
                           default=DEFAULT_ANCHOR_MAX,
                           help="Junction overlap below which to enforce "
-                          "mismatch checks")
+                          "mismatch checks [default=%default]")
         parser.add_option("--anchor-mismatches", type="int", dest="anchor_mismatches", 
                           default=DEFAULT_ANCHOR_MISMATCHES,
                           help="Number of mismatches allowed within anchor "
-                          "region")
+                          "region [default=%default]")
         filter_group = OptionGroup(parser, "Filtering options",
                                    "Adjust these options to change "
                                    "filtering behavior") 
