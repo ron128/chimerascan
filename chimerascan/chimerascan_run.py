@@ -44,24 +44,24 @@ if sys.version_info < (2,6,0):
     sys.exit(1)
 
 # local imports
-import pysam
-import lib.config as config
-from lib.config import JOB_SUCCESS, JOB_ERROR
-from lib.base import check_executable, get_read_length, parse_library_type, parse_bool
+import chimerascan.pysam as pysam
+import chimerascan.lib.config as config
+from chimerascan.lib.config import JOB_SUCCESS, JOB_ERROR
+from chimerascan.lib.base import check_executable, get_read_length, parse_library_type, parse_bool
 
-from pipeline.align_full import align_pe_full, align_sr_full
-from pipeline.align_segments import align, determine_read_segments
-from pipeline.merge_read_pairs import merge_read_pairs
-from pipeline.find_discordant_reads import find_discordant_reads
-from pipeline.extend_sequences import extend_sequences
-from pipeline.sort_discordant_reads import sort_discordant_reads
-from pipeline.nominate_chimeras import nominate_chimeras
-from pipeline.filter_chimeras import filter_encompassing_chimeras
-from pipeline.bedpe_to_fasta import bedpe_to_junction_fasta
-from pipeline.merge_spanning_alignments import merge_spanning_alignments
-from pipeline.profile_insert_size import profile_isize_stats
-from pipeline.filter_spanning_chimeras import filter_spanning_chimeras
-from pipeline.rank_chimeras import rank_chimeras
+from chimerascan.pipeline.align_full import align_pe_full, align_sr_full
+from chimerascan.pipeline.align_segments import align, determine_read_segments
+from chimerascan.pipeline.merge_read_pairs import merge_read_pairs
+from chimerascan.pipeline.find_discordant_reads import find_discordant_reads
+from chimerascan.pipeline.extend_sequences import extend_sequences
+from chimerascan.pipeline.sort_discordant_reads import sort_discordant_reads
+from chimerascan.pipeline.nominate_chimeras import nominate_chimeras
+from chimerascan.pipeline.filter_chimeras import filter_encompassing_chimeras
+from chimerascan.pipeline.bedpe_to_fasta import bedpe_to_junction_fasta
+from chimerascan.pipeline.merge_spanning_alignments import merge_spanning_alignments
+from chimerascan.pipeline.profile_insert_size import profile_isize_stats
+from chimerascan.pipeline.filter_spanning_chimeras import filter_spanning_chimeras
+from chimerascan.pipeline.rank_chimeras import rank_chimeras
 
 DEFAULT_NUM_PROCESSORS = config.BASE_PROCESSORS
 DEFAULT_KEEP_TMP = False

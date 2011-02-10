@@ -29,11 +29,11 @@ import sys
 from optparse import OptionParser
 
 # local imports
-import pysam
-from lib.feature import GeneFeature
-from lib.seq import DNA_reverse_complement
-from lib.config import JOB_ERROR, JOB_SUCCESS, ALIGN_INDEX, GENE_REF_PREFIX, GENE_FEATURE_FILE
-from lib.base import check_executable
+import chimerascan.pysam as pysam
+from chimerascan.lib.feature import GeneFeature
+from chimerascan.lib.seq import DNA_reverse_complement
+from chimerascan.lib.config import JOB_ERROR, JOB_SUCCESS, ALIGN_INDEX, GENE_REF_PREFIX, GENE_FEATURE_FILE
+from chimerascan.lib.base import check_executable
 
 BASES_PER_LINE = 50
 
