@@ -332,7 +332,7 @@ class RunConfig(object):
                                 " encompassing reads should be 50/50 "
                                 "[default=%default]")
         filter_group.add_option("--prob", type="float", metavar="p", 
-                                dest="prob", default=DEFAULT_EMPIRICAL_PROB, 
+                                dest="empirical_prob", default=DEFAULT_EMPIRICAL_PROB, 
                                 help="empirical probability threshold for "
                                 "outputting chimeras [default=%default]")        
         parser.add_option_group(filter_group)        
