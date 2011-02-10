@@ -235,7 +235,7 @@ def rank_chimeras(input_file, output_file, empirical_prob):
     bins = []
     for d in xrange(arr.shape[1]):    
         bins.append(get_quantiles(arr[:,d], np.linspace(0, 1, maxbins))) 
-    print bins
+    #print bins
     H, edges = np.histogramdd(arr, bins=bins)
     #N = np.sum(H)
     # now rank each chimera using the empirical distribution
