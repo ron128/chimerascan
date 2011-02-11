@@ -69,10 +69,12 @@ def filter_insert_size(c, max_isize):
     returns True if chimera agrees with insert size distribution, 
     false otherwise
     '''
+    if max_isize <= 0: 
+        return True
     if (c.mate5p.isize + c.mate3p.isize) <= (2*max_isize):
         return True
-    #logging.warning("Removed %s due to insert size %d + %d > %d" %
-    #                (c.name, c.mate5p.isize, c.mate3p.isize, 2*max_isize))
+    logging.warning("Removed %s due to insert size %d + %d > %d" %
+                    (c.name, c.mate5p.isize, c.mate3p.isize, 2*max_isize))
     return False
 
 def filter_overlapping(c):

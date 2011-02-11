@@ -71,6 +71,85 @@ def binomial_pdf(p, n, k):
 def binomial_cdf(p, n, k):
     return sum(binomial_pdf(p,n,x) for x in xrange(k+1))
 
+def _interpolate(a, b, fraction):
+    """
+    This function was taken from scipy 0.9.0rc1
+    
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS 
+    FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE 
+    COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
+    INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES 
+    (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
+    SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) 
+    HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, 
+    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING 
+    IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
+    POSSIBILITY OF SUCH DAMAGE.
+
+    Returns the point at the given fraction between a and b, where
+    'fraction' must be between 0 and 1.
+    """
+    return a + (b - a)*fraction;
+
+def scoreatpercentile(values, p):
+    """
+    This function was taken from scipy 0.9.0rc1
+    
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS 
+    FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE 
+    COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
+    INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES 
+    (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
+    SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) 
+    HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, 
+    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING 
+    IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
+    POSSIBILITY OF SUCH DAMAGE.    
+    
+    Calculate the score at the given `per` percentile of the sequence `a`.
+
+    For example, the score at per=50 is the median. If the desired quantile
+    lies between two data points, we interpolate between them. If the parameter
+    `limit` is provided, it should be a tuple (lower, upper) of two values.
+    Values of `a` outside this (closed) interval will be ignored.
+
+    Parameters
+    ----------
+    a : ndarray
+        Values from which to extract score.
+    per : int or float
+        Percentile at which to extract score.
+    limit : tuple, optional
+        Tuple of two scalars, the lower and upper limits within which to
+        compute the percentile.
+
+    Returns
+    -------
+    score : float
+        Score at percentile.
+
+    See Also
+    --------
+    percentileofscore
+
+    Examples
+    --------
+    >>> from scipy import stats
+    >>> a = np.arange(100)
+    >>> stats.scoreatpercentile(a, 50)
+    49.5
+
+    """
+    idx = p * (values.shape[0] - 1)
+    if (idx % 1 == 0):
+        return values[idx]
+    else:
+        return _interpolate(values[int(idx)], values[int(idx) + 1], idx % 1)
+
 def kl_divergence(arr):
     t = sum(arr)
     if t == 0:

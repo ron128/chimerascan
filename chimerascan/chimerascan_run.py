@@ -59,7 +59,7 @@ from chimerascan.pipeline.nominate_chimeras import nominate_chimeras
 from chimerascan.pipeline.filter_chimeras import filter_encompassing_chimeras
 from chimerascan.pipeline.bedpe_to_fasta import bedpe_to_junction_fasta
 from chimerascan.pipeline.merge_spanning_alignments import merge_spanning_alignments
-from chimerascan.pipeline.profile_insert_size import profile_isize_stats
+from chimerascan.pipeline.profile_insert_size import InsertSizeDistribution
 from chimerascan.pipeline.filter_spanning_chimeras import filter_spanning_chimeras
 from chimerascan.pipeline.rank_chimeras import rank_chimeras
 
@@ -530,25 +530,20 @@ def run_chimerascan(runconfig):
     #
     # Get insert size distribution
     #
-    isize_stats_file = os.path.join(runconfig.output_dir, config.ISIZE_STATS_FILE)
-    if up_to_date(isize_stats_file, aligned_bam_file):
+    isize_dist_file = os.path.join(runconfig.output_dir, config.ISIZE_DIST_FILE)
+    isize_dist = InsertSizeDistribution()
+    if up_to_date(isize_dist_file, aligned_bam_file):
         logging.info("[SKIPPED] Profiling insert size distribution")
-        f = open(isize_stats_file, "r")
-        isize_stats = map(float, f.next().strip().split('\t'))
-        f.close()
+        isize_dist.from_file(open(isize_dist_file), "r")
     else:
         logging.info("Profiling insert size distribution")
         max_isize_samples = config.ISIZE_MAX_SAMPLES
         bamfh = pysam.Samfile(aligned_bam_file, "rb")
-        isize_stats = profile_isize_stats(bamfh,
-                                          min_isize=min_fragment_length,
-                                          max_isize=runconfig.max_fragment_length,
-                                          max_samples=max_isize_samples)
-        f = open(isize_stats_file, "w")
-        print >>f, '\t'.join(map(str, isize_stats))
-        f.close()
-    # unpack insert size statistics tuple for use in downstream stages
-    isize_mean, isize_median, isize_mode, isize_std = isize_stats    
+        isize_dist.from_bam(bamfh, min_isize=min_fragment_length, 
+                            max_isize=runconfig.max_fragment_length, 
+                            max_samples=max_isize_samples)
+        isize_dist.to_file(open(isize_dist_file, "w"))
+        bamfh.close()
     #
     # Discordant reads alignment step
     #
@@ -662,14 +657,14 @@ def run_chimerascan(runconfig):
         logging.info("[SKIPPED] Filtering encompassing chimeras")
     else:
         logging.info("Filtering encompassing chimeras")
-        # add standard deviations above the mean
-        max_isize = isize_mean + runconfig.filter_isize_stdevs*isize_std
+        # TODO: add insert size filter?  this is dangerous
+        # max_isize = isize_mean + runconfig.filter_isize_stdevs*isize_std
         filter_encompassing_chimeras(encompassing_bedpe_file,
                                      filtered_encomp_bedpe_file,
                                      gene_feature_file,
                                      max_multimap=runconfig.filter_max_multimaps,
                                      multimap_cov_ratio=runconfig.filter_multimap_ratio,
-                                     max_isize=max_isize,
+                                     max_isize=-1,
                                      strand_pval=runconfig.filter_strand_pval)
     #
     # Nominate spanning reads step
@@ -769,7 +764,6 @@ def run_chimerascan(runconfig):
     else:
         logging.info("Filtering chimeras")
         # add standard deviations above the mean
-        max_isize = isize_mean + config.ISIZE_NUM_STDEVS*isize_std
         filter_spanning_chimeras(raw_chimera_bedpe_file, 
                                  chimera_bedpe_file,
                                  gene_feature_file,
