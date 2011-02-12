@@ -46,6 +46,14 @@ def get_junction_pileup(c):
         arr[r.pos:end] += (1.0 / r.mappings) 
     return arr
 
+def get_anchor_hist(c):
+    a, r = divmod(c.junc_pos, 2)
+    arr = np.zeros(a + r + 1, dtype=np.float)
+    for r in c.spanning_reads:
+        anchor = min(c.junc_pos - r.pos, r.aend - c.junc_pos)
+        arr[anchor] += (1.0 / r.mappings)        
+    return arr
+
 def get_ranking_props(c):
     return (c.weighted_cov,
             c.encomp_and_spanning,
@@ -134,7 +142,7 @@ def get_quantiles(a, probs):
                 continue
             edges.append(score)
     if len(edges) == 1:
-        edges = (0, edges[0])
+        return 1
     return edges
 
 def rank_chimeras(input_file, output_file, empirical_prob):
@@ -153,7 +161,6 @@ def rank_chimeras(input_file, output_file, empirical_prob):
     bins = []
     for d in xrange(arr.shape[1]):    
         bins.append(get_quantiles(arr[:,d], np.linspace(0, 1, maxbins))) 
-    #print bins
     H, edges = np.histogramdd(arr, bins=bins)
     #N = np.sum(H)
     # now rank each chimera using the empirical distribution
@@ -169,9 +176,9 @@ def rank_chimeras(input_file, output_file, empirical_prob):
     for p,c in sorted_chimera_scores:
         if p > prob_cutoff:
             break
-        arr = get_junction_pileup(c)
-        pileupstring = ','.join([str(round(x,1)) for x in arr])
-        print >>outfh, '\t'.join(map(str, c.to_list() + [pileupstring, p]))
+        arr = get_anchor_hist(c)
+        arrstring = ','.join([str(round(x,1)) for x in arr])
+        print >>outfh, '\t'.join(map(str, c.to_list() + [arrstring, p]))
     outfh.close() 
 
 

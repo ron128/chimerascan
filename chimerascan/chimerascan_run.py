@@ -534,7 +534,7 @@ def run_chimerascan(runconfig):
     isize_dist = InsertSizeDistribution()
     if up_to_date(isize_dist_file, aligned_bam_file):
         logging.info("[SKIPPED] Profiling insert size distribution")
-        isize_dist.from_file(open(isize_dist_file), "r")
+        isize_dist.from_file(open(isize_dist_file, "r"))
     else:
         logging.info("Profiling insert size distribution")
         max_isize_samples = config.ISIZE_MAX_SAMPLES
@@ -544,6 +544,9 @@ def run_chimerascan(runconfig):
                             max_samples=max_isize_samples)
         isize_dist.to_file(open(isize_dist_file, "w"))
         bamfh.close()
+    logging.info("Insert size samples=%d mean=%f std=%f median=%d mode=%d" % 
+                 (isize_dist.n, isize_dist.mean(), isize_dist.std(), 
+                  isize_dist.percentile(50.0), isize_dist.mode()))        
     #
     # Discordant reads alignment step
     #
