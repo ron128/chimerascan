@@ -35,7 +35,7 @@ def get_header_row():
             "5'->3' permiscuity",
             "3'->5' permiscuity"]
 
-def generate_row_data(chimeras, prob_cutoff=0.6):
+def generate_row_data(chimeras, prob_cutoff):
     for c in chimeras:
         prob = float(c.extra_fields[-1])
         if prob > prob_cutoff:
@@ -59,10 +59,11 @@ def generate_row_data(chimeras, prob_cutoff=0.6):
                c.mate5p.frac,
                c.mate3p.frac]
 
-def make_html_table(input_file):
+def make_html_table(input_file, prob_cutoff=0.6):
     t = env.get_template("table_template.html")    
     htmlstring = t.render(colnames=get_header_row(),
-                          rows=generate_row_data(SpanningChimera.parse(open(input_file))))
+                          rows=generate_row_data(SpanningChimera.parse(open(input_file)),
+                                                 prob_cutoff))
     return htmlstring
 
 def main():
@@ -81,7 +82,7 @@ def main():
         fileh = sys.stdout
     else:
         fileh = open(options.output_file, "w")
-    res = make_html_table(input_file)
+    res = make_html_table(input_file, options.empirical_prob)
     print >>fileh, res
     #rank_chimeras(input_file, output_file, options.empirical_prob)
     if options.output_file is not None:
