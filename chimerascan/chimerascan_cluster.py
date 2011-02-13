@@ -27,7 +27,11 @@ import subprocess
 NODE_MEMORY = 45000.0
 NODE_PROCESSORS = 12
 MEM_PER_PROCESSOR = int(float(NODE_MEMORY) / NODE_PROCESSORS)
-QUEUE_NAME = "arul_flux"
+QUEUE_NAME = "flux"
+ACCOUNT_NAME = "arul_flux"
+HISEQ_WALLTIME = "80:00:00"
+LOWSEQ_WALLTIME = "25:00:00"
+
 
 def qsub(job_name, args, num_processors, cwd=None, walltime="60:00:00", 
          pmem=None, deps=None, stdout=None, email_addresses=None):
@@ -56,9 +60,9 @@ def qsub(job_name, args, num_processors, cwd=None, walltime="60:00:00",
     lines = ["#!/bin/sh",
              "#PBS -N %s" % job_name,
              "#PBS -l nodes=%d:ppn=%d,walltime=%s,pmem=%dmb" % (1, num_processors, walltime, pmem),
-             "#PBS -l qos=%s" % (QUEUE_NAME),
-             "#PBS -A %s" % (QUEUE_NAME),
-             "#PBS -q flux",
+             "#PBS -l qos=%s" % (ACCOUNT_NAME),
+             "#PBS -A %s" % (ACCOUNT_NAME),
+             "#PBS -q %s" % (QUEUE_NAME),
              "#PBS -V",
              "#PBS -j oe",
              "#PBS -o %s/%s" % (cwd, stdout)]
@@ -86,7 +90,18 @@ def qsub(job_name, args, num_processors, cwd=None, walltime="60:00:00",
 
 def main():
     import sys
-    import chimerascan_run
+    import chimerascan_run    
+    parser = chimerascan_run.RunConfig.get_option_parser()
+    parser.add_option("--big", dest="big", action="store_true", 
+                      default=False, 
+                      help="set this flag if you have a very large dataset "
+                      "(more than 30M sequences) to adjust memory and "
+                      "walltime limits accordingly") 
+    options, args = parser.parse_args()
+    if options.big:
+        walltime = HISEQ_WALLTIME
+    else:
+        walltime = LOWSEQ_WALLTIME        
     job_name = sys.argv[1]
     # parse run parameters in config file and command line
     chimerascan_args = sys.argv[2:]
@@ -99,7 +114,7 @@ def main():
     qsub(job_name, args, 
          runconfig.num_processors, 
          cwd=runconfig.output_dir, 
-         walltime="60:00:00")
+         walltime=walltime)
     sys.exit(0)
 
 if __name__ == '__main__':

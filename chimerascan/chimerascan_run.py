@@ -228,8 +228,8 @@ class RunConfig(object):
             elem.text = str(val)
         return etree.tostring(root, pretty_print=True)
 
-    
-    def from_args(self, args):
+    @staticmethod
+    def get_option_parser():
         parser = OptionParser(usage="%prog [options] [--config <config_file> "
                               " | <mate1.fq> <mate2.fq> <output_dir>]",
                               version="%s" % __version__)
@@ -244,71 +244,77 @@ class RunConfig(object):
                           "chimerascan [default=%default]")
         parser.add_option("--keep-tmp", dest="keep_tmp", action="store_true", 
                           default=DEFAULT_KEEP_TMP,
-                          help="Do not delete intermediate files from run") 
-        parser.add_option("--bowtie-build-bin", dest="bowtie_build_bin", 
+                          help="Do not delete intermediate files from run")
+        # alignment options
+        bowtie_group = OptionGroup(parser, "Bowtie options",
+                                   "Adjust these options to change "
+                                   "bowtie alignment settings")         
+        bowtie_group.add_option("--bowtie-build-bin", dest="bowtie_build_bin", 
                           default=DEFAULT_BOWTIE_BUILD_BIN, 
                           help="Path to 'bowtie-build' program")
-        parser.add_option("--bowtie-bin", dest="bowtie_bin", default=DEFAULT_BOWTIE_BIN, 
+        bowtie_group.add_option("--bowtie-bin", dest="bowtie_bin", default=DEFAULT_BOWTIE_BIN, 
                           help="Path to 'bowtie' program")
-        parser.add_option("--bowtie-mode-v", action="store_true", 
+        bowtie_group.add_option("--bowtie-mode-v", action="store_true", 
                           dest="bowtie_mode_v", default=DEFAULT_BOWTIE_MODE_V,
                           help="Run bowtie with -v to ignore quality scores")
-        parser.add_option("--multihits", type="int", dest="multihits", 
+        bowtie_group.add_option("--multihits", type="int", dest="multihits", 
                           default=DEFAULT_MULTIHITS, metavar="MMAX",
                           help="Ignore reads that map to more than MMAX "
                           "locations [default=%default]")
-        parser.add_option("--mismatches", type="int", dest="mismatches",
+        bowtie_group.add_option("--mismatches", type="int", dest="mismatches",
                           default=DEFAULT_MISMATCHES, metavar="N",
                           help="Aligned reads must have <= N mismatches "
                           "[default=%default]")
-        parser.add_option("--segment-length", type="int", dest="segment_length", 
+        bowtie_group.add_option("--segment-length", type="int", dest="segment_length", 
                           default=DEFAULT_SEGMENT_LENGTH,
                           help="Size of read segments during discordant " 
                           "alignment phase [default=%default]")
-        parser.add_option("--trim5", type="int", dest="trim5", 
+        bowtie_group.add_option("--trim5", type="int", dest="trim5", 
                           default=DEFAULT_TRIM5, metavar="N",
                           help="Trim N bases from 5' end of read")
-        parser.add_option("--trim3", type="int", dest="trim3", 
+        bowtie_group.add_option("--trim3", type="int", dest="trim3", 
                           default=DEFAULT_TRIM3, metavar="N",
                           help="Trim N bases from 3' end of read")
-        parser.add_option("--quals", dest="fastq_format", 
+        bowtie_group.add_option("--quals", dest="fastq_format", 
                           default=DEFAULT_FASTQ_FORMAT, metavar="FMT",
                           help="Choose from %s [default=%s]" % 
                           (quals_help_string, DEFAULT_FASTQ_FORMAT))
-        parser.add_option("--min-fragment-length", type="int", 
+        bowtie_group.add_option("--min-fragment-length", type="int", 
                           dest="min_fragment_length", 
                           default=DEFAULT_MIN_FRAG_LENGTH,
                           help="Smallest expected fragment length "
                           "[default=%default]")
-        parser.add_option("--max-fragment-length", type="int", 
+        bowtie_group.add_option("--max-fragment-length", type="int", 
                           dest="max_fragment_length", 
                           default=DEFAULT_MAX_FRAG_LENGTH,
                           help="Largest expected fragment length (reads less"
                           " than this fragment length are assumed to be "
                           " unspliced and contiguous) [default=%default]")
-        parser.add_option("--max-indel-size", type="int", 
-                          dest="max_indel_size", 
-                          default=DEFAULT_MAX_INDEL_SIZE,
-                          help="Tolerate indels less than N bp "
-                          "[default=%default]", metavar="N")
-        parser.add_option('--library', dest="library_type", 
+        bowtie_group.add_option('--library', dest="library_type", 
                           default=DEFAULT_LIBRARY_TYPE,
                           help="Library type ('fr', 'rf') [default=%default]")
-        parser.add_option("--anchor-min", type="int", dest="anchor_min", 
+        parser.add_option_group(bowtie_group)
+        # filtering options
+        filter_group = OptionGroup(parser, "Filtering options",
+                                   "Adjust these options to change "
+                                   "filtering behavior")
+        filter_group.add_option("--max-indel-size", type="int", 
+                                dest="max_indel_size", 
+                                default=DEFAULT_MAX_INDEL_SIZE,
+                                help="Tolerate indels less than N bp "
+                                "[default=%default]", metavar="N")
+        filter_group.add_option("--anchor-min", type="int", dest="anchor_min", 
                           default=DEFAULT_ANCHOR_MIN,
                           help="Minimum junction overlap required to call "
                           "spanning reads [default=%default]")
-        parser.add_option("--anchor-max", type="int", dest="anchor_max", 
+        filter_group.add_option("--anchor-max", type="int", dest="anchor_max", 
                           default=DEFAULT_ANCHOR_MAX,
                           help="Junction overlap below which to enforce "
                           "mismatch checks [default=%default]")
-        parser.add_option("--anchor-mismatches", type="int", dest="anchor_mismatches", 
+        filter_group.add_option("--anchor-mismatches", type="int", dest="anchor_mismatches", 
                           default=DEFAULT_ANCHOR_MISMATCHES,
                           help="Number of mismatches allowed within anchor "
-                          "region [default=%default]")
-        filter_group = OptionGroup(parser, "Filtering options",
-                                   "Adjust these options to change "
-                                   "filtering behavior") 
+                          "region [default=%default]")        
         filter_group.add_option("--filter-multimaps", type="int",
                                 dest="filter_max_multimaps",
                                 default=DEFAULT_FILTER_MAX_MULTIMAPS,
@@ -338,7 +344,11 @@ class RunConfig(object):
                                 dest="empirical_prob", default=DEFAULT_EMPIRICAL_PROB, 
                                 help="empirical probability threshold for "
                                 "outputting chimeras [default=%default]")        
-        parser.add_option_group(filter_group)        
+        parser.add_option_group(filter_group)
+        return parser        
+
+    def from_args(self, args):
+        parser = self.get_option_parser()
         options, args = parser.parse_args(args=args)
         # parse config file options/args
         if options.config_file is not None:
