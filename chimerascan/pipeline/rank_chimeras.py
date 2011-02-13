@@ -49,8 +49,12 @@ def get_junction_pileup(c):
 def get_anchor_hist(c):
     a, r = divmod(c.junc_pos, 2)
     arr = np.zeros(a + r + 1, dtype=np.float)
-    for r in c.spanning_reads:
+    for r in c.spanning_reads:        
         anchor = min(c.junc_pos - r.pos, r.aend - c.junc_pos)
+        if anchor >= arr.shape[0]:
+            logging.warning("Anchor length %d longer than expected (%d)" % 
+                            (anchor, arr.shape[0]))
+            anchor = arr.shape[0] - 1
         arr[anchor] += (1.0 / r.mappings)        
     return arr
 

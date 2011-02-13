@@ -90,10 +90,11 @@ DEFAULT_ANCHOR_MISMATCHES = 5
 
 DEFAULT_EMPIRICAL_PROB = 1.0
 
-
 translate_quals = {'solexa': 'solexa-quals',
                    'illumina': 'solexa1.3-quals',
                    'sanger': 'phred33-quals'}
+rev_translate_quals = dict((v,k) for k,v in translate_quals.items())
+
 quals_help_string = ",".join(translate_quals.keys())
 
 def check_command_line_args(options, args, parser):
@@ -225,7 +226,112 @@ class RunConfig(object):
         self.anchor_mismatches = int(root.findtext("anchor_mismatches", DEFAULT_ANCHOR_MISMATCHES))
         # empirical probability
         self.empirical_prob = float(root.findtext("empirical_prob", DEFAULT_EMPIRICAL_PROB))
-        
+    
+    def to_xml(self):
+        root = etree.Element("chimerascan_config")
+        # output dir
+        elem = etree.SubElement(root, "output_dir")
+        elem.text = self.output_dir   
+        # fastq files
+        elem = etree.SubElement(root, "fastq_files")
+        for mate,fastq_file in enumerate(self.fastq_files):
+            file_elem = etree.SubElement(elem, "file", mate=str(mate))
+            file_elem.text = fastq_file        
+        # index
+        elem = etree.SubElement(root, "index")
+        elem.text = self.index_dir
+        # fastq format
+        elem = etree.SubElement(root, "quals")
+        elem.text = rev_translate_quals[self.fastq_format]
+        # processors
+        elem = etree.SubElement(root, "num_processors")
+        elem.text = str(self.num_processors)
+        # tmp
+        elem = etree.SubElement(root, "keep_tmp")
+        elem.text = str(self.keep_tmp)
+        # bowtie
+        elem = etree.SubElement(root, "bowtie_build_bin")
+        elem.text = self.bowtie_build_bin
+        elem = etree.SubElement(root, "bowtie_bin")
+        elem.text = self.bowtie_bin
+        elem = etree.SubElement(root, "bowtie_mode_v")
+        elem.text = self.bowtie_mode_v
+        # alignment params
+        elem = etree.SubElement(root, "multihits")
+        elem.text = str(self.multihits)
+        elem = etree.SubElement(root, "mismatches")
+        elem.text = str(self.mismatches)
+        elem = etree.SubElement(root, "segment_length")
+        elem.text = str(self.segment_length)
+        # trimming
+        elem = etree.SubElement(root, "trim5")
+        elem.text = str(self.trim5)
+        elem = etree.SubElement(root, "trim3")
+        elem.text = str(self.trim3)
+        # 
+
+        self.min_fragment_length = root.findtext("min_fragment_length", DEFAULT_MIN_FRAG_LENGTH)
+        self.max_fragment_length = root.findtext("max_fragment_length", DEFAULT_MAX_FRAG_LENGTH)
+        self.max_indel_size = root.findtext("max_indel_size", DEFAULT_MAX_INDEL_SIZE)
+        self.library_type = root.findtext("library_type", DEFAULT_LIBRARY_TYPE)
+        # filtering params
+        self.filter_max_multimaps = int(root.findtext("filter_max_multimaps", DEFAULT_FILTER_MAX_MULTIMAPS))
+        self.filter_multimap_ratio = float(root.findtext("filter_multimap_ratio", DEFAULT_FILTER_MULTIMAP_RATIO))
+        self.filter_isize_stdevs = int(root.findtext("filter_isize_stdevs", DEFAULT_FILTER_ISIZE_STDEVS))
+        self.filter_strand_pval = float(root.findtext("filter_strand_pval", DEFAULT_FILTER_STRAND_PVALUE))
+        # spanning read constraints
+        self.anchor_min = int(root.findtext("anchor_min", DEFAULT_ANCHOR_MIN))
+        self.anchor_max = int(root.findtext("anchor_min", DEFAULT_ANCHOR_MAX))
+        self.anchor_mismatches = int(root.findtext("anchor_mismatches", DEFAULT_ANCHOR_MISMATCHES))
+        # empirical probability
+        self.empirical_prob = float(root.findtext("empirical_prob", DEFAULT_EMPIRICAL_PROB))
+
+
+        root.set("name", seqdata.name)
+        output_dir = os.path.join(output_dir, seqdata.name)
+        elem = etree.SubElement(root, "output_dir")
+        elem.text = output_dir     
+        if remote_ip is not None:
+            elem.set("remote", "True")     
+            elem.set("ip", remote_ip)
+        else:
+            elem.set("remote", "False")     
+        elem = etree.SubElement(root, "rg_id")
+        elem.text = seqdata.name    
+        elem = etree.SubElement(root, "rg_sample")
+        elem.text = seqdata.seqlibrary.experiment.name
+        elem = etree.SubElement(root, "rg_library")
+        elem.text = seqdata.seqlibrary.name
+        elem = etree.SubElement(root, "rg_description")
+        elem.text = seqdata.seqlibrary.experiment.sample.description
+        elem = etree.SubElement(root, "rg_center")
+        elem.text = seqdata.instrument_run.getvattr("institution")
+        elem = etree.SubElement(root, "rg_date")
+        elem.text = datetime.strftime(seqdata.instrument_run.run_date, '%Y-%m-%d') 
+        elem = etree.SubElement(root, "rg_platform")
+        elem.text = seqdata.instrument_run.getvattr('platform')
+        elem = etree.SubElement(root, "read_length")
+        elem.text = str(seqdata.getvattr("read_length"))
+        elem = etree.SubElement(root, "fragment_layout")
+        elem.text = seqdata.instrument_run.getvattr("fragment_layout")
+        elem = etree.SubElement(root, "fragment_length_mean")
+        elem.text = str(seqdata.seqlibrary.fragment_length_mean)
+        elem = etree.SubElement(root, "quality_scores")
+        elem.text = seqdata.instrument_run.getvattr("quality_scores")
+        # set species-specific parameters
+        species = seqdata.seqlibrary.experiment.sample.organism.getvattr("species")
+        elem = etree.SubElement(root, "species")
+        elem.text = species
+        # sequence data files
+        elem = etree.SubElement(root, "fastq_files")
+        for mate in xrange(len(seqdata.files)):
+            filename = seqdata.files[mate]
+            file_elem = etree.SubElement(elem, "file", mate=str(mate))
+            file_elem.text = filename
+        # write to file
+        print >>fp, etree.tostring(root, pretty_print=True)
+
+    
     def from_args(self, args):
         parser = OptionParser(usage="%prog [options] [--config <config_file> "
                               " | <mate1.fq> <mate2.fq> <output_dir>]",
