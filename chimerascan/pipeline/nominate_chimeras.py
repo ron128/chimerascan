@@ -34,6 +34,24 @@ from find_discordant_reads import DiscordantFragment
 MULTIMAP_BINS = (1,2,4,8,16,32,64,128)
 CHIMERA_SEP = "|"
 
+# chimera types
+CHIMERA_INTERCHROMOSOMAL = "Interchromosomal"
+CHIMERA_OVERLAP_CONVERGE = "Overlapping_Converging"
+CHIMERA_OVERLAP_DIVERGE = "Overlapping_Diverging"
+CHIMERA_OVERLAP_SAME = "Overlapping_Same"
+CHIMERA_OVERLAP_COMPLEX = "Overlapping_Complex"
+CHIMERA_READTHROUGH = "Read_Through"
+CHIMERA_INTRACHROMOSOMAL = "Intrachromosomal"
+CHIMERA_ADJ_CONVERGE = "Adjacent_Converging"
+CHIMERA_ADJ_DIVERGE = "Adjacent_Diverging"
+CHIMERA_ADJ_SAME = "Adjacent_Same"
+CHIMERA_ADJ_COMPLEX = "Adjacent_Complex"
+#CHIMERA_INTRA_CONVERGE = "Intrachromosomal_Converging"
+#CHIMERA_INTRA_DIVERGE = "Intrachromsomal_Diverging"
+#CHIMERA_INTRA_SAME = "Intrachromosomal_Same"
+CHIMERA_INTRA_COMPLEX = "Intrachromosomal_Complex"
+CHIMERA_UNKNOWN = "Undetermined"
+    
 class ChimeraMate(object):
     def __init__(self):
         self.start = 0
@@ -218,24 +236,6 @@ def get_exon_interval(g, pos):
     return exon_num, exon_pos, exon_pos + exon_size
 
 def get_chimera_type(fiveprime_gene, threeprime_gene, gene_trees):
-    #ORIENTATION_SAME = "Same"
-    #ORIENTATION_OPPOSITE = "Opposite"    
-    CHIMERA_INTERCHROMOSOMAL = "Interchromosomal"
-    CHIMERA_OVERLAP_CONVERGE = "Overlapping_Converging"
-    CHIMERA_OVERLAP_DIVERGE = "Overlapping_Diverging"
-    CHIMERA_OVERLAP_SAME = "Overlapping_Same"
-    CHIMERA_OVERLAP_COMPLEX = "Overlapping_Complex"
-    CHIMERA_READTHROUGH = "Read_Through"
-    CHIMERA_INTRACHROMOSOMAL = "Intrachromosomal"
-    CHIMERA_ADJ_CONVERGE = "Adjacent_Converging"
-    CHIMERA_ADJ_DIVERGE = "Adjacent_Diverging"
-    CHIMERA_ADJ_SAME = "Adjacent_Same"
-    CHIMERA_ADJ_COMPLEX = "Adjacent_Complex"
-    #CHIMERA_INTRA_CONVERGE = "Intrachromosomal_Converging"
-    #CHIMERA_INTRA_DIVERGE = "Intrachromsomal_Diverging"
-    #CHIMERA_INTRA_SAME = "Intrachromosomal_Same"
-    CHIMERA_INTRA_COMPLEX = "Intrachromosomal_Complex"
-    CHIMERA_UNKNOWN = "Undetermined"
     # get gene information
     chrom1, start5p, end5p, strand1 = fiveprime_gene.chrom, fiveprime_gene.tx_start, fiveprime_gene.tx_end, fiveprime_gene.strand
     chrom2, start3p, end3p, strand2 = threeprime_gene.chrom, threeprime_gene.tx_start, threeprime_gene.tx_end, threeprime_gene.strand

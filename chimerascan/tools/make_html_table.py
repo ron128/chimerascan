@@ -11,6 +11,7 @@ from jinja2 import Environment, FileSystemLoader
 
 # local imports
 from chimerascan.pipeline.merge_spanning_alignments import SpanningChimera
+from chimerascan.pipeline.nominate_chimeras import CHIMERA_READTHROUGH
 
 env = Environment(loader=FileSystemLoader(os.path.dirname(__file__)))
 
@@ -35,11 +36,14 @@ def get_header_row():
             "5'->3' permiscuity",
             "3'->5' permiscuity"]
 
-def generate_row_data(chimeras, prob_cutoff):
+def generate_row_data(chimeras, prob_cutoff, show_read_throughs):                      
     for c in chimeras:
         prob = float(c.extra_fields[-1])
         if prob > prob_cutoff:
             break
+        if ((not show_read_throughs) and 
+            (c.chimera_type == CHIMERA_READTHROUGH)):
+            continue
         yield [c.mate5p.tx_name,
                '%d-%d' % (c.mate5p.exon_start_num, c.mate5p.exon_end_num),
                c.mate3p.tx_name,
@@ -59,11 +63,15 @@ def generate_row_data(chimeras, prob_cutoff):
                c.mate5p.frac,
                c.mate3p.frac]
 
-def make_html_table(input_file, prob_cutoff=0.6):
-    t = env.get_template("table_template.html")    
+def make_html_table(input_file, 
+                    prob_cutoff=0.6,
+                    show_read_throughs=False):
+    row_iter = generate_row_data(SpanningChimera.parse(open(input_file)), 
+                                 prob_cutoff=prob_cutoff,
+                                 show_read_throughs=show_read_throughs)
+    t = env.get_template("table_template.html")
     htmlstring = t.render(colnames=get_header_row(),
-                          rows=generate_row_data(SpanningChimera.parse(open(input_file)),
-                                                 prob_cutoff))
+                          rows=row_iter)
     return htmlstring
 
 def main():
@@ -76,13 +84,18 @@ def main():
     parser.add_option("--empirical-prob", dest="empirical_prob", 
                       type="float", default=0.6,
                       help="probability threshold (0-1) [default=%default]")
+    parser.add_option("--read-throughs", dest="show_read_throughs",
+                      action="store_true", default=False,
+                      help="include read-through chimeras in output "
+                      "[default=%default]")
     options, args = parser.parse_args()
     input_file = args[0]
     if options.output_file is None:
         fileh = sys.stdout
     else:
         fileh = open(options.output_file, "w")
-    res = make_html_table(input_file, options.empirical_prob)
+    res = make_html_table(input_file, options.empirical_prob,
+                          options.show_read_throughs)
     print >>fileh, res
     #rank_chimeras(input_file, output_file, options.empirical_prob)
     if options.output_file is not None:
