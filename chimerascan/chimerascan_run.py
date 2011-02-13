@@ -25,7 +25,7 @@ __author__ = "Matthew Iyer"
 __copyright__ = "Copyright 2011, chimerascan project"
 __credits__ = ["Matthew Iyer", "Christopher Maher"]
 __license__ = "GPL"
-__version__ = "0.3.0"
+__version__ = "0.3.2"
 __maintainer__ = "Matthew Iyer"
 __email__ = "mkiyer@med.umich.edu"
 __status__ = "beta"
@@ -36,7 +36,7 @@ import subprocess
 import sys
 import shutil
 from optparse import OptionParser, OptionGroup
-import xml.etree.ElementTree as etree
+import lxml.etree as etree
 
 # check for python version 2.6.0 or greater
 if sys.version_info < (2,6,0):
@@ -67,7 +67,7 @@ DEFAULT_NUM_PROCESSORS = config.BASE_PROCESSORS
 DEFAULT_KEEP_TMP = False
 DEFAULT_BOWTIE_BUILD_BIN = "bowtie-build"
 DEFAULT_BOWTIE_BIN = "bowtie"
-DEFAULT_BOWTIE_MODE_V = False
+DEFAULT_BOWTIE_MODE_V = "False"
 DEFAULT_MULTIHITS = 100
 DEFAULT_MISMATCHES = 2
 DEFAULT_SEGMENT_LENGTH = 25
@@ -152,37 +152,37 @@ def check_command_line_args(options, args, parser):
         logging.warning("Please specify >=2 processes using '-p' to allow program to run efficiently")
 
 class RunConfig(object):
+    
+    attrs = (("num_processors", int, DEFAULT_NUM_PROCESSORS),
+             ("keep_tmp", parse_bool, DEFAULT_KEEP_TMP),
+             ("bowtie_build_bin", str, DEFAULT_BOWTIE_BUILD_BIN),
+             ("bowtie_bin", str, DEFAULT_BOWTIE_BIN),
+             ("bowtie_mode_v", parse_bool, DEFAULT_BOWTIE_MODE_V),
+             ("multihits", int, DEFAULT_MULTIHITS),
+             ("mismatches", int, DEFAULT_MISMATCHES),
+             ("segment_length", int, DEFAULT_SEGMENT_LENGTH),
+             ("trim5", int, DEFAULT_TRIM5),
+             ("trim3", int, DEFAULT_TRIM3),
+             ("min_fragment_length", int, DEFAULT_MIN_FRAG_LENGTH),
+             ("max_fragment_length", int, DEFAULT_MAX_FRAG_LENGTH),
+             ("max_indel_size", int, DEFAULT_MAX_INDEL_SIZE),
+             ("library_type", str, DEFAULT_LIBRARY_TYPE),
+             ("filter_max_multimaps", int, DEFAULT_FILTER_MAX_MULTIMAPS),
+             ("filter_multimap_ratio", float, DEFAULT_FILTER_MULTIMAP_RATIO),
+             ("filter_isize_stdevs", float, DEFAULT_FILTER_ISIZE_STDEVS),
+             ("filter_strand_pval", float, DEFAULT_FILTER_STRAND_PVALUE),
+             ("anchor_min", int, DEFAULT_ANCHOR_MIN),
+             ("anchor_max", int, DEFAULT_ANCHOR_MAX),
+             ("anchor_mismatches", int, DEFAULT_ANCHOR_MISMATCHES),
+             ("empirical_prob", float, DEFAULT_EMPIRICAL_PROB))
+
     def __init__(self):
         self.output_dir = None
         self.fastq_files = None
         self.index_dir = None
-        self.fastq_format = None 
-        self.num_processors = None
-        self.keep_tmp = None
-        self.bowtie_build_bin = None
-        self.bowtie_bin = None
-        self.bowtie_mode_v = None
-        self.multihits = None
-        self.mismatches = None
-        self.segment_length = None
-        self.trim5 = None
-        self.trim3 = None
-        self.min_fragment_length = None
-        self.max_fragment_length = None
-        self.max_indel_size = None
-        self.library_type = None
-        # filtering params
-        self.filter_max_multimaps = None
-        self.filter_multimap_ratio = None
-        self.filter_isize_stdevs = None
-        self.filter_strand_pval = None
-        # spanning read constraints
-        self.anchor_min = None
-        self.anchor_max = None 
-        self.anchor_mismatches = None
-        # empirical probability to output chimeras
-        self.empirical_prob = None
-        
+        self.fastq_format = None        
+        for attrname, attrtype, attrdefault in self.attrs:
+            setattr(self, attrname, None)
 
     def from_xml(self, xmlfile):
         tree = etree.parse(xmlfile)        
@@ -195,37 +195,15 @@ class RunConfig(object):
             fastq_files[mate] = mate_elem.text
         self.fastq_files = [fastq_files[mate] for mate in xrange(len(fastq_files))]
         self.index_dir = root.findtext('index')        
-        # optional arguments
         quals = root.findtext("quals")
         if quals not in translate_quals:
             logging.error("Quality score option %s unknown, using default %s" % 
                           (quals, DEFAULT_FASTQ_FORMAT))
-        self.fastq_format = translate_quals.get(quals, DEFAULT_FASTQ_FORMAT)
-        self.num_processors = int(root.findtext("num_processors"), DEFAULT_NUM_PROCESSORS)
-        self.keep_tmp = parse_bool(root.findtext("keep_tmp", str(DEFAULT_KEEP_TMP)))        
-        self.bowtie_build_bin = root.findtext("bowtie_build_bin", DEFAULT_BOWTIE_BUILD_BIN)
-        self.bowtie_bin = root.findtext("bowtie_bin", DEFAULT_BOWTIE_BIN)
-        self.bowtie_mode_v = parse_bool(root.findtext("bowtie_mode_v", str(DEFAULT_BOWTIE_MODE_V)))
-        self.multihits = int(root.findtext("multihits", DEFAULT_MULTIHITS))
-        self.mismatches = int(root.findtext("mismatches", DEFAULT_MISMATCHES))
-        self.segment_length = int(root.findtext("segment_length", DEFAULT_SEGMENT_LENGTH))
-        self.trim5 = root.findtext("trim5", DEFAULT_TRIM5)
-        self.trim3 = root.findtext("trim3", DEFAULT_TRIM3)
-        self.min_fragment_length = root.findtext("min_fragment_length", DEFAULT_MIN_FRAG_LENGTH)
-        self.max_fragment_length = root.findtext("max_fragment_length", DEFAULT_MAX_FRAG_LENGTH)
-        self.max_indel_size = root.findtext("max_indel_size", DEFAULT_MAX_INDEL_SIZE)
-        self.library_type = root.findtext("library_type", DEFAULT_LIBRARY_TYPE)
-        # filtering params
-        self.filter_max_multimaps = int(root.findtext("filter_max_multimaps", DEFAULT_FILTER_MAX_MULTIMAPS))
-        self.filter_multimap_ratio = float(root.findtext("filter_multimap_ratio", DEFAULT_FILTER_MULTIMAP_RATIO))
-        self.filter_isize_stdevs = int(root.findtext("filter_isize_stdevs", DEFAULT_FILTER_ISIZE_STDEVS))
-        self.filter_strand_pval = float(root.findtext("filter_strand_pval", DEFAULT_FILTER_STRAND_PVALUE))
-        # spanning read constraints
-        self.anchor_min = int(root.findtext("anchor_min", DEFAULT_ANCHOR_MIN))
-        self.anchor_max = int(root.findtext("anchor_min", DEFAULT_ANCHOR_MAX))
-        self.anchor_mismatches = int(root.findtext("anchor_mismatches", DEFAULT_ANCHOR_MISMATCHES))
-        # empirical probability
-        self.empirical_prob = float(root.findtext("empirical_prob", DEFAULT_EMPIRICAL_PROB))
+        self.fastq_format = translate_quals.get(quals, DEFAULT_FASTQ_FORMAT)        
+        # optional arguments
+        for attrname, attrtype, attrdefault in self.attrs:
+            val = root.findtext(attrname, attrdefault)            
+            setattr(self, attrname, attrtype(val))
     
     def to_xml(self):
         root = etree.Element("chimerascan_config")
@@ -243,93 +221,12 @@ class RunConfig(object):
         # fastq format
         elem = etree.SubElement(root, "quals")
         elem.text = rev_translate_quals[self.fastq_format]
-        # processors
-        elem = etree.SubElement(root, "num_processors")
-        elem.text = str(self.num_processors)
-        # tmp
-        elem = etree.SubElement(root, "keep_tmp")
-        elem.text = str(self.keep_tmp)
-        # bowtie
-        elem = etree.SubElement(root, "bowtie_build_bin")
-        elem.text = self.bowtie_build_bin
-        elem = etree.SubElement(root, "bowtie_bin")
-        elem.text = self.bowtie_bin
-        elem = etree.SubElement(root, "bowtie_mode_v")
-        elem.text = self.bowtie_mode_v
-        # alignment params
-        elem = etree.SubElement(root, "multihits")
-        elem.text = str(self.multihits)
-        elem = etree.SubElement(root, "mismatches")
-        elem.text = str(self.mismatches)
-        elem = etree.SubElement(root, "segment_length")
-        elem.text = str(self.segment_length)
-        # trimming
-        elem = etree.SubElement(root, "trim5")
-        elem.text = str(self.trim5)
-        elem = etree.SubElement(root, "trim3")
-        elem.text = str(self.trim3)
-        # 
-
-        self.min_fragment_length = root.findtext("min_fragment_length", DEFAULT_MIN_FRAG_LENGTH)
-        self.max_fragment_length = root.findtext("max_fragment_length", DEFAULT_MAX_FRAG_LENGTH)
-        self.max_indel_size = root.findtext("max_indel_size", DEFAULT_MAX_INDEL_SIZE)
-        self.library_type = root.findtext("library_type", DEFAULT_LIBRARY_TYPE)
-        # filtering params
-        self.filter_max_multimaps = int(root.findtext("filter_max_multimaps", DEFAULT_FILTER_MAX_MULTIMAPS))
-        self.filter_multimap_ratio = float(root.findtext("filter_multimap_ratio", DEFAULT_FILTER_MULTIMAP_RATIO))
-        self.filter_isize_stdevs = int(root.findtext("filter_isize_stdevs", DEFAULT_FILTER_ISIZE_STDEVS))
-        self.filter_strand_pval = float(root.findtext("filter_strand_pval", DEFAULT_FILTER_STRAND_PVALUE))
-        # spanning read constraints
-        self.anchor_min = int(root.findtext("anchor_min", DEFAULT_ANCHOR_MIN))
-        self.anchor_max = int(root.findtext("anchor_min", DEFAULT_ANCHOR_MAX))
-        self.anchor_mismatches = int(root.findtext("anchor_mismatches", DEFAULT_ANCHOR_MISMATCHES))
-        # empirical probability
-        self.empirical_prob = float(root.findtext("empirical_prob", DEFAULT_EMPIRICAL_PROB))
-
-
-        root.set("name", seqdata.name)
-        output_dir = os.path.join(output_dir, seqdata.name)
-        elem = etree.SubElement(root, "output_dir")
-        elem.text = output_dir     
-        if remote_ip is not None:
-            elem.set("remote", "True")     
-            elem.set("ip", remote_ip)
-        else:
-            elem.set("remote", "False")     
-        elem = etree.SubElement(root, "rg_id")
-        elem.text = seqdata.name    
-        elem = etree.SubElement(root, "rg_sample")
-        elem.text = seqdata.seqlibrary.experiment.name
-        elem = etree.SubElement(root, "rg_library")
-        elem.text = seqdata.seqlibrary.name
-        elem = etree.SubElement(root, "rg_description")
-        elem.text = seqdata.seqlibrary.experiment.sample.description
-        elem = etree.SubElement(root, "rg_center")
-        elem.text = seqdata.instrument_run.getvattr("institution")
-        elem = etree.SubElement(root, "rg_date")
-        elem.text = datetime.strftime(seqdata.instrument_run.run_date, '%Y-%m-%d') 
-        elem = etree.SubElement(root, "rg_platform")
-        elem.text = seqdata.instrument_run.getvattr('platform')
-        elem = etree.SubElement(root, "read_length")
-        elem.text = str(seqdata.getvattr("read_length"))
-        elem = etree.SubElement(root, "fragment_layout")
-        elem.text = seqdata.instrument_run.getvattr("fragment_layout")
-        elem = etree.SubElement(root, "fragment_length_mean")
-        elem.text = str(seqdata.seqlibrary.fragment_length_mean)
-        elem = etree.SubElement(root, "quality_scores")
-        elem.text = seqdata.instrument_run.getvattr("quality_scores")
-        # set species-specific parameters
-        species = seqdata.seqlibrary.experiment.sample.organism.getvattr("species")
-        elem = etree.SubElement(root, "species")
-        elem.text = species
-        # sequence data files
-        elem = etree.SubElement(root, "fastq_files")
-        for mate in xrange(len(seqdata.files)):
-            filename = seqdata.files[mate]
-            file_elem = etree.SubElement(elem, "file", mate=str(mate))
-            file_elem.text = filename
-        # write to file
-        print >>fp, etree.tostring(root, pretty_print=True)
+        # optional arguments
+        for attrname, attrtype, attrdefault in self.attrs:
+            val = getattr(self, attrname)
+            elem = etree.SubElement(root, attrname)
+            elem.text = str(val)
+        return etree.tostring(root, pretty_print=True)
 
     
     def from_args(self, args):
@@ -459,51 +356,15 @@ class RunConfig(object):
             if options.index_dir is None:
                 parser.error("index dir not specified in config file or command line")                   
             self.index_dir = options.index_dir
-        # optional arguments
         if self.fastq_format is None:
             self.fastq_format = translate_quals.get(options.fastq_format, DEFAULT_FASTQ_FORMAT)
-        if self.num_processors is None:
-            self.num_processors = int(options.num_processors)
-        if self.keep_tmp is None:
-            self.keep_tmp = options.keep_tmp
-        if self.bowtie_build_bin is None:
-            self.bowtie_build_bin = options.bowtie_build_bin
-        if self.bowtie_bin is None:
-            self.bowtie_bin = options.bowtie_bin
-        if self.bowtie_mode_v is None:
-            self.bowtie_mode_v = options.bowtie_mode_v
-        if self.multihits is None:
-            self.multihits = options.multihits
-        if self.mismatches is None:
-            self.mismatches = options.mismatches
-        if self.segment_length is None:
-            self.segment_length = options.segment_length
-        if self.trim5 is None:
-            self.trim5 = options.trim5
-        if self.trim3 is None:
-            self.trim3 = options.trim3
-        if self.min_fragment_length is None:
-            self.min_fragment_length = options.min_fragment_length
-        if self.max_fragment_length is None:
-            self.max_fragment_length = options.max_fragment_length
-        if self.max_indel_size is None:
-            self.max_indel_size = options.max_indel_size
-        if self.library_type is None:
-            self.library_type = options.library_type
+        # optional arguments
         # set rest of options, overriding if attribute is undefined
         # or set to something other than the default 
-        attrs = (("filter_max_multimaps", DEFAULT_FILTER_MAX_MULTIMAPS),
-                 ("filter_multimap_ratio", DEFAULT_FILTER_MULTIMAP_RATIO),
-                 ("filter_isize_stdevs", DEFAULT_FILTER_ISIZE_STDEVS),
-                 ("filter_strand_pval", DEFAULT_FILTER_STRAND_PVALUE),
-                 ("anchor_min", DEFAULT_ANCHOR_MIN),
-                 ("anchor_max", DEFAULT_ANCHOR_MAX),
-                 ("anchor_mismatches", DEFAULT_ANCHOR_MISMATCHES),
-                 ("empirical_prob", DEFAULT_EMPIRICAL_PROB))
-        for attr_name,default_val in attrs:
-            if ((getattr(self, attr_name) is None) or
-                (getattr(options, attr_name) != default_val)):
-                setattr(self, attr_name, getattr(options, attr_name)) 
+        for attrname, attrtype, attrdefault in self.attrs:
+            if ((getattr(self, attrname) is None) or
+                (getattr(options, attrname) != attrdefault)):
+                setattr(self, attrname, getattr(options, attrname))        
 
     def check_config(self):
         # check that input fastq files exist
@@ -591,6 +452,12 @@ def run_chimerascan(runconfig):
     if not os.path.exists(tmp_dir):
         os.makedirs(tmp_dir)
         logging.debug("Created directory for tmp files: %s" % (tmp_dir))
+    # write the run config to a file
+    xmlstring = runconfig.to_xml()
+    runconfig_xml_file = os.path.join(runconfig.output_dir, config.RUNCONFIG_XML_FILE)
+    fh = open(runconfig_xml_file, "w")
+    print >>fh, xmlstring
+    fh.close()
     # gather and parse run parameters
     library_type = parse_library_type(runconfig.library_type)    
     gene_feature_file = os.path.join(runconfig.index_dir, config.GENE_FEATURE_FILE)
@@ -713,7 +580,8 @@ def run_chimerascan(runconfig):
         logging.info("[SKIPPED] Finding discordant reads")
     else:
         logging.info("Finding discordant reads")
-        find_discordant_reads(pysam.Samfile(paired_bam_file, "rb"), 
+        bamfh = pysam.Samfile(paired_bam_file, "rb")
+        find_discordant_reads(bamfh, 
                               discordant_gene_bedpe_file,
                               discordant_genome_bedpe_file, 
                               gene_feature_file,
@@ -722,6 +590,7 @@ def run_chimerascan(runconfig):
                               max_multihits=runconfig.multihits,
                               library_type=library_type,
                               padding=padding)
+        bamfh.close()
     #
     # Extract full sequences of the discordant reads
     #

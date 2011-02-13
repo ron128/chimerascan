@@ -33,6 +33,7 @@ BOWTIE_INDEX_FILE = 'align_index.1.ebwt'
 GENE_REF_PREFIX = 'gene_'
 GENE_FEATURE_FILE = "gene_features.txt"
 
+RUNCONFIG_XML_FILE = "runconfig.xml"
 ALIGNED_READS_BAM_FILE = "aligned_reads.bam"
 UNALIGNED_FASTQ_PARAM = "unaligned.fq"
 UNALIGNED_FASTQ_FILES = ("unaligned_1.fq", "unaligned_2.fq")
