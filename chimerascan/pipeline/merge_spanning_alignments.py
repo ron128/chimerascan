@@ -97,6 +97,8 @@ class SpanningChimera(Chimera):
     @staticmethod
     def parse(line_iter):
         for line in line_iter:
+            if line.startswith("#"):
+                continue
             fields = line.strip().split('\t')
             c = SpanningChimera()
             c.from_list(fields)

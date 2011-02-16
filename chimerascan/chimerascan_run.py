@@ -494,6 +494,7 @@ def run_chimerascan(runconfig):
     unaligned_fastq_param = os.path.join(tmp_dir, config.UNALIGNED_FASTQ_PARAM)
     maxmultimap_fastq_param = os.path.join(tmp_dir, config.MAXMULTIMAP_FASTQ_PARAM)
     aligned_bam_file = os.path.join(runconfig.output_dir, config.ALIGNED_READS_BAM_FILE)
+    aligned_log_file = os.path.join(log_dir, "bowtie_alignment.log")    
     if all(up_to_date(aligned_bam_file, fq) for fq in runconfig.fastq_files):
         logging.info("[SKIPPED] Alignment results exist")
     else:    
@@ -513,7 +514,8 @@ def run_chimerascan(runconfig):
                                 multihits=runconfig.multihits,
                                 mismatches=runconfig.mismatches,
                                 bowtie_bin=runconfig.bowtie_bin,
-                                bowtie_mode=bowtie_mode)
+                                bowtie_mode=bowtie_mode,
+                                log_file=aligned_log_file)
         if retcode != 0:
             logging.error("Bowtie failed with error code %d" % (retcode))    
             sys.exit(retcode)
@@ -541,6 +543,7 @@ def run_chimerascan(runconfig):
     # Discordant reads alignment step
     #
     discordant_bam_file = os.path.join(tmp_dir, config.DISCORDANT_BAM_FILE)
+    discordant_log_file = os.path.join(log_dir, "bowtie_segmented_alignment.log")    
     unaligned_fastq_files = [os.path.join(tmp_dir, fq) for fq in config.UNALIGNED_FASTQ_FILES]
     # get the segments used in discordant alignment to know the effective
     # read length used to align.  we used this to set the 'padding' during
@@ -567,7 +570,8 @@ def run_chimerascan(runconfig):
               trim3=runconfig.trim3, 
               multihits=runconfig.multihits,
               mismatches=runconfig.mismatches, 
-              bowtie_mode=bowtie_mode)
+              bowtie_mode=bowtie_mode,
+              log_file=discordant_log_file)
     #
     # Merge paired-end reads step
     #
@@ -717,6 +721,7 @@ def run_chimerascan(runconfig):
     # Align unmapped reads across putative junctions
     #
     junc_bam_file = os.path.join(tmp_dir, config.JUNC_READS_BAM_FILE)
+    junc_log_file = os.path.join(log_dir, "bowtie_spanning_alignment.log")        
     if (up_to_date(junc_bam_file, bowtie_spanning_index_file) and
         up_to_date(junc_bam_file, spanning_fastq_file)):
         logging.info("[SKIPPED] Aligning junction spanning reads")
@@ -732,7 +737,8 @@ def run_chimerascan(runconfig):
                                 multihits=runconfig.multihits,
                                 mismatches=runconfig.mismatches,
                                 bowtie_bin=runconfig.bowtie_bin,
-                                bowtie_mode=bowtie_mode)
+                                bowtie_mode=bowtie_mode,
+                                log_file=junc_log_file)
         if retcode != 0:
             logging.error("Bowtie failed with error code %d" % (retcode))    
             sys.exit(retcode)

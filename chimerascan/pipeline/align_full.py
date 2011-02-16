@@ -44,7 +44,8 @@ def align_pe_full(fastq_files,
                   multihits=100, 
                   mismatches=2, 
                   bowtie_bin="bowtie", 
-                  bowtie_mode="-n"):
+                  bowtie_mode="-n",
+                  log_file=None):
     read_length = get_read_length(fastq_files[0])     
     args = [bowtie_bin, "-q", "-S", 
             "-p", str(num_processors),
@@ -73,7 +74,13 @@ def align_pe_full(fastq_files,
     args = [sys.executable, __file__, "--multihits", str(multihits),
             output_bam_file, fastq_files[0]]
     logging.debug("SAM to BAM converter args: %s" % (' '.join(args)))
-    retcode = subprocess.call(args, stdin=aln_p.stdout)
+    if log_file is not None:
+        logfh = open(log_file, "w")
+    else:
+        logfh = None    
+    retcode = subprocess.call(args, stdin=aln_p.stdout, stderr=logfh)
+    if logfh is not None:
+        logfh.close()
     if retcode != 0:
         return retcode
     return aln_p.wait()
@@ -88,7 +95,8 @@ def align_sr_full(fastq_file,
                   multihits=100, 
                   mismatches=2, 
                   bowtie_bin="bowtie", 
-                  bowtie_mode="-n"):
+                  bowtie_mode="-n",
+                  log_file=None):               
     read_length = get_read_length(fastq_file)     
     args = [bowtie_bin, "-q", "-S", 
             "-p", str(num_processors),
@@ -110,7 +118,13 @@ def align_sr_full(fastq_file,
     args = [sys.executable, __file__, "--multihits", str(multihits), "--sr",
             output_bam_file, fastq_file]
     logging.debug("SAM to BAM converter args: %s" % (' '.join(args)))
-    retcode = subprocess.call(args, stdin=aln_p.stdout)
+    if log_file is not None:
+        logfh = open(log_file, "w")
+    else:
+        logfh = None
+    retcode = subprocess.call(args, stdin=aln_p.stdout, stderr=logfh)
+    if logfh is not None:
+        logfh.close()
     if retcode != 0:
         return retcode
     return aln_p.wait()

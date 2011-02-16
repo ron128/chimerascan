@@ -139,6 +139,8 @@ class Chimera(object):
     @staticmethod
     def parse(line_iter):
         for line in line_iter:
+            if line.startswith("#"):
+                continue            
             fields = line.strip().split('\t')
             c = Chimera()
             c.from_list(fields)

@@ -96,6 +96,7 @@ class InsertSizeDistribution(object):
         return std
 
     def to_file(self, fileh):
+        print >>fileh, '\t'.join(["#insert_size", "num_samples"])
         for i,x in enumerate(self.arr):
             print >>fileh, '\t'.join([str(i + self.min_isize), str(x)])        
 
@@ -103,6 +104,8 @@ class InsertSizeDistribution(object):
         isizes = []
         counts = []
         for line in fileh:
+            if line.startswith("#"):
+                continue
             fields = line.strip().split('\t')
             i,x = map(int, fields[0:2])
             isizes.append(i)
