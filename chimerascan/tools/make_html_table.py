@@ -7,14 +7,14 @@ import logging
 import os
 import sys
 import jinja2
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, PackageLoader
 
 # local imports
 from chimerascan.pipeline.merge_spanning_alignments import SpanningChimera
 from chimerascan.pipeline.nominate_chimeras import CHIMERA_READTHROUGH
 
-env = Environment(loader=FileSystemLoader(os.path.dirname(__file__)))
-
+# setup html template environment
+env = Environment(loader=PackageLoader("chimerascan", "tools"))
 
 def get_header_row():
     return ["5' ucsc id",

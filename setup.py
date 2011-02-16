@@ -29,10 +29,13 @@ setup_kwargs = {"name": "chimerascan",
                              "chimerascan.pysam",
                              "chimerascan.bx",
                              "chimerascan.pipeline",
-                             "chimerascan.lib"],
+                             "chimerascan.lib",
+                             "chimerascan.tools"],
+                "package_data": {'chimerascan.tools': ['table_template.html']},                             
                 "scripts": ["chimerascan/chimerascan_run.py",
                             "chimerascan/chimerascan_index.py",
-                            "chimerascan/chimerascan_cluster.py"]}
+                            "chimerascan/chimerascan_cluster.py",
+                            "chiemrascan/tools/make_html_table.py"]}
 
 # ---- Extension Modules ----------------------------------------------------
 
