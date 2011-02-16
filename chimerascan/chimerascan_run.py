@@ -238,6 +238,10 @@ class RunConfig(object):
                           help="Path to chimerascan index directory")
         parser.add_option("--config", dest="config_file",
                           help="Path to configuration XML file") 
+        parser.add_option("-v", "--verbose", dest="verbose",
+                          action="store_true", default=False,
+                          help="enable verbose logging output "
+                          "[default=%default]")
         parser.add_option("-p", "--processors", dest="num_processors", 
                           type="int", default=DEFAULT_NUM_PROCESSORS,
                           help="Number of processor cores to allocate to "
@@ -353,6 +357,9 @@ class RunConfig(object):
         # parse config file options/args
         if options.config_file is not None:
             self.from_xml(options.config_file)
+        # reset logging to verbose
+        if options.verbose:
+            logging.getLogger().setLevel(logging.DEBUG)
         # check command line arguments
         if self.fastq_files is None:
             if len(args) < 2:
@@ -779,7 +786,7 @@ def run_chimerascan(runconfig):
     return JOB_SUCCESS
 
 def main():
-    logging.basicConfig(level=logging.DEBUG,
+    logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     # parse run parameters in config file and command line
     runconfig = RunConfig()

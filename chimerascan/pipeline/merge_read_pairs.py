@@ -133,7 +133,7 @@ def pair_reads(r1, r2, add_tags=None, keep_tags=None):
 def merge_read_pairs(bamfh, output_bamfh, min_isize, max_isize, library_type):
     # setup debugging logging messages
     debug_count = 0
-    debug_every = 1e5
+    debug_every = 1e6
     debug_next = debug_every    
     num_paired = 0
     num_unpaired = 0
@@ -164,9 +164,9 @@ def merge_read_pairs(bamfh, output_bamfh, min_isize, max_isize, library_type):
         debug_count += 1
         if debug_count == debug_next:
             debug_next += debug_every
-            logging.info("Total read pairs: %d" % (num_fragments))
-            logging.info("Paired reads: %d" % (num_paired))
-            logging.info("Unpaired_reads: %d" % (num_unpaired))
+            logging.debug("Total read pairs: %d" % (num_fragments))
+            logging.debug("Paired reads: %d" % (num_paired))
+            logging.debug("Unpaired_reads: %d" % (num_unpaired))
     logging.info("Total read pairs: %d" % (num_fragments))
     logging.info("Paired reads: %d" % (num_paired))
     logging.info("Unpaired_reads: %d" % (num_unpaired))

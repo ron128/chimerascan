@@ -286,7 +286,7 @@ def get_tid_ref_types(bamfh):
 def join_segmented_alignments(input_sam_file, input_fastq_file, output_bam_file, is_paired):
     # setup debugging logging messages
     debug_count = 0
-    debug_every = 1e5
+    debug_every = 1e6
     debug_next = debug_every
     # open sam file
     infh = pysam.Samfile(input_sam_file, "r")
@@ -303,7 +303,7 @@ def join_segmented_alignments(input_sam_file, input_fastq_file, output_bam_file,
         debug_count += 1
         if debug_count == debug_next:
             debug_next += debug_every
-            logging.info("Processed %d reads" % debug_count)            
+            logging.debug("Processed %d reads" % debug_count)            
         # get alignments    
         for mate, mate_segs in enumerate(segmented_pe_reads):
             # search for segment matches
