@@ -564,7 +564,7 @@ def run_chimerascan(runconfig):
     #
     # Merge paired-end reads step
     #
-    paired_bam_file = os.path.join(runconfig.output_dir, config.DISCORDANT_PAIRED_BAM_FILE)
+    paired_bam_file = os.path.join(tmp_dir, config.DISCORDANT_PAIRED_BAM_FILE)
     if up_to_date(paired_bam_file, discordant_bam_file):
         logging.info("[SKIPPED] Read pairing results exist")
     else:
@@ -605,7 +605,7 @@ def run_chimerascan(runconfig):
     # Extract full sequences of the discordant reads
     #
     extended_discordant_gene_bedpe_file = \
-        os.path.join(runconfig.output_dir, 
+        os.path.join(tmp_dir, 
                      config.EXTENDED_DISCORDANT_GENE_BEDPE_FILE)
     if up_to_date(extended_discordant_gene_bedpe_file, discordant_gene_bedpe_file):
         logging.info("[SKIPPED] Retrieving full length sequences for realignment")
@@ -617,7 +617,7 @@ def run_chimerascan(runconfig):
     #
     # Sort discordant reads
     #
-    sorted_discordant_gene_bedpe_file = os.path.join(runconfig.output_dir, config.SORTED_DISCORDANT_GENE_BEDPE_FILE)
+    sorted_discordant_gene_bedpe_file = os.path.join(tmp_dir, config.SORTED_DISCORDANT_GENE_BEDPE_FILE)
     if (up_to_date(sorted_discordant_gene_bedpe_file, extended_discordant_gene_bedpe_file)):
         logging.info("[SKIPPED] Sorting discordant BEDPE file")
     else:        
@@ -639,7 +639,7 @@ def run_chimerascan(runconfig):
     # Filter encompassing chimeras step
     #
     filtered_encomp_bedpe_file = \
-        os.path.join(runconfig.output_dir,
+        os.path.join(tmp_dir,
                      config.FILTERED_ENCOMPASSING_CHIMERA_BEDPE_FILE)
     if (up_to_date(filtered_encomp_bedpe_file, encompassing_bedpe_file)):
         logging.info("[SKIPPED] Filtering encompassing chimeras")
@@ -709,7 +709,7 @@ def run_chimerascan(runconfig):
     #
     # Align unmapped reads across putative junctions
     #
-    junc_bam_file = os.path.join(runconfig.output_dir, config.JUNC_READS_BAM_FILE)
+    junc_bam_file = os.path.join(tmp_dir, config.JUNC_READS_BAM_FILE)
     if (up_to_date(junc_bam_file, bowtie_spanning_index_file) and
         up_to_date(junc_bam_file, spanning_fastq_file)):
         logging.info("[SKIPPED] Aligning junction spanning reads")
@@ -732,7 +732,7 @@ def run_chimerascan(runconfig):
     #
     # Merge spanning and encompassing read information
     #
-    raw_chimera_bedpe_file = os.path.join(runconfig.output_dir, config.RAW_CHIMERA_BEDPE_FILE)
+    raw_chimera_bedpe_file = os.path.join(tmp_dir, config.RAW_CHIMERA_BEDPE_FILE)
     if (up_to_date(raw_chimera_bedpe_file, junc_bam_file) and
         up_to_date(raw_chimera_bedpe_file, junc_map_file)):
         logging.info("[SKIPPED] Merging spanning and encompassing read alignments")
@@ -746,7 +746,7 @@ def run_chimerascan(runconfig):
     #
     # Choose best isoform for each junction
     #
-    chimera_bedpe_file = os.path.join(runconfig.output_dir, config.CHIMERA_BEDPE_FILE)
+    chimera_bedpe_file = os.path.join(tmp_dir, config.CHIMERA_BEDPE_FILE)
     if (up_to_date(chimera_bedpe_file, raw_chimera_bedpe_file)):
         logging.info("[SKIPPED] Filtering chimeras")
     else:
