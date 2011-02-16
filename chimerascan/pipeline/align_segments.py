@@ -57,7 +57,7 @@ def determine_read_segments(read_length, segment_length, segment_trim, trim5, tr
 def align_segments(fastq_files, output_bam_file, segments,
                    fastq_format, multihits, mismatches, 
                    num_threads, bowtie_bin, bowtie_index,
-                   bowtie_mode):    
+                   bowtie_mode, log_file):    
     #
     # Cut reads into segments and merge paired-end reads 
     # into a single FASTQ file
@@ -85,7 +85,15 @@ def align_segments(fastq_files, output_bam_file, segments,
     #args += [bowtie_index, "-", output_sam_file]
     args += [bowtie_index, "-"]
     logging.debug("Alignment args: %s" % (' '.join(args)))
-    aln_p = subprocess.Popen(args, stdin=seg_p.stdout, stdout=subprocess.PIPE)
+    if log_file is not None:
+        logfh = open(log_file, "w")
+    else:
+        logfh = None
+    aln_p = subprocess.Popen(args, stdin=seg_p.stdout, 
+                             stdout=subprocess.PIPE,
+                             stderr=logfh)
+    if logfh is not None:
+        logfh.close()
     #
     # Merge segmented alignments
     #
@@ -138,7 +146,8 @@ def align(fastq_files, fastq_format,
           trim3=0, 
           multihits=40, 
           mismatches=2,
-          bowtie_mode="-n"):
+          bowtie_mode="-n",
+          log_file=None):
     # check fastq files
     read_length = check_fastq_files(fastq_files, segment_length, trim5, trim3)
     # divide reads into segments
@@ -151,7 +160,7 @@ def align(fastq_files, fastq_format,
     logging.info("Running segmented alignment")
     align_segments(fastq_files, output_bam_file, segments,
                    fastq_format, multihits, mismatches, num_processors,
-                   bowtie_bin, bowtie_index, bowtie_mode)
+                   bowtie_bin, bowtie_index, bowtie_mode, log_file)
     logging.info("Alignment completed")
     return JOB_SUCCESS
 
