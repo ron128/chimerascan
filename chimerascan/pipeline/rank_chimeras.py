@@ -177,6 +177,21 @@ def rank_chimeras(input_file, output_file, empirical_prob):
     sorted_chimera_scores = sorted(chimera_scores, key=operator.itemgetter(0))
     empirical_probs = np.array([x[0] for x in sorted_chimera_scores])
     prob_cutoff = scoreatpercentile(empirical_probs, empirical_prob)
+    
+    print >>outfh, '\t'.join(['#gene5p', 'start5p', 'end5p', 'gene3p', 
+                              'start3p', 'end3p', 'name', 'weighted_cov', 
+                              'strand5p', 'strand3p', 'type', 'distance', 
+                              'encompassing_reads', 'encompassing_reads_plus',
+                              'encompassing_reads_minus', 'multimap_hist',
+                              'isize5p', 'isize3p', 'exons5p', 'exons3p',
+                              'junction_permiscuity5p', 
+                              'junction_permiscuity3p',
+                              'encompassing_ids', 'encompassing_read1',
+                              'encompassing_read2', 'junction_id', 
+                              'junction_pos', 'homology5p', 'homology3p', 
+                              'spanning_reads', 'encomp_and_spanning',
+                              'total_reads', 'spanning_info', 
+                              'breakpoint_hist', 'empirical_prob']) 
     for p,c in sorted_chimera_scores:
         if p > prob_cutoff:
             break
