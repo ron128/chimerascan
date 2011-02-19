@@ -68,6 +68,7 @@ DEFAULT_KEEP_TMP = False
 DEFAULT_BOWTIE_BUILD_BIN = "bowtie-build"
 DEFAULT_BOWTIE_BIN = "bowtie"
 DEFAULT_BOWTIE_MODE_V = "False"
+DEFAULT_BEST_STRATA = "False"
 DEFAULT_MULTIHITS = 100
 DEFAULT_MISMATCHES = 2
 DEFAULT_SEGMENT_LENGTH = 25
@@ -82,7 +83,7 @@ DEFAULT_LIBRARY_TYPE = "fr"
 DEFAULT_FILTER_MAX_MULTIMAPS = 2
 DEFAULT_FILTER_MULTIMAP_RATIO = 0.10
 DEFAULT_FILTER_STRAND_PVALUE = 0.01
-DEFAULT_FILTER_ISIZE_STDEVS = 3
+DEFAULT_FILTER_ISIZE_PERCENTILE = 99.9
 
 DEFAULT_ANCHOR_MIN = 0
 DEFAULT_ANCHOR_MAX = 5
@@ -161,6 +162,7 @@ class RunConfig(object):
              ("multihits", int, DEFAULT_MULTIHITS),
              ("mismatches", int, DEFAULT_MISMATCHES),
              ("segment_length", int, DEFAULT_SEGMENT_LENGTH),
+             ("best_strata", int, DEFAULT_BEST_STRATA),
              ("trim5", int, DEFAULT_TRIM5),
              ("trim3", int, DEFAULT_TRIM3),
              ("min_fragment_length", int, DEFAULT_MIN_FRAG_LENGTH),
@@ -169,7 +171,7 @@ class RunConfig(object):
              ("library_type", str, DEFAULT_LIBRARY_TYPE),
              ("filter_max_multimaps", int, DEFAULT_FILTER_MAX_MULTIMAPS),
              ("filter_multimap_ratio", float, DEFAULT_FILTER_MULTIMAP_RATIO),
-             ("filter_isize_stdevs", float, DEFAULT_FILTER_ISIZE_STDEVS),
+             ("filter_isize_percentile", float, DEFAULT_FILTER_ISIZE_PERCENTILE),
              ("filter_strand_pval", float, DEFAULT_FILTER_STRAND_PVALUE),
              ("anchor_min", int, DEFAULT_ANCHOR_MIN),
              ("anchor_max", int, DEFAULT_ANCHOR_MAX),
@@ -273,6 +275,13 @@ class RunConfig(object):
                           default=DEFAULT_SEGMENT_LENGTH,
                           help="Size of read segments during discordant " 
                           "alignment phase [default=%default]")
+        bowtie_group.add_option("--best-strata", dest="best_strata",
+                                action="store_true", 
+                                default=DEFAULT_BEST_STRATA,                                 
+                                help="Only consider the set of alignments "
+                                "with the fewest number of mismatches "
+                                "during segmented alignment " 
+                                "[default=%default]")
         bowtie_group.add_option("--trim5", type="int", dest="trim5", 
                           default=DEFAULT_TRIM5, metavar="N",
                           help="Trim N bases from 5' end of read")
@@ -331,12 +340,12 @@ class RunConfig(object):
                                 help="Filter chimeras with a weighted coverage "
                                 "versus total reads ratio <= RATIO "
                                 "[default=%default]")
-        filter_group.add_option("--filter-isize-stdevs", type="int",
-                                default=DEFAULT_FILTER_ISIZE_STDEVS,
-                                dest="filter_isize_stdevs", metavar="N",
-                                help="Filter chimeras where putative insert "
-                                "size is >N standard deviations from the "
-                                "mean [default=%default]")
+        filter_group.add_option("--filter-isize-prob", type="int",
+                                default=DEFAULT_FILTER_ISIZE_PERCENTILE,
+                                dest="filter_isize_percentile", metavar="N",
+                                help="Filter chimeras when putative insert "
+                                "size is larger than the (1-N) percentile "
+                                "of the distribution [default=%default]")
         filter_group.add_option("--filter-strand-pvalue", type="float",
                                 default=DEFAULT_FILTER_STRAND_PVALUE,
                                 dest="filter_strand_pval", metavar="p",
@@ -538,7 +547,7 @@ def run_chimerascan(runconfig):
         bamfh.close()
     logging.info("Insert size samples=%d mean=%f std=%f median=%d mode=%d" % 
                  (isize_dist.n, isize_dist.mean(), isize_dist.std(), 
-                  isize_dist.percentile(50.0), isize_dist.mode()))        
+                  isize_dist.percentile(50.0), isize_dist.mode()))
     #
     # Discordant reads alignment step
     #
@@ -571,6 +580,7 @@ def run_chimerascan(runconfig):
               multihits=runconfig.multihits,
               mismatches=runconfig.mismatches, 
               bowtie_mode=bowtie_mode,
+              best_strata=runconfig.best_strata,
               log_file=discordant_log_file)
     #
     # Merge paired-end reads step
@@ -656,7 +666,6 @@ def run_chimerascan(runconfig):
         logging.info("[SKIPPED] Filtering encompassing chimeras")
     else:
         logging.info("Filtering encompassing chimeras")
-        # TODO: add insert size filter?  this is dangerous
         # max_isize = isize_mean + runconfig.filter_isize_stdevs*isize_std
         filter_encompassing_chimeras(encompassing_bedpe_file,
                                      filtered_encomp_bedpe_file,
@@ -764,11 +773,13 @@ def run_chimerascan(runconfig):
         logging.info("[SKIPPED] Filtering chimeras")
     else:
         logging.info("Filtering chimeras")
-        # add standard deviations above the mean
+        # get insert size at prob    
+        max_isize = isize_dist.percentile(runconfig.filter_isize_percentile)
         filter_spanning_chimeras(raw_chimera_bedpe_file, 
                                  chimera_bedpe_file,
                                  gene_feature_file,
-                                 mate_pval=runconfig.filter_strand_pval)
+                                 mate_pval=runconfig.filter_strand_pval,
+                                 max_isize=max_isize)
     #
     # Rank chimeras
     #

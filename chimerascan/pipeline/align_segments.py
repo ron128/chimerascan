@@ -57,7 +57,7 @@ def determine_read_segments(read_length, segment_length, segment_trim, trim5, tr
 def align_segments(fastq_files, output_bam_file, segments,
                    fastq_format, multihits, mismatches, 
                    num_threads, bowtie_bin, bowtie_index,
-                   bowtie_mode, log_file):    
+                   bowtie_mode, best_strata, log_file):    
     #
     # Cut reads into segments and merge paired-end reads 
     # into a single FASTQ file
@@ -82,6 +82,8 @@ def align_segments(fastq_files, output_bam_file, segments,
             bowtie_mode, str(mismatches)]
     if bowtie_mode == "-n":
         args.extend(["-l", str(max_segment_length)])
+    if best_strata:
+        args.extend(["--best", "--strata"])
     #args += [bowtie_index, "-", output_sam_file]
     args += [bowtie_index, "-"]
     logging.debug("Alignment args: %s" % (' '.join(args)))
@@ -147,6 +149,7 @@ def align(fastq_files, fastq_format,
           multihits=40, 
           mismatches=2,
           bowtie_mode="-n",
+          best_strata=False,
           log_file=None):
     # check fastq files
     read_length = check_fastq_files(fastq_files, segment_length, trim5, trim3)
@@ -160,7 +163,7 @@ def align(fastq_files, fastq_format,
     logging.info("Running segmented alignment")
     align_segments(fastq_files, output_bam_file, segments,
                    fastq_format, multihits, mismatches, num_processors,
-                   bowtie_bin, bowtie_index, bowtie_mode, log_file)
+                   bowtie_bin, bowtie_index, bowtie_mode, best_strata, log_file)
     logging.info("Alignment completed")
     return JOB_SUCCESS
 
@@ -184,6 +187,12 @@ def main():
                       default=2)
     parser.add_option("--segment-length", type="int", dest="segment_length", 
                       default=25)
+    parser.add_option("--best-strata", dest="best_strata",
+                      action="store_true", 
+                      default=False,                                 
+                      help="Only consider the set of alignments "
+                      "with the fewest number of mismatches "
+                      "[default=%default]")
     parser.add_option("--trim5", type="int", dest="trim5", 
                       default=0)
     parser.add_option("--trim3", type="int", dest="trim3", 
@@ -211,7 +220,8 @@ def main():
                     trim3=options.trim3,
                     multihits=options.multihits,
                     mismatches=options.mismatches,
-                    bowtie_mode=bowtie_mode)
+                    bowtie_mode=bowtie_mode,
+                    best_strata=options.best_strata)
     sys.exit(retcode) 
 
 if __name__ == '__main__':

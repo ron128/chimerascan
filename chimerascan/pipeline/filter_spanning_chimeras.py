@@ -88,8 +88,25 @@ def filter_read_balance(c, pval):
                         (c.num_spanning_reads, mate_counts[0], mate_counts[1], p))
     return p > pval
 
+def filter_insert_size(c, max_isize):
+    '''
+    estimate the insert size by comparing the reads that map to the
+    hypothetical 5'/3' transcript to the insert size distribution and
+    remove chimeras that fail to meet this constraint
+
+    returns True if chimera agrees with insert size distribution, 
+    false otherwise
+    '''
+    if max_isize <= 0: 
+        return True
+    if (c.mate5p.isize > max_isize) or (c.mate3p.isize > max_isize):
+        logging.warning("Removed %s due to insert size %d + %d > %d" %
+                        (c.name, c.mate5p.isize, c.mate3p.isize, 2*max_isize))
+        return False
+    return True
+
 def filter_spanning_chimeras(input_file, output_file, gene_file,
-                             mate_pval=0.01):
+                             mate_pval, max_isize):
     '''
     processes chimera isoforms and chooses the one with the 
     highest coverage and omits the rest
@@ -100,8 +117,7 @@ def filter_spanning_chimeras(input_file, output_file, gene_file,
     fh = open(output_file, "w")
     for c in choose_highest_coverage_chimeras(input_file, ggmap):
         res = True
-        #if c.spanning_reads is not None:
-        #    res = filter_read_balance(c, mate_pval)
+        res = res and filter_insert_size(c, max_isize)
         if res:
             print >>fh, '\t'.join(['\t'.join(map(str,c.to_list()))])
     fh.close()
@@ -118,12 +134,17 @@ def main():
                       help="p-value to reject chimera based on binomial "
                       "test that balance of read1/read2 "
                       "should be 50/50 [default=%default]")
+    parser.add_option("--max-isize", type="float", dest="max_isize",
+                      default=-1, help="Maximum predicted insert size of "
+                      "fragments spanning a hypothetical chimeric junction "
+                      "[default=%default]")    
     options, args = parser.parse_args()
     gene_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)
     input_file = args[0]
     output_file = args[1]
     filter_spanning_chimeras(input_file, output_file, gene_file,
-                             options.mate_pval)
+                             mate_pval=options.mate_pval,
+                             max_isize=options.max_isize)
 
 if __name__ == "__main__":
     main()

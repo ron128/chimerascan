@@ -214,7 +214,7 @@ def main():
                       help="keep chimera candidates that occur between "
                       "overlapping genes.  these are likely to be splice "
                       "variants that did not occur in the reference. "
-                      "[default=%default")
+                      "[default=%default]")
     options, args = parser.parse_args()
     gene_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)
     input_file = args[0]
