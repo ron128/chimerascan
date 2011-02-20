@@ -28,6 +28,7 @@ import os
 from chimerascan.lib import config
 from chimerascan.lib.gene_to_genome2 import build_gene_to_genome_map, gene_to_genome_pos
 from chimerascan.lib.stats import binomial_cdf
+from chimerascan.lib.base import make_temp
 
 # local imports
 from merge_spanning_alignments import SpanningChimera
@@ -111,16 +112,24 @@ def filter_spanning_chimeras(input_file, output_file, gene_file,
     processes chimera isoforms and chooses the one with the 
     highest coverage and omits the rest
     '''
+    # apply more filters
+    tmpfile = make_temp(os.path.dirname(output_file), suffix='.bedpe')
+    fh = open(tmpfile, "w")
+    for c in SpanningChimera.parse(open(input_file)):
+        res = filter_insert_size(c, max_isize)
+        if res:
+            print >>fh, '\t'.join(['\t'.join(map(str,c.to_list()))])
+    fh.close()
+    # choose best isoform from remaining isoforms
     logging.debug("Building gene/genome index")
     ggmap = build_gene_to_genome_map(open(gene_file))
     logging.debug("Choosing highest coverage chimeras")
     fh = open(output_file, "w")
-    for c in choose_highest_coverage_chimeras(input_file, ggmap):
-        res = True
-        res = res and filter_insert_size(c, max_isize)
-        if res:
-            print >>fh, '\t'.join(['\t'.join(map(str,c.to_list()))])
+    for c in choose_highest_coverage_chimeras(tmpfile, ggmap):
+        print >>fh, '\t'.join(['\t'.join(map(str,c.to_list()))])
     fh.close()
+    # remove temporary file
+    os.remove(tmpfile)
 
 def main():
     from optparse import OptionParser
