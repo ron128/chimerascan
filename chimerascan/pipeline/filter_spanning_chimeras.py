@@ -101,7 +101,7 @@ def filter_insert_size(c, max_isize):
         return True
     if (c.mate5p.isize > max_isize) or (c.mate3p.isize > max_isize):
         logging.warning("Removed %s due to insert size %d + %d > %d" %
-                        (c.name, c.mate5p.isize, c.mate3p.isize, 2*max_isize))
+                        (c.name, c.mate5p.isize, c.mate3p.isize, max_isize))
         return False
     return True
 
