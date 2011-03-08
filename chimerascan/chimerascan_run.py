@@ -36,7 +36,7 @@ import subprocess
 import sys
 import shutil
 from optparse import OptionParser, OptionGroup
-import lxml.etree as etree
+import xml.etree.ElementTree as etree 
 
 # check for python version 2.6.0 or greater
 if sys.version_info < (2,6,0):
@@ -46,7 +46,7 @@ if sys.version_info < (2,6,0):
 # local imports
 import chimerascan.pysam as pysam
 import chimerascan.lib.config as config
-from chimerascan.lib.config import JOB_SUCCESS, JOB_ERROR
+from chimerascan.lib.config import JOB_SUCCESS, JOB_ERROR, indent
 from chimerascan.lib.base import check_executable, get_read_length, parse_library_type, parse_bool
 
 from chimerascan.pipeline.align_full import align_pe_full, align_sr_full
@@ -228,7 +228,9 @@ class RunConfig(object):
             val = getattr(self, attrname)
             elem = etree.SubElement(root, attrname)
             elem.text = str(val)
-        return etree.tostring(root, pretty_print=True)
+        # indent for pretty printing
+        indent(root)        
+        return etree.tostring(root)
 
     @staticmethod
     def get_option_parser():
