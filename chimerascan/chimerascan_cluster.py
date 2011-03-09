@@ -113,7 +113,7 @@ def main():
     args = [sys.executable,
             os.path.join(os.path.dirname(__file__),
                          chimerascan_run.__file__)] 
-    args.extend(chimerascan_args)
+    args.extend(sys.argv[1:])
     qsub(job_name, args, 
          runconfig.num_processors, 
          cwd=runconfig.output_dir, 
