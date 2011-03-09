@@ -93,8 +93,7 @@ def main():
     import chimerascan_run    
     parser = chimerascan_run.RunConfig.get_option_parser()
     parser.set_usage("%prog [options] <JOB_NAME> [--config <config_file> "
-                     " | <mate1.fq> <mate2.fq> <output_dir>]",
-                     version="%s" % chimerascan_run.__version__)
+                     " | <mate1.fq> <mate2.fq> <output_dir>]")
     parser.add_option("--big", dest="big", action="store_true", 
                       default=False, 
                       help="set this flag if you have a very large dataset "
