@@ -92,8 +92,10 @@ def main():
     import sys
     import chimerascan_run    
     parser = chimerascan_run.RunConfig.get_option_parser()
-    parser.set_usage("%prog [options] <JOB_NAME> [--config <config_file> "
+    parser.set_usage("%prog [options] [--config <config_file> "
                      " | <mate1.fq> <mate2.fq> <output_dir>]")
+    parser.add_option("--name", dest="name", default="chimerascan",
+                      help="PBS job name")
     parser.add_option("--big", dest="big", action="store_true", 
                       default=False, 
                       help="set this flag if you have a very large dataset "
@@ -104,11 +106,10 @@ def main():
         walltime = HISEQ_WALLTIME
     else:
         walltime = LOWSEQ_WALLTIME        
-    job_name = sys.argv[1]
+    job_name = options.name
     # parse run parameters in config file and command line
-    chimerascan_args = sys.argv[2:]
     runconfig = chimerascan_run.RunConfig()
-    runconfig.from_args(chimerascan_args)
+    runconfig.from_args(sys.argv[1:], parser=parser)
     args = [sys.executable,
             os.path.join(os.path.dirname(__file__),
                          chimerascan_run.__file__)] 

@@ -362,8 +362,9 @@ class RunConfig(object):
         parser.add_option_group(filter_group)
         return parser        
 
-    def from_args(self, args):
-        parser = self.get_option_parser()
+    def from_args(self, args, parser=None):
+        if parser is None:
+            parser = self.get_option_parser()
         options, args = parser.parse_args(args=args)
         # parse config file options/args
         if options.config_file is not None:
