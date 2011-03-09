@@ -92,11 +92,14 @@ def main():
     import sys
     import chimerascan_run    
     parser = chimerascan_run.RunConfig.get_option_parser()
+    parser.set_usage("%prog [options] <JOB_NAME> [--config <config_file> "
+                     " | <mate1.fq> <mate2.fq> <output_dir>]",
+                     version="%s" % chimerascan_run.__version__)
     parser.add_option("--big", dest="big", action="store_true", 
                       default=False, 
                       help="set this flag if you have a very large dataset "
                       "(more than 30M sequences) to adjust memory and "
-                      "walltime limits accordingly") 
+                      "walltime limits accordingly")
     options, args = parser.parse_args()
     if options.big:
         walltime = HISEQ_WALLTIME
