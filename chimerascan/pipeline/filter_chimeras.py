@@ -91,11 +91,11 @@ def filter_strand_balance(c, pval):
     'pval', False otherwise
     '''
     p = binomial_cdf(0.5, c.encompassing_reads, min(c.strand_reads))        
-    if p <= pval:
+    if p < pval:
         logging.warning("Filtered chimera reads=%d '+'=%d '-'=%d pval=%f" %
                         (c.encompassing_reads, c.strand_reads[0], 
                          c.strand_reads[1], p))
-    return p > pval
+    return p >= pval
 
 def build_junc_permiscuity_map(chimeras, ggmap):
     junc5p_map = collections.defaultdict(lambda: collections.defaultdict(lambda: 0))
