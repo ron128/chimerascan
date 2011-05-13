@@ -26,22 +26,33 @@ JOB_ERROR = 1
 LOG_DIR = "log"
 TMP_DIR = "tmp"
 
-BASE_PROCESSORS = 2
-MIN_SEGMENT_LENGTH = 20
+# chimerascan index definitions
 ALIGN_INDEX = 'align_index'
 BOWTIE_INDEX_FILE = 'align_index.1.ebwt'
+FRAG_SIZE_INDEX = 'frag_size_index'
+FRAG_SIZE_INDEX_FILE = 'frag_size_index.1.ebwt'
 GENE_REF_PREFIX = 'gene_'
 GENE_FEATURE_FILE = "gene_features.txt"
+TOPHAT_JUNCS_FILE = "known_juncs.txt"
 
+# chimerascan run output file definitions
 RUNCONFIG_XML_FILE = "runconfig.xml"
+TOPHAT_DIR = "tophat"
+SORTED_FASTQ_FILES = ("rname_sorted_1.fq", "rname_sorted_2.fq")
+
+FRAG_SIZE_BAM_FILE = "frag_size_reads.bam"
+FRAG_SIZE_DIST_FILE = "frag_size_dist.txt"
+FRAG_SIZE_MAX_SAMPLES = 1e6
+FRAG_SIZE_NUM_STDEVS = 3
+
 ALIGNED_READS_BAM_FILE = "aligned_reads.bam"
+
 UNALIGNED_FASTQ_PARAM = "unaligned.fq"
 UNALIGNED_FASTQ_FILES = ("unaligned_1.fq", "unaligned_2.fq")
 MAXMULTIMAP_FASTQ_PARAM = "maxmulti.fq"
 MAXMULTIMAP_FASTQ_FILES = ("maxmulti_1.fq", "maxmulti_2.fq")
-ISIZE_DIST_FILE = "isize_dist.txt"
-ISIZE_MAX_SAMPLES = 1e6
-ISIZE_NUM_STDEVS = 3
+BASE_PROCESSORS = 2
+MIN_SEGMENT_LENGTH = 20
 DISCORDANT_BAM_FILE = "discordant_reads.bam"
 DISCORDANT_PAIRED_BAM_FILE = "discordant_reads_paired.bam"
 DISCORDANT_GENE_BEDPE_FILE = "discordant_gene_reads.bedpe"

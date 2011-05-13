@@ -1,6 +1,5 @@
 '''Tools for working with files in the samtools pileup -c format.'''
 import collections
-import pysam
 
 PileupSubstitution = collections.namedtuple( "PileupSubstitution",
                                     " ".join( (\
@@ -52,9 +51,9 @@ def iterate( infile ):
             try:
                 yield PileupIndel( *[x(y) for x,y in zip(conv_indel,d) ] )
             except TypeError:
-                raise pysam.SamtoolsError( "parsing error in line: `%s`" % line)
+                raise SamtoolsError( "parsing error in line: `%s`" % line)
         else:
             try:
                 yield PileupSubstitution( *[x(y) for x,y in zip(conv_subst,d) ] )
             except TypeError:
-                raise pysam.SamtoolsError( "parsing error in line: `%s`" % line)
+                raise SamtoolsError( "parsing error in line: `%s`" % line)

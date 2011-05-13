@@ -25,6 +25,15 @@ import subprocess
 import tempfile
 import operator
 
+def up_to_date(outfile, infile):
+    if not os.path.exists(infile):
+        return False
+    if not os.path.exists(outfile):
+        return False
+    if os.path.getsize(outfile) == 0:
+        return False    
+    return os.path.getmtime(outfile) >= os.path.getmtime(infile)
+
 # custom read tags
 class SamTags:
     RTAG_NUM_PARTITIONS = "XP"
@@ -40,11 +49,6 @@ def parse_bool(s):
 
 def parse_string_none(s):
     return None if s == "None" else s
-
-def parse_library_type(library_type):
-    s1 = 0 if library_type[0] == 'f' else 1
-    s2 = 0 if library_type[1] == 'f' else 1
-    return (s1, s2)
 
 def make_temp(base_dir, suffix=''):
     fd,name = tempfile.mkstemp(suffix=suffix, prefix='tmp', dir=base_dir)
