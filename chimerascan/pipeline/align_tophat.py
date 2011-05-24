@@ -25,6 +25,10 @@ import subprocess
 import sys
 import os
 
+from chimerascan.lib.seq import parse_fastq
+from chimerascan.lib.base import make_temp
+from fastq_merge_trim import trim_and_merge_fastq
+
 translate_quals = {'solexa': '--solexa-quals',
                    'illumina': '--solexa1.3-quals'}
 
@@ -69,3 +73,38 @@ def align_tophat(fastq_files, tophat_bin, bowtie_index, output_dir,
     if retcode != 0:
         logging.error("Tophat exited with error code '%d'" % (retcode))
     return retcode
+
+def realign_tophat_sr(fastq_file, tophat_bin, bowtie_index, output_dir,
+                      num_processors, library_type, quals, multihits,
+                      mismatches, segment_length, raw_juncs_file, 
+                      log_file=None):
+    # setup arguments for tophat
+    args = [tophat_bin, 
+            "-o", output_dir,
+            "-g", multihits,
+            "-p", num_processors,
+            "--library-type", library_type,
+            "--segment-mismatches", mismatches,
+            "--segment-length", segment_length,
+            "--no-novel-juncs"]
+    if raw_juncs_file is not None:
+        args.extend(["-j", raw_juncs_file])
+    if quals in translate_quals:
+        args.append(translate_quals[quals])
+    # positional arguments
+    args.append(bowtie_index)
+    args.append(fastq_file)
+    # kickoff process
+    args = map(str, args)
+    logging.debug("Tophat alignment args: %s" % (' '.join(args)))
+    if log_file is not None:
+        logfh = open(log_file, "w")
+    else:
+        logfh = sys.stderr
+    retcode = subprocess.call(args, stderr=logfh)
+    if log_file is not None:
+        logfh.close()
+    if retcode != 0:
+        logging.error("Tophat exited with error code '%d'" % (retcode))
+    return retcode
+

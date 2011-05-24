@@ -23,6 +23,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import array
 import logging
 
+from base import NO_STRAND
+
 def parse_pe_reads(bamfh):
     pe_reads = ([], [])
     # reads must be binned by qname, mate, hit, and segment
@@ -32,8 +34,10 @@ def parse_pe_reads(bamfh):
     for read in bamfh:
         # get read attributes
         qname = read.qname
-        mate = 0 if read.is_read1 else 1
-        # num_hits = read.opt("NH")
+        if read.is_read1:
+            mate = 0
+        elif read.is_read2:
+            mate = 1
         # if query name changes we have completely finished
         # the fragment and can reset the read data
         if num_reads > 0 and qname != prev_qname:
@@ -92,8 +96,6 @@ def get_genomic_intervals(read):
 
 def get_insert_size(read1, read2):
     # compute the total span of the reads
-    print read1
-    print read2
     if read2.pos < read1.pos:
         span = read1.aend - read2.pos
     else:
@@ -109,3 +111,9 @@ def get_insert_size(read1, read2):
             elif (op == CIGAR_N):
                 skips += length
     return span - skips
+
+def get_strand(read, tag="XS"):
+    try:
+        return read.opt(tag)
+    except KeyError:
+        return NO_STRAND

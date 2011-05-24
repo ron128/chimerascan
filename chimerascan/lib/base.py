@@ -25,6 +25,31 @@ import subprocess
 import tempfile
 import operator
 
+#
+# constants used for "strand"
+#
+POS_STRAND = '+'
+NEG_STRAND = '-'
+NO_STRAND = '.'
+
+#
+# constants used for CIGAR alignments
+#
+CIGAR_M = 0 #match  Alignment match (can be a sequence match or mismatch)
+CIGAR_I = 1 #insertion  Insertion to the reference
+CIGAR_D = 2 #deletion  Deletion from the reference
+CIGAR_N = 3 #skip  Skipped region from the reference
+CIGAR_S = 4 #softclip  Soft clip on the read (clipped sequence present in <seq>)
+CIGAR_H = 5 #hardclip  Hard clip on the read (clipped sequence NOT present in <seq>)
+CIGAR_P = 6 #padding  Padding (silent deletion from the padded reference sequence)
+
+
+def cmp_strand(a, b):
+    '''return True if strands are compatible, False otherwise'''
+    if (a == NO_STRAND) or (b == NO_STRAND):
+        return True
+    return a == b
+
 def up_to_date(outfile, infile):
     if not os.path.exists(infile):
         return False
@@ -126,14 +151,6 @@ def parse_multihit_alignments(samfh):
         ind += 1
     if ind > 0:
         yield buf[:ind]
-
-CIGAR_M = 0 #match  Alignment match (can be a sequence match or mismatch)
-CIGAR_I = 1 #insertion  Insertion to the reference
-CIGAR_D = 2 #deletion  Deletion from the reference
-CIGAR_N = 3 #skip  Skipped region from the reference
-CIGAR_S = 4 #softclip  Soft clip on the read (clipped sequence present in <seq>)
-CIGAR_H = 5 #hardclip  Hard clip on the read (clipped sequence NOT present in <seq>)
-CIGAR_P = 6 #padding  Padding (silent deletion from the padded reference sequence)
 
 def get_aligned_read_intervals(read):
     intervals = []

@@ -20,6 +20,8 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
+import os
+
 JOB_SUCCESS = 0
 JOB_ERROR = 1
 
@@ -36,24 +38,39 @@ GENE_FEATURE_FILE = "gene_features.txt"
 TOPHAT_JUNCS_FILE = "known_juncs.txt"
 
 # chimerascan run output file definitions
-RUNCONFIG_XML_FILE = "runconfig.xml"
-TOPHAT_DIR = "tophat"
-SORTED_FASTQ_FILES = ("rname_sorted_1.fq", "rname_sorted_2.fq")
 
+# configuration of run
+RUNCONFIG_XML_FILE = "runconfig.xml"
+
+# fragment size distribution
 FRAG_SIZE_BAM_FILE = "frag_size_reads.bam"
 FRAG_SIZE_DIST_FILE = "frag_size_dist.txt"
 FRAG_SIZE_MAX_SAMPLES = 1e6
 FRAG_SIZE_NUM_STDEVS = 3
 
-ALIGNED_READS_BAM_FILE = "aligned_reads.bam"
+# tophat output directory
+TOPHAT_DIR = "tophat"
+TOPHAT_BAM_FILE = "accepted_hits.bam"
+SORTED_FASTQ_FILES = ("rname_sorted_1.fq", "rname_sorted_2.fq")
+SORTED_BAM_FILE = "rname_sorted_hits.bam"
 
-UNALIGNED_FASTQ_PARAM = "unaligned.fq"
+# processed tophat sequence and alignment files
 UNALIGNED_FASTQ_FILES = ("unaligned_1.fq", "unaligned_2.fq")
+DISCORDANT_BAM_FILE = "discordant_reads.bam"
+TRIMMED_FASTQ_FILE = "trimmed_merged_unaligned.fq"
+
+# realign tophat
+KNOWN_NOVEL_JUNCS_FILE = "known_novel_juncs.txt"
+REALIGN_TOPHAT_DIR = "tophat_realign"
+REALIGN_SORTED_BAM_FILE = "realign_rname_sorted_hits.bam"
+
+
+ALIGNED_READS_BAM_FILE = "aligned_reads.bam"
+UNALIGNED_FASTQ_PARAM = "unaligned.fq"
 MAXMULTIMAP_FASTQ_PARAM = "maxmulti.fq"
 MAXMULTIMAP_FASTQ_FILES = ("maxmulti_1.fq", "maxmulti_2.fq")
 BASE_PROCESSORS = 2
 MIN_SEGMENT_LENGTH = 20
-DISCORDANT_BAM_FILE = "discordant_reads.bam"
 DISCORDANT_PAIRED_BAM_FILE = "discordant_reads_paired.bam"
 DISCORDANT_GENE_BEDPE_FILE = "discordant_gene_reads.bedpe"
 DISCORDANT_GENOME_BEDPE_FILE = "discordant_genome_reads.bedpe"
