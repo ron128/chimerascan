@@ -20,11 +20,11 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
-import os
-
+# return values of pipeline functions
 JOB_SUCCESS = 0
 JOB_ERROR = 1
 
+# output directories
 LOG_DIR = "log"
 TMP_DIR = "tmp"
 
@@ -37,8 +37,9 @@ GENE_REF_PREFIX = 'gene_'
 GENE_FEATURE_FILE = "gene_features.txt"
 TOPHAT_JUNCS_FILE = "known_juncs.txt"
 
+#
 # chimerascan run output file definitions
-
+#
 # configuration of run
 RUNCONFIG_XML_FILE = "runconfig.xml"
 
@@ -63,6 +64,16 @@ TRIMMED_FASTQ_FILE = "trimmed_merged_unaligned.fq"
 KNOWN_NOVEL_JUNCS_FILE = "known_novel_juncs.txt"
 REALIGN_TOPHAT_DIR = "tophat_realign"
 REALIGN_SORTED_BAM_FILE = "realign_rname_sorted_hits.bam"
+
+# unaligned reads that are potential spanning reads
+REALIGN_UNALIGNED_FASTQ_FILES = ("realign_unaligned_1.fq", 
+                                 "realign_unaligned_2.fq")
+REALIGN_DISCORDANT_BAM_FILE = "realign_discordant_reads.bam"
+
+# merged discordant reads bam file
+MERGED_DISCORDANT_BAM_FILE = "merged_discordant_reads.bam"
+MERGED_SORTED_DISCORDANT_BAM_FILE = "merged_discordant_reads.srt.bam"
+
 
 
 ALIGNED_READS_BAM_FILE = "aligned_reads.bam"

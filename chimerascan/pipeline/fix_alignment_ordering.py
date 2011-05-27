@@ -23,7 +23,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import re
 import collections
 
-from segment_reads import parse_qname
+# currently we add 5 characters to the end of each rname to
+# encode the mate, segment, and number of segments in the 
+# read
+SUFFIX_LENGTH = 5
+
+def parse_qname(qname):
+    newqname = qname[:-SUFFIX_LENGTH]
+    mate = int(qname[-4])
+    seg = int(qname[-3])
+    num_segs = int(qname[-1])
+    return newqname, mate, seg, num_segs
 
 def parse_fastq_qname(line_iter):
     try:        

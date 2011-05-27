@@ -48,13 +48,13 @@ import chimerascan.pysam as pysam
 import chimerascan.lib.config as config
 from chimerascan.lib.config import JOB_SUCCESS, JOB_ERROR, indent
 from chimerascan.lib.base import up_to_date, check_executable, \
-    get_read_length, parse_bool
+    get_read_length, parse_bool, LIBRARY_TYPES, FR_UNSTRANDED
 from chimerascan.lib.fragment_size_distribution import FragmentSizeDistribution
 
 from chimerascan.pipeline.fastq_sort import sort_fastq_files
 from chimerascan.pipeline.align_bowtie import align_pe_full
 from chimerascan.pipeline.align_tophat import align_tophat, realign_tophat_sr
-from chimerascan.pipeline.process_tophat import process_tophat_alignments
+from chimerascan.pipeline.find_discordant_reads import find_discordant_tophat_alignments
 from chimerascan.pipeline.fastq_merge_trim import trim_and_merge_fastq
 
 #from chimerascan.pipeline.align_full import align_pe_full, align_sr_full
@@ -90,7 +90,7 @@ DEFAULT_MIN_FRAG_LENGTH = 0
 DEFAULT_MAX_FRAG_LENGTH = 1000 
 DEFAULT_MAX_INDEL_SIZE = 100
 DEFAULT_QUALS = "sanger"
-DEFAULT_LIBRARY_TYPE = "fr-unstranded"
+DEFAULT_LIBRARY_TYPE = FR_UNSTRANDED
 
 DEFAULT_FILTER_MAX_MULTIMAPS = 2
 DEFAULT_FILTER_MULTIMAP_RATIO = 0.10
@@ -271,9 +271,7 @@ class RunConfig(object):
                                " than this fragment length are assumed to be "
                                " unspliced and contiguous) [default=%default]")
         align_group.add_option('--library-type', dest="library_type",
-                               choices=("fr-unstranded", 
-                                        "fr-firststrand", 
-                                        "fr-secondstrand"), 
+                               choices=LIBRARY_TYPES,
                                default=DEFAULT_LIBRARY_TYPE,
                                help="Library type (see Tophat manual for "
                                " more information[default=%default]")        
@@ -531,11 +529,13 @@ def run_chimerascan(runconfig):
     # the most probable discordant read pairs when there are multiple 
     # mappings
     #
+    msg = "Estimating fragment size distribution"
     frag_size_dist_file = os.path.join(runconfig.output_dir, config.FRAG_SIZE_DIST_FILE)
     if all(up_to_date(frag_size_dist_file, fq) for fq in sorted_fastq_files):
         logging.info("[SKIPPED] %s" % (msg))
         frag_size_dist = FragmentSizeDistribution.from_file(open(frag_size_dist_file, "r"))
     else:
+        logging.info(msg)
         bamfh = pysam.Samfile(frag_size_bam_file, "rb")
         frag_size_dist = FragmentSizeDistribution.from_bam(bamfh, 
                             min_isize=min_fragment_length, 
@@ -578,53 +578,6 @@ def run_chimerascan(runconfig):
         if retcode != 0:
             logging.error("Alignment failed with error code %d" % (retcode))    
             return retcode
-    #    
-    # Sort aligned reads by read ID 
-    #
-    # this step will sort the aligned reads by name, allowing iteration 
-    # through the paired alignments to determine discordant reads
-    #
-    sorted_tophat_bam_file = os.path.join(tmp_dir, config.SORTED_BAM_FILE)
-    if up_to_date(sorted_tophat_bam_file, tophat_bam_file):
-        logging.info("[SKIPPED] Sorting Tophat alignments by read name")
-    else:
-        logging.info("Sorting Tophat alignments by read name")
-        pysam.sort("-n", tophat_bam_file, 
-                   os.path.splitext(sorted_tophat_bam_file)[0])
-    #
-    # Parse TopHat output to determine discordant reads as well as retrieve
-    # unaligned reads
-    #
-    unaligned_fastq_files = [os.path.join(tmp_dir, fq) 
-                            for fq in config.UNALIGNED_FASTQ_FILES]
-    discordant_bam_file = os.path.join(tmp_dir, config.DISCORDANT_BAM_FILE)
-    msg = "Extracting unaligned and discordant reads from Tophat output"
-    if up_to_date(discordant_bam_file, tophat_bam_file):
-        logging.info("[SKIPPED] %s" % msg)
-    else:
-        logging.info(msg)
-        process_tophat_alignments(sorted_fastq_files, 
-                                  sorted_tophat_bam_file, 
-                                  gene_file=gene_feature_file,                                  
-                                  max_fragment_length=runconfig.max_fragment_length,
-                                  output_fastq_files=unaligned_fastq_files,
-                                  output_bam_file=discordant_bam_file)
-    #
-    # Trim and merge unaligned reads
-    #
-    # trim unaligned reads and merge the fastq files into a single file
-    # and let tophat treat it as single read data
-    #
-    trimmed_fastq_file = os.path.join(tmp_dir, config.TRIMMED_FASTQ_FILE)
-    msg = "Trimming and merging unaligned fastq files"
-    if all(up_to_date(trimmed_fastq_file, fq) for fq in unaligned_fastq_files):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        trim_and_merge_fastq(unaligned_fastq_files,
-                             trimmed_fastq_file,
-                             trim5=runconfig.trim5,
-                             segment_length=runconfig.segment_length)
     #
     # Create updated splice junction reference
     #
@@ -647,8 +600,56 @@ def run_chimerascan(runconfig):
                                   stdin=open(tophat_novel_juncs_file),
                                   stdout=outfh)
         outfh.close()
+    #    
+    # Sort aligned reads by read ID 
     #
-    # Segmented alignment step
+    # this step will sort the aligned reads by name, allowing iteration 
+    # through the paired alignments to determine discordant reads
+    #
+    sorted_tophat_bam_file = os.path.join(tmp_dir, config.SORTED_BAM_FILE)
+    if up_to_date(sorted_tophat_bam_file, tophat_bam_file):
+        logging.info("[SKIPPED] Sorting Tophat alignments by read name")
+    else:
+        logging.info("Sorting Tophat alignments by read name")
+        pysam.sort("-n", tophat_bam_file, 
+                   os.path.splitext(sorted_tophat_bam_file)[0])
+    #
+    # Parse TopHat output to determine discordant reads as well as retrieve
+    # unaligned reads
+    #
+    unaligned_fastq_files = [os.path.join(tmp_dir, fq) 
+                            for fq in config.UNALIGNED_FASTQ_FILES]
+    discordant_bam_file = os.path.join(tmp_dir, config.DISCORDANT_BAM_FILE)
+    msg = "Extracting unaligned and discordant reads from Tophat output"
+    if up_to_date(discordant_bam_file, sorted_tophat_bam_file):
+        logging.info("[SKIPPED] %s" % msg)
+    else:
+        logging.info(msg)
+        find_discordant_tophat_alignments(sorted_fastq_files, 
+                                  sorted_tophat_bam_file, 
+                                  gene_file=gene_feature_file,                                  
+                                  max_fragment_length=runconfig.max_fragment_length,
+                                  output_fastq_files=unaligned_fastq_files,
+                                  output_bam_file=discordant_bam_file,
+                                  suffix="_")
+    #
+    # Trim and merge unaligned reads
+    #
+    # trim unaligned reads and merge the fastq files into a single file
+    # and let tophat treat it as single read data
+    #
+    trimmed_fastq_file = os.path.join(tmp_dir, config.TRIMMED_FASTQ_FILE)
+    msg = "Trimming and merging unaligned fastq files"
+    if all(up_to_date(trimmed_fastq_file, fq) for fq in unaligned_fastq_files):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        trim_and_merge_fastq(unaligned_fastq_files,
+                             trimmed_fastq_file,
+                             trim5=runconfig.trim5,
+                             segment_length=runconfig.segment_length)
+    #
+    # Realign unaligned reads
     #
     # realign trimmed unaligned sequences in single-read mode using Tophat
     # to increase sensitivity to detect chimeric fragments
@@ -676,7 +677,93 @@ def run_chimerascan(runconfig):
         if retcode != 0:
             logging.error("Alignment failed with error code %d" % (retcode))    
             return retcode
+    #    
+    # Sort realigned reads by read ID 
+    #
+    # this step will sort the aligned reads by name, allowing iteration 
+    # through the paired alignments to determine discordant reads
+    #
+    msg = "Sorting Tophat alignments by read name"
+    realign_sorted_tophat_bam_file = \
+        os.path.join(tmp_dir, config.REALIGN_SORTED_BAM_FILE)
+    if up_to_date(realign_sorted_tophat_bam_file, realign_tophat_bam_file):
+        logging.info("[SKIPPED] %s" % msg)
+    else:
+        logging.info(msg)
+        pysam.sort("-n", realign_tophat_bam_file, 
+                   os.path.splitext(realign_sorted_tophat_bam_file)[0])
+    #
+    # Parse TopHat output from the realignment step to determine additional 
+    # discordant reads as well as retrieve unaligned reads
+    #
+    realign_unaligned_fastq_files = [os.path.join(tmp_dir, fq)
+                                     for fq in config.REALIGN_UNALIGNED_FASTQ_FILES]
+    realign_discordant_bam_file = \
+        os.path.join(tmp_dir, config.REALIGN_DISCORDANT_BAM_FILE)
+    msg = "Extracting unaligned and discordant reads from realigned Tophat output"
+    if up_to_date(realign_discordant_bam_file, realign_sorted_tophat_bam_file):
+        logging.info("[SKIPPED] %s" % msg)
+    else:
+        logging.info(msg)
+        find_discordant_tophat_alignments(unaligned_fastq_files,
+                                          realign_sorted_tophat_bam_file,
+                                          gene_file=gene_feature_file,                                  
+                                          max_fragment_length=runconfig.max_fragment_length,
+                                          output_fastq_files=realign_unaligned_fastq_files,
+                                          output_bam_file=realign_discordant_bam_file,
+                                          unpaired=True,
+                                          suffix="/")
+    #
+    # Merge discordant reads files together
+    #
+    msg = "Merging initial and realigned discordant reads"
+    merged_discordant_bam_file = \
+        os.path.join(tmp_dir, config.MERGED_DISCORDANT_BAM_FILE)
+    if (up_to_date(merged_discordant_bam_file, realign_discordant_bam_file) and
+        up_to_date(merged_discordant_bam_file, discordant_bam_file)):
+        logging.info("[SKIPPED] %s" % msg)
+    else:
+        logging.info(msg)
+        pysam.merge("-n", "-h", realign_discordant_bam_file, 
+                    merged_discordant_bam_file,
+                    discordant_bam_file,
+                    realign_discordant_bam_file)
+    #    
+    # Sort and index discordant reads
+    #
+    # this step will sort the aligned reads by genomic coordinates,
+    # bringing chimeric reads from different query sequences together
+    # in genomic space
+    #
+    msg = "Sorting discordant alignment by genomic position"
+    merged_sorted_discordant_bam_file = \
+        os.path.join(tmp_dir, config.MERGED_SORTED_DISCORDANT_BAM_FILE)
+    if up_to_date(merged_sorted_discordant_bam_file, 
+                  merged_discordant_bam_file):
+        logging.info("[SKIPPED] %s" % msg)
+    else:
+        logging.info(msg)
+        pysam.sort(merged_discordant_bam_file,
+                   os.path.splitext(merged_sorted_discordant_bam_file)[0])
+
+    return
+
+    #
+    # Find discordant reads
+    #
+    # parse alignments and find all discordant reads
+    #
     
+    #
+    # Sort discordant reads
+    #
+    # sort discordant reads by genome position
+    #
+    
+    #
+    # Nominate chimeras
+    #
+    #
     
     return
 

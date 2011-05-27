@@ -33,16 +33,21 @@ NEG_STRAND = '-'
 NO_STRAND = '.'
 
 #
-# constants used for CIGAR alignments
+# constants used for library type
 #
-CIGAR_M = 0 #match  Alignment match (can be a sequence match or mismatch)
-CIGAR_I = 1 #insertion  Insertion to the reference
-CIGAR_D = 2 #deletion  Deletion from the reference
-CIGAR_N = 3 #skip  Skipped region from the reference
-CIGAR_S = 4 #softclip  Soft clip on the read (clipped sequence present in <seq>)
-CIGAR_H = 5 #hardclip  Hard clip on the read (clipped sequence NOT present in <seq>)
-CIGAR_P = 6 #padding  Padding (silent deletion from the padded reference sequence)
+FR_UNSTRANDED = "fr-unstranded"
+FR_FIRSTSTRAND = "fr-firststrand"
+FR_SECONDSTRAND = "fr-secondstrand"
+FF_UNSTRANDED = "ff-unstranded"
+FF_FIRSTSTRAND = "ff-firststrand"
+FF_SECONDSTRAND = "ff-secondstrand"
 
+LIBRARY_TYPES = (FR_UNSTRANDED,
+                 FR_FIRSTSTRAND,
+                 FR_SECONDSTRAND,
+                 FF_UNSTRANDED,
+                 FF_FIRSTSTRAND,
+                 FF_SECONDSTRAND) 
 
 def cmp_strand(a, b):
     '''return True if strands are compatible, False otherwise'''
@@ -58,16 +63,6 @@ def up_to_date(outfile, infile):
     if os.path.getsize(outfile) == 0:
         return False    
     return os.path.getmtime(outfile) >= os.path.getmtime(infile)
-
-# custom read tags
-class SamTags:
-    RTAG_NUM_PARTITIONS = "XP"
-    RTAG_PARTITION_IND = "XH"
-    RTAG_NUM_SPLITS = "XN"
-    RTAG_SPLIT_IND = "XI"
-    RTAG_NUM_MAPPINGS = "IH"
-    RTAG_MAPPING_IND = "HI"
-    RTAG_BOWTIE_MULTIMAP = "XM"
 
 def parse_bool(s):    
     return True if s[0].lower() == "t" else False
@@ -112,69 +107,7 @@ def check_executable(filename):
     devnullfh.close()
     return True
 
-def select_best_mismatch_strata(reads, mismatch_tolerance=0):
-    if len(reads) == 0:
-        return []
-    # sort reads by number of mismatches
-    mapped_reads = []
-    unmapped_reads = []
-    for r in reads:
-        if r.is_unmapped:
-            unmapped_reads.append(r)
-        else:
-            mapped_reads.append((r.opt('NM'), r))
-    if len(mapped_reads) == 0:
-        return unmapped_reads
-    sorted_reads = sorted(mapped_reads, key=operator.itemgetter(0))
-    best_nm = sorted_reads[0][0]
-    worst_nm = sorted_reads[-1][0]
-    sorted_reads.extend((worst_nm, r) for r in unmapped_reads)
-    # choose reads within a certain mismatch tolerance
-    best_reads = []
-    for mismatches, r in sorted_reads:
-        if mismatches > best_nm + mismatch_tolerance:
-            break
-        best_reads.append(r)
-    return best_reads
-
-def parse_multihit_alignments(samfh):
-    buf = []
-    ind = 0
-    for read in samfh:
-        if (ind > 0) and (read.qname != buf[ind-1].qname):
-            yield buf[:ind]
-            ind = 0
-        if ind < len(buf):
-            buf[ind] = read
-        else:
-            buf.append(read)
-        ind += 1
-    if ind > 0:
-        yield buf[:ind]
-
-def get_aligned_read_intervals(read):
-    intervals = []
-    # insert read into cluster tree
-    astart,aend = read.pos, read.pos
-    for op,length in read.cigar:
-        if length == 0: continue
-        if (op == CIGAR_I) or (op == CIGAR_S) or (op == CIGAR_H): continue
-        if (op == CIGAR_P): assert False 
-        if (op == CIGAR_N):
-            assert astart != aend
-            intervals.append((astart, aend))
-            #print read.qname, read.cigar, ref, astart, aend
-            astart = aend + length
-        aend += length
-    assert astart != aend
-    if aend > astart:
-        #print read.qname, read.cigar, ref, astart, aend
-        intervals.append((astart, aend))
-    assert aend == read.aend
-    return intervals
-
 def get_refs_from_bowtie_index(bowtie_index, split=True):
-    import subprocess
     args = ['bowtie-inspect', '-s', bowtie_index]    
     p = subprocess.Popen(args, stdout=subprocess.PIPE)
     output = p.communicate()[0]
