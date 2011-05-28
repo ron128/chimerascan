@@ -99,7 +99,7 @@ def get_transcripts_at_interval(chrom, start, end, strand, exon_trees):
             features.extend(g for g in txlist if cmp_strand(g.strand, strand))
     return features
 
-def get_overlapping_transcripts(bamfh, intervals, chrom, strand, exon_trees):
+def get_overlapping_transcripts(intervals, chrom, strand, exon_trees):
     hits = []
     for interval in intervals:
         hits.append(get_transcripts_at_interval(chrom=chrom,
@@ -109,14 +109,12 @@ def get_overlapping_transcripts(bamfh, intervals, chrom, strand, exon_trees):
                                                 trees=exon_trees))
     return hits
 
-def get_predicted_strand(bamfh, read, exon_trees):
+def get_predicted_strand(chrom, intervals, exon_trees):
     """predict strand of read by looking at overlapping genes"""
-    intervals = get_genomic_intervals(read)
-    hitlists = get_overlapping_transcripts(bamfh, 
-                                           intervals, 
-                                           bamfh.getrname(read.rname),
-                                           NO_STRAND,
-                                           exon_trees)
+    hitlists = get_overlapping_transcripts(intervals, 
+                                           chrom=chrom,
+                                           strand=NO_STRAND,
+                                           exon_trees=exon_trees)
     strands = None
     for hits in hitlists:
         if strands is None:            

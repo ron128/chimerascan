@@ -4,11 +4,29 @@ Created on May 18, 2011
 @author: mkiyer
 '''
 
-class DiscordantFragment(object):    
+class DiscordantRead(object):
     def __init__(self):
+        self.qname = None
+        self.readnum = None
+        self.hit_index = None
+        self.strand = None
+        self.sense = None
+        self.chrom = None
+        self.left_interval = None
+        self.right_interval = None
+
+class DiscordantPair(object):    
+    def __init__(self):        
+        self.read5p = None
+        self.read3p = None
+        
+        
         self.qname = None
         self.r1_hit_index = None
         self.r2_hit_index = None
+
+        return True, dr1, dr2, interval5p, interval3p
+
         
 
 class Chimera(object):
