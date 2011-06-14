@@ -27,7 +27,7 @@ import sys
 # local imports
 import chimerascan.pysam as pysam
 from chimerascan.lib.base import get_read_length
-from fix_alignment_ordering import fix_pe_alignment_ordering, fix_sr_alignment_ordering
+from chimerascan.lib.fix_alignment_ordering import fix_pe_alignment_ordering, fix_sr_alignment_ordering
 
 def align_pe_full(fastq_files, 
                   bowtie_index,
