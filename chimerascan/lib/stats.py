@@ -144,11 +144,42 @@ def scoreatpercentile(values, p):
     49.5
 
     """
-    idx = p * (values.shape[0] - 1)
+    idx = p * (len(values) - 1)
     if (idx % 1 == 0):
-        return values[idx]
+        return values[int(idx)]
     else:
         return _interpolate(values[int(idx)], values[int(idx) + 1], idx % 1)
+
+def hist(vals, bins):
+    '''
+    creates a histogram of values in the list of bins provided
+    values less than the lowest bin are used in the lowest bin,
+    and all values higher than the highest bin are included in the
+    highest bin
+    '''
+    d = defaultdict(lambda: 0)
+    for v in vals:
+        d[v] += 1
+    sorted_keys = sorted(d)
+    cov = [0] * len(bins)
+    bin_ind = 0
+    bin_val = bins[bin_ind]
+    count = 0
+    for key in sorted_keys:
+        while key > bin_val and (bin_ind < len(bins)):
+            cov[bin_ind] = count
+            count = 0
+            bin_ind += 1
+            if bin_ind == len(bins):
+                break
+            bin_val = bins[bin_ind]
+        count += d[key]    
+    if bin_ind < len(bins):
+        cov[bin_ind] += count
+    else:
+        cov[-1] += count
+    return cov
+
 
 def kl_divergence(arr):
     t = sum(arr)

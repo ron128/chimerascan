@@ -20,74 +20,76 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
-# return values of pipeline functions
 JOB_SUCCESS = 0
 JOB_ERROR = 1
 
-# output directories
+# constants for index
+ALIGN_INDEX = 'align_index'
+BOWTIE_INDEX_FILE = 'align_index.1.ebwt'
+GENE_REF_PREFIX = 'gene_'
+GENE_FEATURE_FILE = "gene_features.txt"
+
+# chimerascan subdirectories
 LOG_DIR = "log"
 TMP_DIR = "tmp"
 
-# chimerascan index definitions
-ALIGN_INDEX = 'align_index'
-BOWTIE_INDEX_FILE = 'align_index.1.ebwt'
-FRAG_SIZE_INDEX = 'frag_size_index'
-FRAG_SIZE_INDEX_FILE = 'frag_size_index.1.ebwt'
-GENE_REF_PREFIX = 'gene_'
-GENE_FEATURE_FILE = "gene_features.txt"
-TOPHAT_JUNCS_FILE = "known_juncs.txt"
-
-#
-# chimerascan run output file definitions
-#
-# configuration of run
-RUNCONFIG_XML_FILE = "runconfig.xml"
-
-# fragment size distribution
-FRAG_SIZE_BAM_FILE = "frag_size_reads.bam"
-FRAG_SIZE_DIST_FILE = "frag_size_dist.txt"
-FRAG_SIZE_MAX_SAMPLES = 1e6
-FRAG_SIZE_NUM_STDEVS = 3
-
-# tophat output directory
-TOPHAT_DIR = "tophat"
-TOPHAT_BAM_FILE = "accepted_hits.bam"
-SORTED_FASTQ_FILES = ("rname_sorted_1.fq", "rname_sorted_2.fq")
-SORTED_BAM_FILE = "rname_sorted_hits.bam"
-
-# processed tophat sequence and alignment files
-UNALIGNED_FASTQ_FILES = ("unaligned_1.fq", "unaligned_2.fq")
-DISCORDANT_BAM_FILE = "discordant_reads.bam"
-TRIMMED_FASTQ_FILE = "trimmed_merged_unaligned.fq"
-
-# realign tophat
-KNOWN_NOVEL_JUNCS_FILE = "known_novel_juncs.txt"
-REALIGN_TOPHAT_DIR = "tophat_realign"
-REALIGN_SORTED_BAM_FILE = "realign_rname_sorted_hits.bam"
-
-# unaligned reads that are potential spanning reads
-REALIGN_UNALIGNED_FASTQ_FILES = ("realign_unaligned_1.fq", 
-                                 "realign_unaligned_2.fq")
-REALIGN_DISCORDANT_BAM_FILE = "realign_discordant_reads.bam"
-
-# merged discordant reads bam file
-MERGED_DISCORDANT_BAM_FILE = "merged_discordant_reads.bam"
-MERGED_SORTED_DISCORDANT_BAM_FILE = "merged_discordant_reads.srt.bam"
-
-
-
-ALIGNED_READS_BAM_FILE = "aligned_reads.bam"
-UNALIGNED_FASTQ_PARAM = "unaligned.fq"
-MAXMULTIMAP_FASTQ_PARAM = "maxmulti.fq"
-MAXMULTIMAP_FASTQ_FILES = ("maxmulti_1.fq", "maxmulti_2.fq")
+# constraints for run configuration
 BASE_PROCESSORS = 2
 MIN_SEGMENT_LENGTH = 20
+RUNCONFIG_XML_FILE = "runconfig.xml"
+
+# output from initial bowtie alignment
+ALIGNED_READS_BAM_FILE = "aligned_reads.bam"
+UNALIGNED_FASTQ_PARAM = "unaligned.fq"
+UNALIGNED_FASTQ_FILES = ("unaligned_1.fq", "unaligned_2.fq")
+MAXMULTIMAP_FASTQ_PARAM = "maxmulti.fq"
+MAXMULTIMAP_FASTQ_FILES = ("maxmulti_1.fq", "maxmulti_2.fq")
+
+# insert size estimation parameters
+ISIZE_MAX_SAMPLES = 1e6
+ISIZE_NUM_STDEVS = 3
+ISIZE_DIST_FILE = "isize_dist.txt"
+
+# output from realignment of trimmed reads
+REALIGNED_BAM_FILE = "realigned_reads.bam"
+
+# output for different classes of discordant reads
+GENE_PAIRED_BAM_FILE = "gene_paired_reads.bam"
+GENOME_PAIRED_BAM_FILE = "genome_paired_reads.bam"
+REALIGNED_UNMAPPED_BAM_FILE = "unmapped_reads.bam"
+REALIGNED_COMPLEX_BAM_FILE = "complex_reads.bam"
+
+# chimera candidates with encompassing read support
+ENCOMPASSING_CHIMERA_FILE = "encompassing_chimeras.txt"
+
+# amount of trimming to use to stop reads from overlapping 
+# exon boundaries and going into intronic space
+EXON_JUNCTION_TRIM_BP = 10
+
+# number of homology mismatches in breakpoint sequences 
+# to tolerate when computing homology distance
+BREAKPOINT_HOMOLOGY_MISMATCHES = 2
+BREAKPOINT_CHIMERA_FILE = "encompassing_chimeras.breakpoints.txt"
+BREAKPOINT_MAP_FILE = "breakpoints.txt"
+BREAKPOINT_FASTA_FILE = "breakpoints.fa"
+BREAKPOINT_BOWTIE_INDEX = "breakpoints"
+BREAKPOINT_BOWTIE_INDEX_FILE = "breakpoints.1.ebwt"
+
+# reads to remap to breakpoint junction index
+SPANNING_FASTQ_FILE = "putative_spanning_reads.fq"
+# results of aligning reads to breakpoint index
+SPANNING_BAM_FILE = "spanning_reads.bam"
+# results of merging spanning reads into chimera nominations
+SPANNING_CHIMERA_FILE = "chimeras.txt"
+
+
+
+DISCORDANT_BAM_FILE = "discordant_reads.bam"
 DISCORDANT_PAIRED_BAM_FILE = "discordant_reads_paired.bam"
 DISCORDANT_GENE_BEDPE_FILE = "discordant_gene_reads.bedpe"
 DISCORDANT_GENOME_BEDPE_FILE = "discordant_genome_reads.bedpe"
 EXTENDED_DISCORDANT_GENE_BEDPE_FILE = "discordant_gene_reads.extended.bedpe"
 SORTED_DISCORDANT_GENE_BEDPE_FILE = "discordant_gene_reads.srt.bedpe"
-SPANNING_FASTQ_FILE = "putative_spanning_reads.fq"
 ENCOMPASSING_CHIMERA_BEDPE_FILE = "encompassing_chimeras.bedpe"
 FILTERED_ENCOMPASSING_CHIMERA_BEDPE_FILE = "encompassing_chimeras.filtered.bedpe"
 

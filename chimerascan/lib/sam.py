@@ -1,5 +1,5 @@
 '''
-Created on Apr 29, 2011
+Created on Jun 2, 2011
 
 @author: mkiyer
 
@@ -20,11 +20,8 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
-import array
-import logging
-import operator
-
-from base import NO_STRAND
+from chimerascan import pysam
+from seq import DNA_reverse_complement
 
 #
 # constants used for CIGAR alignments
@@ -37,17 +34,6 @@ CIGAR_S = 4 #softclip  Soft clip on the read (clipped sequence present in <seq>)
 CIGAR_H = 5 #hardclip  Hard clip on the read (clipped sequence NOT present in <seq>)
 CIGAR_P = 6 #padding  Padding (silent deletion from the padded reference sequence)
 
-# custom read tags
-class SamTags:
-    RTAG_NUM_PARTITIONS = "XP"
-    RTAG_PARTITION_IND = "XH"
-    RTAG_NUM_SPLITS = "XN"
-    RTAG_SPLIT_IND = "XI"
-    RTAG_NUM_MAPPINGS = "IH"
-    RTAG_MAPPING_IND = "HI"
-    RTAG_BOWTIE_MULTIMAP = "XM"
-
-
 def parse_pe_reads(bamfh):
     pe_reads = ([], [])
     # reads must be sorted by qname
@@ -57,9 +43,9 @@ def parse_pe_reads(bamfh):
         # get read attributes
         qname = read.qname
         if read.is_read1:
-            mate = 0
+            readnum = 0
         elif read.is_read2:
-            mate = 1
+            readnum = 1
         # if query name changes we have completely finished
         # the fragment and can reset the read data
         if num_reads > 0 and qname != prev_qname:
@@ -67,7 +53,7 @@ def parse_pe_reads(bamfh):
             # reset state variables
             pe_reads = ([], [])
             num_reads = 0
-        pe_reads[mate].append(read)
+        pe_reads[readnum].append(read)
         prev_qname = qname
         num_reads += 1
     if num_reads > 0:
@@ -108,130 +94,93 @@ def parse_unpaired_pe_reads(bamfh):
     if num_reads > 0:
         yield pe_reads
 
-CIGAR_M = 0 #match  Alignment match (can be a sequence match or mismatch)
-CIGAR_I = 1 #insertion  Insertion to the reference
-CIGAR_D = 2 #deletion  Deletion from the reference
-CIGAR_N = 3 #skip  Skipped region from the reference
-CIGAR_S = 4 #softclip  Soft clip on the read (clipped sequence present in <seq>)
-CIGAR_H = 5 #hardclip  Hard clip on the read (clipped sequence NOT present in <seq>)
-CIGAR_P = 6 #padding  Padding (silent deletion from the padded reference sequence)
+def copy_read(r):
+    a = pysam.AlignedRead()
+    a.qname = r.qname
+    a.seq = r.seq
+    a.flag = r.flag
+    a.rname = r.rname
+    a.pos = r.pos
+    a.mapq = r.mapq
+    a.cigar = r.cigar
+    a.mrnm = r.mrnm
+    a.mpos = r.mpos
+    a.isize = r.isize
+    a.qual = r.qual
+    a.tags = r.tags
+    return a
 
-def get_genomic_intervals(read):
-    intervals = []
-    rseq = read.seq
-    qseq = array.array('c')
-    qstart = 0
-    astart = read.pos
-    aend = astart
-    for op,length in read.cigar:
-        if (op == CIGAR_D):
-            aend += length
-        elif (op == CIGAR_I) or (op == CIGAR_S):
-            qstart += length
-        elif (op == CIGAR_M):            
-            qseq.fromstring(rseq[qstart:qstart + length])
-            qstart += length
-            aend += length
-        elif (op == CIGAR_N):
-            if aend > astart:
-                if len(qseq) != (aend - astart):
-                    logging.error("Read %s has aend != astart" % (str(read)))
-                else:
-                    intervals.append((astart, aend, qseq))
-            astart = aend + length
-            aend = astart
-            qseq = array.array('c')
-    if aend > astart:
-        if len(qseq) != (aend - astart):
-            logging.error("Read %s has aend != astart" % (str(read)))
-        else:
-            intervals.append((astart, aend, qseq))
-    if aend != read.aend:
-        logging.error("Read %s has aend != read.aend" % (str(read)))
-    return intervals
-
-
-def get_insert_size(read1, read2):
-    # compute the total span of the reads
-    if read2.pos < read1.pos:
-        span = read1.aend - read2.pos
+def soft_pad_read(fq, r):
+    """
+    'fq' is the fastq record
+    'r' in the AlignedRead SAM read
+    """    
+    # make sequence soft clipped
+    ext_length = len(fq.seq) - len(r.seq)
+    cigar_softclip = [(CIGAR_S, ext_length)]
+    cigar = r.cigar
+    # reconstitute full length sequence in read
+    if r.is_reverse:
+        seq = DNA_reverse_complement(fq.seq)
+        qual = fq.qual[::-1]        
+        if (cigar is not None) and (ext_length > 0):
+            cigar = cigar_softclip + cigar
     else:
-        span = read2.aend - read1.pos
-    # subtract any "gaps" or "skips" in the alignment
-    skips = 0
-    for r in (read1, read2):
-        for op,length in r.cigar:
-            if (op == CIGAR_D):
-                skips += length
-            elif (op == CIGAR_I) or (op == CIGAR_S):
-                span += length
-            elif (op == CIGAR_N):
-                skips += length
-    return span - skips
+        seq = fq.seq
+        qual = fq.qual
+        if (cigar is not None) and (ext_length > 0):
+            cigar = cigar + cigar_softclip
+    # replace read field
+    r.seq = seq
+    r.qual = qual
+    r.cigar = cigar
 
-def get_strand(read, tag="XS"):
-    try:
-        return read.opt(tag)
-    except KeyError:
-        return NO_STRAND
+def pair_reads(r1, r2, tags=None):
+    '''
+    fill in paired-end fields in SAM record
+    '''
+    if tags is None:
+        tags = []
+    # convert read1 to paired-end
+    r1.is_paired = True
+    r1.is_proper_pair = True
+    r1.is_read1 = True
+    r1.mate_is_reverse = r2.is_reverse
+    r1.mate_is_unmapped = r2.is_unmapped
+    r1.mpos = r2.pos
+    r1.mrnm = r2.rname
+    r1.tags = r1.tags + tags
+    # convert read2 to paired-end        
+    r2.is_paired = True
+    r2.is_proper_pair = True
+    r2.is_read2 = True
+    r2.mate_is_reverse = r1.is_reverse
+    r2.mate_is_unmapped = r1.is_unmapped
+    r2.mpos = r1.pos
+    r2.mrnm = r1.rname
+    r2.tags = r2.tags + tags
+    # compute insert size
+    if r1.rname != r2.rname:
+        r1.isize = 0
+        r2.isize = 0
+    elif r1.pos > r2.pos:
+        isize = r1.aend - r2.pos
+        r1.isize = -isize
+        r2.isize = isize
+    else:
+        isize = r2.aend - r1.pos
+        r1.isize = isize
+        r2.isize = -isize
 
-def select_best_mismatch_strata(reads, mismatch_tolerance=0):
-    if len(reads) == 0:
-        return []
-    # sort reads by number of mismatches
-    mapped_reads = []
-    unmapped_reads = []
-    for r in reads:
-        if r.is_unmapped:
-            unmapped_reads.append(r)
-        else:
-            mapped_reads.append((r.opt('NM'), r))
-    if len(mapped_reads) == 0:
-        return unmapped_reads
-    sorted_reads = sorted(mapped_reads, key=operator.itemgetter(0))
-    best_nm = sorted_reads[0][0]
-    worst_nm = sorted_reads[-1][0]
-    sorted_reads.extend((worst_nm, r) for r in unmapped_reads)
-    # choose reads within a certain mismatch tolerance
-    best_reads = []
-    for mismatches, r in sorted_reads:
-        if mismatches > best_nm + mismatch_tolerance:
-            break
-        best_reads.append(r)
-    return best_reads
+def get_clipped_interval(r):
+    cigar = r.cigar
+    padstart, padend = r.pos, r.aend
+    if len(cigar) > 1:
+        if (cigar[0][0] == CIGAR_S or
+            cigar[0][0] == CIGAR_H):
+            padstart -= cigar[0][1]
+        elif (cigar[-1][0] == CIGAR_S or
+            cigar[-1][0] == CIGAR_H):
+            padend += cigar[-1][1]
+    return padstart, padend
 
-def parse_multihit_alignments(samfh):
-    buf = []
-    ind = 0
-    for read in samfh:
-        if (ind > 0) and (read.qname != buf[ind-1].qname):
-            yield buf[:ind]
-            ind = 0
-        if ind < len(buf):
-            buf[ind] = read
-        else:
-            buf.append(read)
-        ind += 1
-    if ind > 0:
-        yield buf[:ind]
-
-def get_aligned_read_intervals(read):
-    intervals = []
-    # insert read into cluster tree
-    astart,aend = read.pos, read.pos
-    for op,length in read.cigar:
-        if length == 0: continue
-        if (op == CIGAR_I) or (op == CIGAR_S) or (op == CIGAR_H): continue
-        if (op == CIGAR_P): assert False 
-        if (op == CIGAR_N):
-            assert astart != aend
-            intervals.append((astart, aend))
-            #print read.qname, read.cigar, ref, astart, aend
-            astart = aend + length
-        aend += length
-    assert astart != aend
-    if aend > astart:
-        #print read.qname, read.cigar, ref, astart, aend
-        intervals.append((astart, aend))
-    assert aend == read.aend
-    return intervals

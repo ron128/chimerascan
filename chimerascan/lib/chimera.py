@@ -1,265 +1,272 @@
 '''
-Created on May 18, 2011
+Created on Jun 3, 2011
 
 @author: mkiyer
 '''
+from base import parse_string_none
+from sam import get_clipped_interval
+
+DISCORDANT_TAG_NAME = "XC"
+class DiscordantTags(object):
+    CONCORDANT_TX = 0
+    DISCORDANT_STRAND_TX = 1
+    CONCORDANT_GENE = 2
+    DISCORDANT_STRAND_GENE = 3
+    CONCORDANT_GENOME = 4
+    DISCORDANT_STRAND_GENOME = 5
+    DISCORDANT_GENE = 9
+    DISCORDANT_GENOME = 17
+    DISCORDANT_SPANNING = 32
+
+ORIENTATION_TAG_NAME = "XD"
+class OrientationTags(object):
+    NONE = 0
+    FIVEPRIME = 1
+    THREEPRIME = 2
+
+def cmp_orientation(a,b):
+    if (a == OrientationTags.NONE) or (b == OrientationTags.NONE):
+        return True
+    return (a != b)
+
+# constants
+MULTIMAP_BINS = (1,2,4,8,16,32,64,128)
+CHIMERA_SEP = "|"
+
+# chimera types
+class ChimeraTypes(object):
+    INTERCHROMOSOMAL = "Interchromosomal"
+    OVERLAP_CONVERGE = "Overlapping_Converging"
+    OVERLAP_DIVERGE = "Overlapping_Diverging"
+    OVERLAP_SAME = "Overlapping_Same"
+    OVERLAP_COMPLEX = "Overlapping_Complex"
+    READTHROUGH = "Read_Through"
+    INTRACHROMOSOMAL = "Intrachromosomal"
+    ADJ_CONVERGE = "Adjacent_Converging"
+    ADJ_DIVERGE = "Adjacent_Diverging"
+    ADJ_SAME = "Adjacent_Same"
+    ADJ_COMPLEX = "Adjacent_Complex"
+    INTRA_COMPLEX = "Intrachromosomal_Complex"
+    UNKNOWN = "Undetermined"
+    #CHIMERA_INTRA_CONVERGE = "Intrachromosomal_Converging"
+    #CHIMERA_INTRA_DIVERGE = "Intrachromsomal_Diverging"
+    #CHIMERA_INTRA_SAME = "Intrachromosomal_Same"
 
 class DiscordantRead(object):
+    """
+    stores read alignment information needed to nominate 
+    chimeric transcripts
+
+    (this is a subset of what is kept in SAM file)
+    """
     def __init__(self):
-        self.qname = None
-        self.readnum = None
-        self.hit_index = None
-        self.strand = None
-        self.sense = None
-        self.chrom = None
-        self.left_interval = None
-        self.right_interval = None
+        self.qname = ""
+        self.hit_index = -1
+        self.readnum = -1
+        self.seq = ""
+        self.tid = -1
+        self.pos = -1
+        self.aend = -1
+        self.clipstart = -1
+        self.clipend = -1
+        self.is_reverse = False
+        self.numhits = 0
+        self.mismatches = 0
+        self.discordant_type = 0
+        self.orientation = 0
 
-class DiscordantPair(object):    
-    def __init__(self):        
-        self.read5p = None
-        self.read3p = None
-        
-        
-        self.qname = None
-        self.r1_hit_index = None
-        self.r2_hit_index = None
-
-        return True, dr1, dr2, interval5p, interval3p
-
-        
-
-class Chimera(object):
-    def __init__(self):
-        self.id = None
-        self.chimera_type = 0
-        self.distance = None 
-        self.encompassing_reads = 0
-        self.weighted_cov = 0.0
-        self.strand_reads = [0, 0]
-        self.multimap_cov_hist = None
-        self.qnames = []
-        self.seqs = []       
-        self.mate5p = ChimeraMate()
-        self.mate3p = ChimeraMate()
-        self.extra_fields = []
-
-
-class ChimeraMate(object):
-    def __init__(self):
-        self.start = 0
-        self.end = 0
-        self.tx_name = None
-        self.gene_name = None
-        self.strand = "."
-        self.exon_start_num = 0
-        self.exon_end_num = 0
-        self.isize = 0
-        self.frac = 0.0
-                
-class Chimera(object):
-    QNAME_COL = 22
-    LAST_COL = 24
-    SEQ_FIELD_DELIM = ';'
-
-    def __init__(self):
-        self.name = None
-        self.chimera_type = 0
-        self.distance = None 
-        self.encompassing_reads = 0
-        self.weighted_cov = 0.0
-        self.strand_reads = [0, 0]
-        self.multimap_cov_hist = None
-        self.qnames = []
-        self.seqs = []       
-        self.mate5p = ChimeraMate()
-        self.mate3p = ChimeraMate()
-        self.extra_fields = []
-        
-
-
-
-
-class TranscriptAlignment(object):
-    def __init__(self, g, exon_num, chrom, start, end, e_start, e_end, 
-                 e_start_overhang, e_end_overhang, 
-                 tx_start, tx_end):
-        self.g = g
-        self.exon_num = exon_num
-        self.chrom = chrom
-        self.start = start
-        self.end = end
-        self.e_start = e_start
-        self.e_end = e_end
-        self.e_start_overhang = e_start_overhang
-        self.e_end_overhang = e_end_overhang
-        self.tx_start = tx_start
-        self.tx_end = tx_end
-
-    def __repr__(self):
-        return ("<%s(g='%s', exon_num='%d', chrom='%s', start='%d', "
-                "end='%d', e_start='%d', e_end='%d', "
-                "e_start_overhang='%d', e_end_overhang='%d', "
-                "tx_start='%d', tx_end='%d')>" %
-                (self.__class__.__name__, self.g, self.exon_num, 
-                 self.chrom, self.start, self.end, self.e_start, self.e_end, 
-                 self.e_start_overhang, self.e_end_overhang,
-                 self.tx_start, self.tx_end))
-
-
-
-
-
-class DiscordantCluster(object):
-    __slots__ = ('rname', 'start', 'end', 'strand', 'pad_start', 'pad_end', 
-                 'multimaps', 'seq', 'qual')
-    def __init__(self, rname, start, end, strand, pad_start, pad_end, multimaps,
-                 seq=None, 
-                 qual=None):
-        self.rname = rname
-        self.start = start
-        self.end = end
-        self.strand = strand
-        self.pad_start = pad_start
-        self.pad_end = pad_end
-        self.multimaps = multimaps
-        self.seq = seq
-        self.qual = qual
-    def __repr__(self):
-        return ("<%s(rname=%s, strand=%s, start=%d, end=%d, pad_start=%d, "
-                "pad_end=%d, multimaps=%d, seq=%s, qual=%s)>" %
-                (self.__class__.__name__, self.rname, self.strand, self.start, self.end,
-                 self.pad_start, self.pad_end, self.multimaps, self.seq, self.qual))
-    def to_list(self):
-        return [self.rname, self.start, self.end, self.strand, 
-                self.pad_start, self.pad_end, self.multimaps,
-                self.seq, self.qual]
     @staticmethod
-    def from_list(fields):        
-        seq = parse_string_none(fields[7])
-        qual = parse_string_none(fields[8])
-        return DiscordantCluster(fields[0], int(fields[1]), int(fields[2]), 
-                                 fields[3], int(fields[4]), int(fields[5]),
-                                 int(fields[6]), seq, qual)
-
-
-class DiscordantFragment(object):
-    __slots__ = ('qname', 'is_genome', 'discordant5p', 'discordant3p',
-                 'code', 'read1_is_sense', 'clust5p', 'clust3p')
-    # columns in the tabular output that contain the references
-    # (useful for sorting)
-    REF1_COL = 6
-    REF2_COL = 15
-    
-    # fragment type codes
-    NA = 0
-    NONMAPPING = 1
-    CONCORDANT_SINGLE = 2
-    DISCORDANT_SINGLE = 3
-    DISCORDANT_SINGLE_COMPLEX = 4
-    CONCORDANT_PAIRED = 5
-    DISCORDANT_PAIRED = 6
-    DISCORDANT_PAIRED_COMPLEX = 7
-    _discordant_codes = ["NA", 
-                         "NONMAPPING",
-                         "CONCORDANT_SINGLE",
-                         "DISCORDANT_SINGLE",
-                         "DISCORDANT_SINGLE_COMPLEX",
-                         "CONCORDANT_PAIRED",
-                         "DISCORDANT_PAIRED",
-                         "DISCORDANT_PAIRED_COMPLEX"]
-    # flag bits
-    FLAG_DISCORDANT_5P = 0b10
-    FLAG_DISCORDANT_3P = 0b1
-
-    def __init__(self, qname, read1_is_sense, clust5p, clust3p,
-                 code=0, is_genome=False, discordant5p=False, 
-                 discordant3p=False): 
-        self.qname = qname
-        self.read1_is_sense = read1_is_sense
-        self.clust5p = clust5p
-        self.clust3p = clust3p
-        self.code = code
-        self.is_genome = is_genome
-        self.discordant5p = discordant5p
-        self.discordant3p = discordant3p
-
-    def __repr__(self):
-        return ("<%s(qname=%s, read1_is_sense=%s, clust5p=%s, clust3p=%s "
-                "is_genome=%s, discordant5p=%s, discordant3p=%s, "
-                "code=%d, string_code=%s)>" %
-                (self.__class__.__name__, self.qname, self.read1_is_sense,
-                 self.clust5p, self.clust3p, 
-                 self.is_genome, self.discordant5p, self.discordant3p, 
-                 self.code, self._discordant_codes[self.code]))
-
-    @property
-    def clust1(self):
-        return self.clust5p if self.read1_is_sense else self.clust3p
-    @property
-    def clust2(self):
-        return self.clust3p if self.read1_is_sense else self.clust5p
-
-    def set_flags(self, nclusts1, nclusts2, nclustspe):
-        # set 5'/3' discordant flags according to sense/antisense
-        # orientation and cluster mappings
-        if self.read1_is_sense:
-            self.discordant5p = (nclusts1 > 1)
-            self.discordant3p = (nclusts2 > 1)
-        else:
-            self.discordant5p = (nclusts2 > 1)
-            self.discordant3p = (nclusts1 > 1)                    
-        if nclustspe == 0:
-            self.code = self.NONMAPPING
-        elif nclustspe == 1:
-            if (nclusts1 == 0) or (nclusts2 == 0):
-                # one of the reads is concordant and the other is unmapped
-                self.code = self.CONCORDANT_SINGLE
-            else:
-                # both reads are mapped and concordant
-                self.code = self.CONCORDANT_PAIRED
-        elif nclustspe == 2:
-            if (nclusts1 > 1) or (nclusts2 > 1):
-                # one of the reads is discordant and the other is
-                # unmapped
-                if (nclusts1 > 2) or (nclusts2 > 2):        
-                    self.code = self.DISCORDANT_SINGLE_COMPLEX
-                else:
-                    self.code = self.DISCORDANT_SINGLE
-            else:
-                self.code = self.DISCORDANT_PAIRED
-        else:
-            self.code = self.DISCORDANT_PAIRED_COMPLEX
-        return self
-
-    def _pack_flags(self):
-        '''pack flags into a single integer value for reading/writing to file'''
-        flags = ((self.discordant5p << self.FLAG_DISCORDANT_5P) |
-                 (self.discordant3p << self.FLAG_DISCORDANT_3P))
-        return flags
-    
-    def _unpack_flags(self, val):
-        '''unpack flags and set attributes'''
-        self.discordant5p = bool(val & self.FLAG_DISCORDANT_5P)
-        self.discordant3p = bool(val & self.FLAG_DISCORDANT_3P)
-
-    def to_list(self):
-        genome = "GENOME" if self.is_genome else "GENE"
-        return ([self.qname, int(self.read1_is_sense), genome,
-                 self._discordant_codes[self.code], self._pack_flags()] +
-                self.clust5p.to_list() + self.clust3p.to_list())
+    def from_read(r):
+        a = DiscordantRead()
+        a.qname = r.qname
+        a.hit_index = r.opt('HI')
+        a.readnum = 1 if r.is_read2 else 0
+        a.seq = r.seq
+        a.tid = r.rname
+        a.pos = r.pos
+        a.aend = r.aend
+        a.clipstart, a.clipend = get_clipped_interval(r)
+        a.is_reverse = r.is_reverse
+        a.numhits = r.opt('NH')
+        a.mismatches = r.opt('NM')
+        a.discordant_type = r.opt(DISCORDANT_TAG_NAME)
+        a.orientation = r.opt(ORIENTATION_TAG_NAME)
+        return a
 
     @staticmethod
     def from_list(fields):
-        qname = fields[0]        
-        read1_is_sense = bool(int(fields[1]))
-        is_genome = True if fields[2] == "GENOME" else False
-        code = DiscordantFragment._discordant_codes.index(fields[3])
-        flags = int(fields[4])
-        clust5p = DiscordantCluster.from_list(fields[5:14])
-        clust3p = DiscordantCluster.from_list(fields[14:23])
-        f = DiscordantFragment(qname, read1_is_sense, clust5p, clust3p,
-                               code=code, is_genome=is_genome)
-        f._unpack_flags(flags)
-        return f
+        a = DiscordantRead()
+        a.qname = fields[0]
+        a.hit_index = int(fields[1])
+        a.readnum = int(fields[2])
+        a.seq = fields[3]
+        a.tid = int(fields[4])
+        a.pos = int(fields[5])
+        a.aend = int(fields[6])
+        a.clipstart = int(fields[7])
+        a.clipend = int(fields[8])
+        a.is_reverse = True if int(fields[9]) == 1 else False
+        a.numhits = int(fields[10])
+        a.mismatches = int(fields[11])
+        a.discordant_type = int(fields[12])
+        a.orientation = int(fields[13])
+        return a
+
+    def to_list(self):
+        return [self.qname, self.hit_index, self.readnum, self.seq, 
+                self.tid, self.pos, self.aend, self.clipstart, 
+                self.clipend, int(self.is_reverse), self.numhits, 
+                self.mismatches, self.discordant_type, 
+                self.orientation]
+
+
+class ChimeraPartner(object):
+    NUM_FIELDS = 12
     
+    def __init__(self):
+        self.gene_name = None
+        self.tx_name = None
+        self.start = 0
+        self.end = 0
+        self.strand = "."
+        self.exon_start_num = 0
+        self.exon_end_num = 0
+        self.inner_dist = 0
+        self.mismatches = 0
+        self.frac = 0.0
+        self.multimap_hist = []
+        self.weighted_cov = 0.0
+    
+    def __repr__(self):
+        return ("<%s(gene_name='%s',tx_name='%s')>" % 
+                (self.__class__.__name__, self.gene_name, self.tx_name))
+
+    @staticmethod
+    def from_list(fields):
+        p = ChimeraPartner()
+        p.gene_name = fields[0]
+        p.tx_name = fields[1]
+        p.start = int(fields[2])
+        p.end = int(fields[3])
+        p.strand = fields[4]
+        p.exon_start_num = fields[5]
+        p.exon_end_num = fields[6]
+        p.inner_dist = fields[7]
+        p.mismatches = int(fields[8])
+        p.frac = float(fields[9])
+        p.multimap_hist = map(int, fields[10].split(","))
+        p.weighted_cov = float(fields[11])
+        return p
+    
+    def to_list(self):
+        return [self.gene_name, self.tx_name, self.start, self.end, 
+                self.strand, self.exon_start_num, self.exon_end_num,
+                self.inner_dist, self.mismatches, self.frac, 
+                ",".join(map(str,self.multimap_hist)), self.weighted_cov]
+
+
+class Chimera(object):
+    FIELD_DELIM = "|"
+    PAIR_DELIM = "||" 
+    READ_DELIM = ";"
+
+    def __init__(self):
+        self.partner5p = None
+        self.partner3p = None
+        self.name = None
+        self.chimera_type = 0
+        self.distance = None
+        self.num_encomp_frags = 0
+        self.num_spanning_reads = 0
+        self.read1_sense_frags = 0
+        # junction information
+        self.breakpoint_name = None
+        self.breakpoint_homology_5p = 0
+        self.breakpoint_homology_3p = 0
+        # raw read information
+        self.encomp_read_pairs = []
+        self.spanning_reads = []       
+
+    @staticmethod
+    def from_list(fields):
+        c = Chimera()
+        # chimera partner information
+        c.partner5p = ChimeraPartner.from_list(fields[0:ChimeraPartner.NUM_FIELDS])
+        c.partner3p = ChimeraPartner.from_list(fields[ChimeraPartner.NUM_FIELDS:2*ChimeraPartner.NUM_FIELDS])
+        # chimera information
+        FIRSTCOL = 2*ChimeraPartner.NUM_FIELDS
+        c.name = fields[FIRSTCOL]
+        c.chimera_type = fields[FIRSTCOL+1]
+        c.distance = parse_string_none(fields[FIRSTCOL+2])
+        if c.distance is not None:
+            c.distance = int(c.distance)
+        c.num_encomp_frags = int(fields[FIRSTCOL+3])        
+        c.num_spanning_reads = int(fields[FIRSTCOL+4])
+        c.read1_sense_frags = int(fields[FIRSTCOL+5])
+        # breakpoint information
+        c.breakpoint_name = parse_string_none(fields[FIRSTCOL+6])
+        c.breakpoint_homology_5p = parse_string_none(fields[FIRSTCOL+7])
+        if c.breakpoint_homology_5p is not None:
+            c.breakpoint_homology_5p = int(c.breakpoint_homology_5p)
+        c.breakpoint_homology_3p = parse_string_none(fields[FIRSTCOL+8])
+        if c.breakpoint_homology_3p is not None:
+            c.breakpoint_homology_3p = int(c.breakpoint_homology_3p)
+        # raw encompassing read information
+        encomp_reads_field = parse_string_none(fields[FIRSTCOL+9])
+        if encomp_reads_field is None:
+            c.encomp_read_pairs = []
+        for read_pair_fields in encomp_reads_field.split(c.READ_DELIM):
+            dreads = []
+            for read_fields in read_pair_fields.split(c.PAIR_DELIM):
+                dreads.append(DiscordantRead.from_list(read_fields.split(c.FIELD_DELIM)))
+            c.encomp_read_pairs.append(dreads)
+        # raw spanning read information
+        spanning_reads_field = parse_string_none(fields[FIRSTCOL+10])
+        if spanning_reads_field is not None:
+            for read_fields in spanning_reads_field.split(c.READ_DELIM):
+                c.spanning_reads.append(DiscordantRead.from_list(read_fields.split(c.FIELD_DELIM)))
+        return c
+
+    @staticmethod
+    def parse(line_iter):
+        for line in line_iter:
+            if line.startswith("#"):
+                continue            
+            fields = line.strip().split('\t')
+            yield Chimera.from_list(fields)
+
+    def to_list(self):
+        fields = []
+        fields.extend(self.partner5p.to_list())
+        fields.extend(self.partner3p.to_list())
+        fields.extend([self.name, self.chimera_type, self.distance,
+                       self.num_encomp_frags, self.num_spanning_reads,
+                       self.read1_sense_frags, 
+                       self.breakpoint_name,
+                       self.breakpoint_homology_5p, 
+                       self.breakpoint_homology_3p])
+        encomp_reads = []
+        for dreads in self.encomp_read_pairs:
+            r5p = self.FIELD_DELIM.join(map(str,dreads[0].to_list()))
+            r3p = self.FIELD_DELIM.join(map(str,dreads[1].to_list()))                        
+            pair_fields = self.PAIR_DELIM.join([r5p,r3p])
+            encomp_reads.append(pair_fields)
+        fields.append(self.READ_DELIM.join(encomp_reads))
+        spanning_reads = []
+        for dread in self.spanning_reads:
+            r = self.FIELD_DELIM.join(map(str,dread.to_list()))                        
+            spanning_reads.append(r)
+        if len(spanning_reads) == 0:
+            fields.append("None")
+        else:
+            fields.append(self.READ_DELIM.join(spanning_reads))
+        return fields
+
+    def get_weighted_cov(self):
+        """
+        weighted coverage is average of weighted coverage of 
+        both partners in the chimera
+        """
+        return 0.5 * (self.partner5p.weighted_cov +
+                      self.partner3p.weighted_cov)
+
