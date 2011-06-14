@@ -139,6 +139,9 @@ def calc_permiscuity(c, juncmap5p, juncmap3p, ggmap):
     frac3p = cov / float(total_cov)
     return frac5p, frac3p
 
+def build_chimera_permiscuity_map(chimeras, tid_tx_cluster_map):    
+    pass
+
 def make_temp(base_dir, suffix=''):
     fd,name = tempfile.mkstemp(suffix=suffix, prefix='tmp', dir=base_dir)
     os.close(fd)

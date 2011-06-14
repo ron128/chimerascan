@@ -20,6 +20,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
+import sys
 
 def parse_fastq(line_iter):
     with line_iter:
@@ -29,8 +30,11 @@ def parse_fastq(line_iter):
 
 def trim_and_merge_fastq(infiles, outfile, trim5, segment_length):
     total_length = trim5 + segment_length
-    fqiters = [parse_fastq(open(f)) for f in infiles]
-    outfh = open(outfile, "w")
+    fqiters = [parse_fastq(open(f)) for f in infiles]    
+    if outfile == "-":
+        outfh = sys.stdout
+    else:
+        outfh = open(outfile, "w")
     try:
         while True:
             pe_lines = [fqiter.next() for fqiter in fqiters]
@@ -42,7 +46,8 @@ def trim_and_merge_fastq(infiles, outfile, trim5, segment_length):
                 print >>outfh, '\n'.join(lines)
     except StopIteration:
         pass
-    outfh.close()
+    if outfile != "-":
+        outfh.close()
 
 def main():
     from optparse import OptionParser
