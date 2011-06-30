@@ -26,10 +26,13 @@ import operator
 
 # local imports
 from chimerascan import pysam
+from chimerascan.lib.chimera import Chimera
+from chimerascan.lib.breakpoint import Breakpoint
+
+
 from chimerascan.lib.alignment_parser import parse_sr_sam_file
 from chimerascan.lib.base import parse_string_none, select_best_mismatch_strata
 from chimerascan.lib.stats import kl_divergence
-from nominate_chimeras import Chimera
 
 SpanningRead = collections.namedtuple("SpanningRead", 
                                       ["qname", "mate", "seq", "pos", 
@@ -203,14 +206,48 @@ def process_spanning_reads(reads,
             passed_filter = True
     return passed_filter
 
-
 def parse_spanning_bam(bam_file,
-                       junc_mapping_file,
-                       anchor_min, anchor_max,
-                       max_anchor_mismatches):
+                       breakpoint_map_file,
+                       anchor_min, 
+                       anchor_max,
+                       anchor_mismatches):
     # map reference names to numeric ids
     bamfh = pysam.Samfile(bam_file, "rb")
     rname_tid_map = dict((rname,i) for i,rname in enumerate(bamfh.references))
+    
+    # make a dictionary to lookup breakpoint information from reference 'tid'
+    tid_breakpoint_read_dict = {}
+    for line in open(breakpoint_map_file):
+        fields = line.strip().split('\t')
+        b = Breakpoint.from_list(fields)
+        # add a 'reads' attribute to breakpoint data
+        b.reads = []
+        # add to dictionary
+        tid = rname_tid_map[b.name]
+        tid_breakpoint_read_dict[tid] = b
+
+    # count read alignments to chimera junctions
+    num_multimaps = 0    
+    num_filtered = 0
+    num_reads = 0    
+    for reads in parse_sr_sam_file(bamfh):
+        num_reads += 1
+        if len(reads) > 1:
+            num_multimaps += 1
+        passed_filter = process_spanning_reads(reads, spanning_data_dict, 
+                                               anchor_min, anchor_max, 
+                                               max_anchor_mismatches)
+        if not passed_filter:
+            # no reads passed filter
+            num_filtered += 1
+    logging.info("Reads: %d" % (num_reads))
+    logging.info("Multimapping: %d" % (num_multimaps))
+    logging.info("Failed anchor filter: %d" % (num_filtered))
+    bamfh.close()
+    return rname_tid_map, spanning_data_dict
+
+
+    
     spanning_data_dict = read_junc_mapping_file(open(junc_mapping_file),
                                                 rname_tid_map)
     # count read alignments to chimera junctions
@@ -232,6 +269,9 @@ def parse_spanning_bam(bam_file,
     logging.info("Failed anchor filter: %d" % (num_filtered))
     bamfh.close()
     return rname_tid_map, spanning_data_dict
+
+
+
 
 def make_spanning_chimeras(spanning_data_dict, junc_mapping_file, rname_tid_map):    
     # output chimera candidates
@@ -259,9 +299,18 @@ def make_spanning_chimeras(spanning_data_dict, junc_mapping_file, rname_tid_map)
         c.encomp_or_spanning = len(spanning_qnames.union(c.qnames))
         yield c
 
-def merge_spanning_alignments(bam_file, junc_map_file, output_file,
+def merge_spanning_alignments(input_chimera_file, bam_file, 
+                              breakpoint_map_file, 
+                              output_chimera_file,
                               anchor_min, anchor_max,
                               anchor_mismatches):
+    
+    f = open(output_chimera_file, "w")
+    for c in Chimera.parse(open(input_chimera_file)):
+        pass
+    f.close()
+
+    
     f = open(output_file, "w")
     rname_tid_map, spanning_data_dict = \
         parse_spanning_bam(bam_file, junc_map_file, anchor_min, anchor_max,
@@ -275,18 +324,22 @@ def main():
     from optparse import OptionParser
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")    
-    parser = OptionParser("usage: %prog [options] <in.bam> <junc_map> <out.txt>")    
+    parser = OptionParser("usage: %prog [options] <chimeras.in.txt> "
+                          "<in.bam> <breakpoint_map> <chimeras.out.txt>")
     parser.add_option("--anchor-min", type="int", dest="anchor_min", default=0)
     parser.add_option("--anchor-max", type="int", dest="anchor_max", default=0)
     parser.add_option("--anchor-mismatches", type="int", dest="anchor_mismatches", default=0)
     options, args = parser.parse_args()
-    bam_file = args[0]
-    junc_map_file = args[1]
-    output_file = args[2]
-    merge_spanning_alignments(bam_file, junc_map_file, output_file,
-                              options.read_length, 
+    input_chimera_file = args[0]
+    bam_file = args[1]
+    breakpoint_map_file = args[2]
+    output_chimera_file = args[3]
+    merge_spanning_alignments(input_chimera_file, bam_file, 
+                              breakpoint_map_file, 
+                              output_chimera_file,
                               options.anchor_min, 
                               options.anchor_max,
                               options.anchor_mismatches)
 
-if __name__ == '__main__': main()
+if __name__ == '__main__':
+    main()

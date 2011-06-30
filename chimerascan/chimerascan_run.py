@@ -748,9 +748,6 @@ def run_chimerascan(runconfig):
         if retcode != config.JOB_SUCCESS:
             logging.error("Bowtie failed with error code %d" % (retcode))    
             return config.JOB_ERROR
-        
-    return
-
     #
     # Merge spanning read alignments into chimera file
     #

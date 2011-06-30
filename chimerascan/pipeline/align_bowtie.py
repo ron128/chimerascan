@@ -158,8 +158,7 @@ def align_sr(fastq_file,
     #
     args = [sys.executable, _sam2bam_script, 
             "--multihits", str(multihits),
-            "--quals", quals,
-            "--pesr"]
+            "--quals", quals]
     if keep_unmapped:
         args.append("--un")
     args.extend([output_bam_file, "-"])
@@ -251,4 +250,3 @@ def trim_align_pe_sr(fastq_files,
     # end logging
     if logfh is not None:
         logfh.close()
-

@@ -7,7 +7,7 @@ import logging
 
 # local imports
 import chimerascan.pysam as pysam
-from chimerascan.lib.fix_alignment_ordering import fix_alignment_ordering
+from chimerascan.lib.fix_alignment_ordering import fix_alignment_ordering, fix_sr_alignment_ordering
 from chimerascan.lib.sam import soft_pad_read
 from chimerascan.lib.seq import FASTQ_QUAL_FORMATS, SANGER_FORMAT, parse_fastq_record
 
@@ -25,9 +25,16 @@ def sam_to_bam(input_fastq_files, input_sam_file, output_bam_file,
     else:
         kwargs = {"convert_quals": False}
     fqiters = [parse_fastq_record(open(fq), **kwargs) for fq in input_fastq_files]
-    for bufitems in fix_alignment_ordering(samfh, fqiters, pe_sr_mode):
-        num_frags += 1        
-        for bufitem in bufitems:            
+    
+    # handle single-read and paired-end
+    if len(fqiters) == 1:
+        reorder_func = fix_sr_alignment_ordering(samfh, fqiters[0])
+    else:
+        reorder_func = fix_alignment_ordering(samfh, fqiters, pe_sr_mode)
+    # iterate through buffer
+    for bufitems in reorder_func:
+        num_frags += 1
+        for bufitem in bufitems:
             for r in bufitem.reads:
                 # softclip uses the fastq record to replace the sequence
                 # and quality scores of the read 

@@ -88,7 +88,7 @@ def fix_alignment_ordering(samfh, fqiters,
 def fix_sr_alignment_ordering(samfh, fqiter,
                               maxlen=100000):
     # function for initializing new buffer entry
-    buf_init_func = lambda fqrec: ReorderBufferItem(fqrec, [])
+    buf_init_func = lambda fqrec: [ReorderBufferItem(fqrec, [])]
     # initialize the qname dictionary to match the fastq file    
     buf = collections.deque()
     qname_read_dict = {}
@@ -121,7 +121,7 @@ def fix_sr_alignment_ordering(samfh, fqiter,
             while True:                
                 # get next qname from fastq file and add it to the queue
                 fqrec = fqiter.next()
-                next_key = (fqrec.qname, fqrec.readnum)
+                next_key = (fqrec.qname, fqrec.readnum-1)
                 buf.append(next_key)
                 qname_read_dict[next_key] = buf_init_func(fqrec)
                 # if the next qname in the fastq file is the same as the
@@ -129,7 +129,7 @@ def fix_sr_alignment_ordering(samfh, fqiter,
                 if next_key == key:
                     break
         # add read to buffer
-        qname_read_dict[key].append(read)
+        qname_read_dict[key][0].reads.append(read)
     # empty remaining entries in buffer
     while len(buf) > 0:
         yield qname_read_dict[buf.popleft()]

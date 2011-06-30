@@ -104,8 +104,7 @@ def determine_chimera_breakpoints(index_dir, read_length,
         # write to fasta file
         print >>fasta_output_fh, ">%s\n%s" % (b.name, seq)
         # write to breakpoint map file
-        fields = [b.name, b.seq5p, b.seq3p]
-        fields.append(','.join(b.chimera_names))
+        fields = b.to_list()
         print >>breakpointfh, '\t'.join(map(str, fields))
     # close files
     fasta_output_fh.close()
