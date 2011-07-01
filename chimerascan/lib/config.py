@@ -76,12 +76,15 @@ BREAKPOINT_BOWTIE_INDEX = "breakpoints"
 BREAKPOINT_BOWTIE_INDEX_FILE = "breakpoints.1.ebwt"
 
 # reads to remap to breakpoint junction index
-SPANNING_FASTQ_FILE = "putative_spanning_reads.fq"
+ENCOMP_SPANNING_FASTQ_FILE = "encomp_spanning_reads.fq"
+UNALIGNED_SPANNING_FASTQ_FILE = "unaligned_spanning_reads.fq"
 # results of aligning reads to breakpoint index
-SPANNING_BAM_FILE = "spanning_reads.bam"
+ENCOMP_SPANNING_BAM_FILE = "encomp_spanning_reads.bam"
+UNALIGNED_SPANNING_BAM_FILE = "unaligned_spanning_reads.bam"
 # results of merging spanning reads into chimera nominations
-SPANNING_CHIMERA_FILE = "chimeras.txt"
-
+SPANNING_CHIMERA_FILE = "spanning_chimeras.txt"
+# results of filtering chimeras
+FILTERED_CHIMERA_FILE = "spanning_chimeras.filtered.txt"
 
 
 DISCORDANT_BAM_FILE = "discordant_reads.bam"
@@ -103,18 +106,3 @@ RAW_CHIMERA_BEDPE_FILE = "chimeras.raw.bedpe"
 CHIMERA_BEDPE_FILE = "chimeras.bedpe"
 RANKED_CHIMERA_BEDPE_FILE = "chimeras.ranked.bedpe"
 
-# in-place XML prettyprint formatter
-def indent(elem, level=0):
-    i = "\n" + level*"  "
-    if len(elem):
-        if not elem.text or not elem.text.strip():
-            elem.text = i + "  "
-        if not elem.tail or not elem.tail.strip():
-            elem.tail = i
-        for elem in elem:
-            indent(elem, level+1)
-        if not elem.tail or not elem.tail.strip():
-            elem.tail = i
-    else:
-        if level and (not elem.tail or not elem.tail.strip()):
-            elem.tail = i

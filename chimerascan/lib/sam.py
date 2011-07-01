@@ -34,6 +34,20 @@ CIGAR_S = 4 #softclip  Soft clip on the read (clipped sequence present in <seq>)
 CIGAR_H = 5 #hardclip  Hard clip on the read (clipped sequence NOT present in <seq>)
 CIGAR_P = 6 #padding  Padding (silent deletion from the padded reference sequence)
 
+def parse_reads_by_qname(samfh):
+    """
+    generator function to parse and return lists of
+    reads that share the same qname
+    """    
+    reads = []
+    for read in samfh:        
+        if len(reads) > 0 and read.qname != reads[-1].qname:
+            yield reads
+            reads = []
+        reads.append(read)
+    if len(reads) > 0:
+        yield reads
+
 def parse_pe_reads(bamfh):
     pe_reads = ([], [])
     # reads must be sorted by qname

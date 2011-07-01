@@ -42,22 +42,11 @@ class LibraryTypes:
     @staticmethod
     def same_strand(library_type):
         return (library_type[0] == library_type[1])
-    
-
+   
 def parse_library_type(library_type):
     s1 = 0 if library_type[0] == 'f' else 1
     s2 = 0 if library_type[1] == 'f' else 1
     return (s1, s2)
-
-# custom read tags
-class SamTags:
-    RTAG_NUM_PARTITIONS = "XP"
-    RTAG_PARTITION_IND = "XH"
-    RTAG_NUM_SPLITS = "XN"
-    RTAG_SPLIT_IND = "XI"
-    RTAG_NUM_MAPPINGS = "IH"
-    RTAG_MAPPING_IND = "HI"
-    RTAG_BOWTIE_MULTIMAP = "XM"
 
 def parse_bool(s):    
     return True if s[0].lower() == "t" else False
@@ -69,6 +58,32 @@ def make_temp(base_dir, suffix=''):
     fd,name = tempfile.mkstemp(suffix=suffix, prefix='tmp', dir=base_dir)
     os.close(fd)
     return name
+
+def check_executable(filename):
+    # check that samtools binary exists
+    devnullfh = open(os.devnull, 'w')        
+    try:
+        subprocess.call([filename], stdout=devnullfh, stderr=devnullfh)
+    except OSError:
+        return False
+    devnullfh.close()
+    return True
+
+# in-place XML prettyprint formatter
+def indent(elem, level=0):
+    i = "\n" + level*"  "
+    if len(elem):
+        if not elem.text or not elem.text.strip():
+            elem.text = i + "  "
+        if not elem.tail or not elem.tail.strip():
+            elem.tail = i
+        for elem in elem:
+            indent(elem, level+1)
+        if not elem.tail or not elem.tail.strip():
+            elem.tail = i
+    else:
+        if level and (not elem.tail or not elem.tail.strip()):
+            elem.tail = i
 
 def get_read_length(fastq_file):
     f = open(fastq_file)
@@ -92,15 +107,15 @@ def get_read_length_compressed(input_file):
     f.close()
     return len(seq)
 
-def check_executable(filename):
-    # check that samtools binary exists
-    devnullfh = open(os.devnull, 'w')        
-    try:
-        subprocess.call([filename], stdout=devnullfh, stderr=devnullfh)
-    except OSError:
-        return False
-    devnullfh.close()
-    return True
+# custom read tags
+class SamTags:
+    RTAG_NUM_PARTITIONS = "XP"
+    RTAG_PARTITION_IND = "XH"
+    RTAG_NUM_SPLITS = "XN"
+    RTAG_SPLIT_IND = "XI"
+    RTAG_NUM_MAPPINGS = "IH"
+    RTAG_MAPPING_IND = "HI"
+    RTAG_BOWTIE_MULTIMAP = "XM"
 
 def select_best_mismatch_strata(reads, mismatch_tolerance=0):
     if len(reads) == 0:

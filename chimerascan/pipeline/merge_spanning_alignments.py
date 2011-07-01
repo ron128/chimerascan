@@ -22,110 +22,15 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 import logging
 import collections
-import operator
 
 # local imports
 from chimerascan import pysam
-from chimerascan.lib.chimera import Chimera
+from chimerascan.lib.chimera import Chimera, DiscordantRead, \
+    DiscordantTags, DISCORDANT_TAG_NAME, \
+    OrientationTags, ORIENTATION_TAG_NAME
 from chimerascan.lib.breakpoint import Breakpoint
-
-
-from chimerascan.lib.alignment_parser import parse_sr_sam_file
-from chimerascan.lib.base import parse_string_none, select_best_mismatch_strata
-from chimerascan.lib.stats import kl_divergence
-
-SpanningRead = collections.namedtuple("SpanningRead", 
-                                      ["qname", "mate", "seq", "pos", 
-                                       "aend", "mappings", "is_reverse"])
-
-class SpanningChimera(Chimera):
-    FIRST_COL = Chimera.LAST_COL + 1
-    LAST_COL = FIRST_COL + 5     
-    SPAN_READ_DELIM = ';'
-    SPAN_FIELD_DELIM = '|'
-    
-    def __init__(self):
-        Chimera.__init__(self)
-        self.junc_name = None
-        self.junc_pos = 0
-        self.junc_homology_5p = 0
-        self.junc_homology_3p = 0
-        self.num_spanning_reads = 0
-        self.encomp_and_spanning = 0
-        self.encomp_or_spanning = 0
-        self.spanning_reads = []
-        
-    def from_list(self, fields):
-        FIRST_COL = Chimera.LAST_COL + 1
-        # get the chimera fields
-        Chimera.from_list(self, fields)
-        self.junc_name = fields[FIRST_COL]
-        self.junc_pos = int(fields[FIRST_COL+1])
-        self.junc_homology_5p = int(fields[FIRST_COL+2])
-        self.junc_homology_3p = int(fields[FIRST_COL+3])        
-        self.num_spanning_reads = int(fields[FIRST_COL+4])
-        self.encomp_and_spanning = int(fields[FIRST_COL+5])
-        self.encomp_or_spanning = int(fields[FIRST_COL+6])        
-        spanning_reads_field = parse_string_none(fields[FIRST_COL+7]) 
-        self.spanning_reads = []
-        if spanning_reads_field is not None:
-            for read_fields in spanning_reads_field.split(self.SPAN_READ_DELIM):
-                fields = read_fields.split(self.SPAN_FIELD_DELIM)
-                read = SpanningRead(qname=fields[0], 
-                                    mate=int(fields[1]),
-                                    seq=fields[2],
-                                    pos=int(fields[3]), 
-                                    aend=int(fields[4]),
-                                    mappings=int(fields[5]),
-                                    is_reverse=int(fields[6]))
-                self.spanning_reads.append(read)
-
-    def to_list(self):
-        fields = Chimera.to_list(self)[:Chimera.LAST_COL+1]
-        fields.extend([self.junc_name,
-                       self.junc_pos,
-                       self.junc_homology_5p,
-                       self.junc_homology_3p,
-                       self.num_spanning_reads,
-                       self.encomp_and_spanning,
-                       self.encomp_or_spanning])   
-        read_fields = [self.SPAN_FIELD_DELIM.join(map(str, read)) 
-                       for read in self.spanning_reads]
-        if len(read_fields) == 0:
-            fields.append("None")
-        else:
-            fields.append(self.SPAN_READ_DELIM.join(read_fields))
-        return fields
-
-    @staticmethod
-    def parse(line_iter):
-        for line in line_iter:
-            if line.startswith("#"):
-                continue
-            fields = line.strip().split('\t')
-            c = SpanningChimera()
-            c.from_list(fields)
-            yield c
-
-class SpanningReads(object):
-    def __init__(self):
-        self.junc_tid = None
-        self.junc_pos = None
-        self.junc_homology_5p = 0
-        self.junc_homology_5p = 0
-        self.reads = []
-
-def read_junc_mapping_file(junc_map_fh, rname_tid_map):
-    spanning_data = collections.defaultdict(lambda: SpanningReads())
-    for line in junc_map_fh:
-        fields = line.strip().split('\t')
-        junc_tid = rname_tid_map[fields[0]]        
-        s = spanning_data[junc_tid]
-        s.junc_tid = junc_tid
-        s.junc_pos = int(fields[1])
-        s.junc_homology_5p = int(fields[2])
-        s.junc_homology_3p = int(fields[3])
-    return spanning_data
+from chimerascan.lib.sam import parse_reads_by_qname, parse_pe_reads
+from chimerascan.lib.config import GENE_REF_PREFIX
 
 def get_mismatch_positions(md):
     x = 0
@@ -137,187 +42,295 @@ def get_mismatch_positions(md):
             x = y + 1
     return pos
 
-def filter_anchor_position(read,
-                           spanning_data,
-                           anchor_min,
-                           anchor_max,
-                           max_anchor_mismatches):
-    junc_pos = spanning_data.junc_pos
-    # check if the read spans the junction
-    passes_filter = read.pos < junc_pos < read.aend
-    if passes_filter:
-        # read spans junction, but might violate anchor constraints        
-        left_anchor_bp = junc_pos - read.pos
-        right_anchor_bp = read.aend - junc_pos
-        # check 5' homology
-        if left_anchor_bp <= (spanning_data.junc_homology_5p + anchor_min):
-            #logging.debug("Failed 5' homology filter left anchor=%d homology 5p=%d" %
-            #              (left_anchor_bp, spanning_data.junc_homology_5p))
-            passes_filter = False
-        # check 3' homology
-        if right_anchor_bp <= (spanning_data.junc_homology_3p + anchor_min):
-            #logging.debug("Failed 3' homology filter right anchor=%d homology 3p=%d" %
-            #              (right_anchor_bp, spanning_data.junc_homology_3p))
-            passes_filter = False
-        # keep track of minimum number of bp spanning the chimera
-        anchor = min(left_anchor_bp, right_anchor_bp)
-        if anchor < anchor_max:
-            # count mismatches in anchor region
-            # find anchor interval
-            if left_anchor_bp < anchor_max:
-                anchor_interval = (0, left_anchor_bp)
-            else:
-                aligned_length = read.aend - read.pos
-                anchor_interval = (aligned_length - right_anchor_bp, aligned_length)      
-            # get mismatch positions
-            mmpos = get_mismatch_positions(read.opt('MD'))
-            # see if any mismatches lie in anchor interval
-            anchor_mm = [pos for pos in mmpos
-                         if pos >= anchor_interval[0] and pos < anchor_interval[1]]
-            if len(anchor_mm) > max_anchor_mismatches:
-                # mismatches within anchor position
-                passes_filter = False
-    return passes_filter
-
-def process_spanning_reads(reads, 
-                           spanning_data_dict,
-                           anchor_min=0,
-                           anchor_max=0,
-                           max_anchor_mismatches=0):
-    passed_filter = False
-    num_mapped_reads = sum(1 for r in reads if not r.is_unmapped)
-    for read in reads:
-        if read.is_unmapped:
-            continue
-        # get spanning read information
-        spandata = spanning_data_dict[read.rname]
-        # check if the read spans the junction and
-        # passes anchor constraints
-        if filter_anchor_position(read, spandata, anchor_min,
-                                  anchor_max, max_anchor_mismatches):        
-            # add read information to dict
-            spandata.reads.append(SpanningRead(qname=read.qname,
-                                               mate=int(read.is_read2), 
-                                               seq=read.seq, 
-                                               pos=read.pos, 
-                                               aend=read.aend,
-                                               mappings=num_mapped_reads, 
-                                               is_reverse=int(read.is_reverse)))
-            passed_filter = True
-    return passed_filter
-
-def parse_spanning_bam(bam_file,
-                       breakpoint_map_file,
-                       anchor_min, 
-                       anchor_max,
-                       anchor_mismatches):
-    # map reference names to numeric ids
-    bamfh = pysam.Samfile(bam_file, "rb")
-    rname_tid_map = dict((rname,i) for i,rname in enumerate(bamfh.references))
+def check_breakpoint_alignment(r, b,
+                               homology5p,
+                               homology3p,
+                               anchor_min,
+                               anchor_length,
+                               anchor_mismatches):
+    """
+    returns True if read 'r' meets criteria for a valid
+    breakpoint spanning read, False otherwise
     
+    r - pysam AlignedRead object
+    b - Breakpoint object
+    homology5p - number of bases of 5' homology
+    homology3p - number of bases of 3' homology
+    """
+    # check if read spans breakpoint
+    if not (r.pos < b.pos < r.aend):
+        return False   
+    # calculate amount in bp that read overlaps breakpoint
+    # and ensure overlap is sufficient
+    left_anchor_bp = b.pos - r.pos
+    if left_anchor_bp <= max(homology5p, anchor_min):
+        return False
+    right_anchor_bp = r.aend - b.pos
+    if right_anchor_bp <= max(homology3p, anchor_min):
+        return False
+    # ensure that alignments with anchor overlap less than 'anchor_length'
+    # do not have more than 'anchor_mismatches' mismatches in the 
+    # first 'anchor_length' bases
+    if min(left_anchor_bp, right_anchor_bp) < anchor_length:
+        # find interval of smallest anchor
+        if left_anchor_bp < anchor_length:
+            anchor_interval = (0, left_anchor_bp)
+        else:
+            aligned_length = r.aend - r.pos
+            anchor_interval = (aligned_length - right_anchor_bp, aligned_length)      
+        # get positions where mismatches occur
+        mmpos = get_mismatch_positions(r.opt('MD'))
+        # see if any mismatches lie in anchor interval
+        anchor_mm = [pos for pos in mmpos
+                     if anchor_interval[0] <= pos < anchor_interval[1]]
+        if len(anchor_mm) > anchor_mismatches:
+            # too many mismatches within anchor position
+            return False
+    return True
+
+def filter_spanning_reads(reads,
+                          tid_breakpoint_dict,
+                          homology_dict,
+                          anchor_min,
+                          anchor_length,
+                          anchor_mismatches):
+    for i,r in enumerate(reads):
+        # get breakpoint information
+        b = tid_breakpoint_dict[r.rname]
+        # determine whether this is breakpoint
+        # alignment meets filtering criteria
+        for chimera_name in b.chimera_names:
+            homology5p, homology3p = homology_dict[chimera_name]
+            if check_breakpoint_alignment(r, b,
+                                          homology5p,
+                                          homology3p,
+                                          anchor_min,
+                                          anchor_length,
+                                          anchor_mismatches):
+                # add tags to read
+                r.tags = r.tags + [("HI",i),
+                                   ("IH",len(reads)),
+                                   ("NH", len(reads)),
+                                   (DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_GENE),
+                                   (ORIENTATION_TAG_NAME, OrientationTags.NONE)]
+                yield r,b,chimera_name
+
+def make_tid_breakpoint_dict(bamfh, breakpoint_map_file):
+    rname_tid_map = dict((rname,i) for i,rname in enumerate(bamfh.references))
     # make a dictionary to lookup breakpoint information from reference 'tid'
-    tid_breakpoint_read_dict = {}
+    tid_breakpoint_dict = {}
     for line in open(breakpoint_map_file):
         fields = line.strip().split('\t')
         b = Breakpoint.from_list(fields)
-        # add a 'reads' attribute to breakpoint data
-        b.reads = []
         # add to dictionary
         tid = rname_tid_map[b.name]
-        tid_breakpoint_read_dict[tid] = b
+        tid_breakpoint_dict[tid] = b
+    return tid_breakpoint_dict
 
-    # count read alignments to chimera junctions
+def process_encomp_spanning_reads(bam_file,
+                                  breakpoint_map_file,
+                                  homology_dict,                           
+                                  anchor_min, 
+                                  anchor_length,
+                                  anchor_mismatches):
+    """
+    returns a dictionary keyed by a unique chimera name (string) with
+    and value is a set of read names corresponding to spanning reads
+    """
+    # map reference names to numeric ids
+    bamfh = pysam.Samfile(bam_file, "rb")
+    tid_breakpoint_dict = make_tid_breakpoint_dict(bamfh, breakpoint_map_file)
+    # assign read alignments to breakpoints
     num_multimaps = 0    
-    num_filtered = 0
-    num_reads = 0    
-    for reads in parse_sr_sam_file(bamfh):
+    num_reads = 0
+    num_alignments = 0
+    num_filtered_hits = 0
+    alignment_dict = collections.defaultdict(lambda: [])    
+    for reads in parse_reads_by_qname(bamfh):
+        # track basic statistics
         num_reads += 1
         if len(reads) > 1:
             num_multimaps += 1
-        passed_filter = process_spanning_reads(reads, spanning_data_dict, 
-                                               anchor_min, anchor_max, 
-                                               max_anchor_mismatches)
-        if not passed_filter:
-            # no reads passed filter
-            num_filtered += 1
-    logging.info("Reads: %d" % (num_reads))
-    logging.info("Multimapping: %d" % (num_multimaps))
-    logging.info("Failed anchor filter: %d" % (num_filtered))
+        num_alignments += len(reads)
+        # iterate through reads
+        for r,b,chimera_name in filter_spanning_reads(reads,
+                                                      tid_breakpoint_dict,
+                                                      homology_dict,
+                                                      anchor_min,
+                                                      anchor_length,
+                                                      anchor_mismatches):
+            dr = DiscordantRead.from_read(r)
+            dr.is_spanning = True
+            alignment_dict[chimera_name].append(dr)
+            num_filtered_hits += 1
     bamfh.close()
-    return rname_tid_map, spanning_data_dict
+    # report statistics
+    logging.debug("Encompassing/Spanning Fragments: %d" % (num_reads))
+    logging.debug("\tMultimapping: %d" % (num_multimaps))
+    logging.debug("\tAlignments: %d" % (num_alignments))
+    logging.debug("\tFiltered chimera hits: %d" % (num_filtered_hits))
+    # return dictionary keyed by chimera name with all valid breakpoint
+    # reads mapping to that chimera
+    return alignment_dict
+
+def parse_unaligned_spanning_bams(unaligned_bamfh,
+                                  unaligned_spanning_bamfh):
+    unaligned_bam_iter = iter(parse_pe_reads(unaligned_bamfh))
+    try:
+        pe_reads = unaligned_bam_iter.next()        
+    except StopIteration:
+        return
+    for spanning_reads in parse_reads_by_qname(unaligned_spanning_bamfh):
+        # sync the spanning BAM file and the original unaligned BAM file
+        while spanning_reads[0].qname != pe_reads[0][0].qname:
+            pe_reads = unaligned_bam_iter.next()
+        yield pe_reads,spanning_reads
+
+def process_unaligned_spanning_reads(unaligned_bam_file,
+                                     spanning_bam_file,
+                                     breakpoint_map_file,
+                                     homology_dict,
+                                     rname_chimeras_5p,
+                                     rname_chimeras_3p,                       
+                                     anchor_min, 
+                                     anchor_length,
+                                     anchor_mismatches):   
+    unaligned_bamfh = pysam.Samfile(unaligned_bam_file, "rb")
+    spanning_bamfh = pysam.Samfile(spanning_bam_file, "rb")
+    tid_breakpoint_dict = make_tid_breakpoint_dict(spanning_bamfh, breakpoint_map_file)    
+    alignment_dict = collections.defaultdict(lambda: [])    
+    num_frags = 0
+    num_alignments = 0
+    num_filtered_hits = 0    
+    for pe_reads,spanning_reads in parse_unaligned_spanning_bams(unaligned_bamfh, spanning_bamfh):
+        num_frags += 1
+        num_alignments += len(spanning_reads)
+        # find which of the original reads was unmapped        
+        r1_unmapped = any(r.is_unmapped for r in pe_reads[0])
+        r2_unmapped = any(r.is_unmapped for r in pe_reads[1])
+        # setup filtering iterator through spanning reads
+        filter_iter = filter_spanning_reads(spanning_reads,
+                                            tid_breakpoint_dict,
+                                            homology_dict,
+                                            anchor_min,
+                                            anchor_length,
+                                            anchor_mismatches)
+        if r1_unmapped and r2_unmapped:
+            # first possibility is that both reads are unmapped.  this can
+            # happen when there is a small fragment with overlapping reads            
+            # for this to be a valid spanning fragment, both of the reads 
+            # must map to the same breakpoint
+            breakpoint_read_dict = collections.defaultdict(lambda: [[],[]])
+            # iterate through reads
+            for r,b,chimera_name in filter_iter:
+                readnum = 0 if r.is_read1 else 1
+                breakpoint_read_dict[b.name][readnum].append((r,chimera_name))
+            # check for breakpoints that have both mates mapped
+            for b_name,b_pe_reads in breakpoint_read_dict.iteritems():
+                if (len(b_pe_reads[0]) == 0) or (len(b_pe_reads[1]) == 0):
+                    continue
+                # this is a good read pair                    
+                for readnum,read_chimera_tuples in enumerate(b_pe_reads):
+                    for r,chimera_name in read_chimera_tuples:                            
+                        # make discordant read object and add to list
+                        dr = DiscordantRead.from_read(r)
+                        dr.is_spanning = True
+                        alignment_dict[chimera_name].append(dr)
+                        num_filtered_hits += 1
+        else:
+            # one of the two reads is unmapped and the other is mapped.  
+            # check that the mapped read in the pair aligns to a predicted 
+            # chimera
+            # get chimeras corresponding to mapped read
+            mapped_readind = 0 if r2_unmapped else 1
+            mapped_chimeras = set()
+            for r in pe_reads[mapped_readind]:
+                rname = unaligned_bamfh.references[r.rname]
+                is_sense = not r.is_reverse
+                if is_sense and (rname in rname_chimeras_5p):
+                    mapped_chimeras.update(rname_chimeras_5p[rname])
+                elif (not is_sense) and (rname in rname_chimeras_3p):
+                    mapped_chimeras.update(rname_chimeras_3p[rname])
+            # intersect with chimeras corresponding to breakpoint
+            # spanning reads
+            for r,b,chimera_name in filter_iter:
+                if chimera_name in mapped_chimeras:
+                    # make discordant read object and add to list
+                    dr = DiscordantRead.from_read(r)
+                    dr.is_spanning = True
+                    alignment_dict[chimera_name].append(dr)
+                    num_filtered_hits += 1
+    unaligned_bamfh.close()
+    spanning_bamfh.close()
+    # report statistics
+    logging.debug("Unaligned Spanning Fragments: %d" % (num_frags))
+    logging.debug("\tAlignments: %d" % (num_alignments))
+    logging.debug("\tFiltered hits: %d" % (num_filtered_hits))    
+    return alignment_dict
 
 
-    
-    spanning_data_dict = read_junc_mapping_file(open(junc_mapping_file),
-                                                rname_tid_map)
-    # count read alignments to chimera junctions
-    num_multimaps = 0    
-    num_filtered = 0
-    num_reads = 0    
-    for reads in parse_sr_sam_file(bamfh):
-        num_reads += 1
-        if len(reads) > 1:
-            num_multimaps += 1
-        passed_filter = process_spanning_reads(reads, spanning_data_dict, 
-                                               anchor_min, anchor_max, 
-                                               max_anchor_mismatches)
-        if not passed_filter:
-            # no reads passed filter
-            num_filtered += 1
-    logging.info("Reads: %d" % (num_reads))
-    logging.info("Multimapping: %d" % (num_multimaps))
-    logging.info("Failed anchor filter: %d" % (num_filtered))
-    bamfh.close()
-    return rname_tid_map, spanning_data_dict
-
-
-
-
-def make_spanning_chimeras(spanning_data_dict, junc_mapping_file, rname_tid_map):    
-    # output chimera candidates
-    for line in open(junc_mapping_file):
-        fields = line.strip().split('\t')
-        # create spanning chimera object with all data 
-        c = SpanningChimera()
-        # first field in the junction map is the junction id
-        junc_name = fields[0]        
-        junc_tid = rname_tid_map[junc_name]        
-        # fill in junction map fields
-        c.junc_name = junc_name
-        c.junc_pos = int(fields[1])
-        c.junc_homology_5p = int(fields[2])
-        c.junc_homology_3p = int(fields[3])
-        # initialize with chimera fields
-        Chimera.from_list(c, fields[4:])
-        # spanning data
-        spandata = spanning_data_dict[junc_tid]
-        c.spanning_reads = spandata.reads
-        # compute statistics
-        spanning_qnames = set(r.qname for r in spandata.reads)        
-        c.num_spanning_reads = len(spanning_qnames)
-        c.encomp_and_spanning = len(spanning_qnames.intersection(c.qnames))
-        c.encomp_or_spanning = len(spanning_qnames.union(c.qnames))
-        yield c
-
-def merge_spanning_alignments(input_chimera_file, bam_file, 
+def merge_spanning_alignments(input_chimera_file, 
+                              encomp_spanning_bam_file,
+                              unaligned_bam_file,
+                              spanning_bam_file, 
                               breakpoint_map_file, 
                               output_chimera_file,
-                              anchor_min, anchor_max,
+                              anchor_min, 
+                              anchor_length,
                               anchor_mismatches):
-    
+    # read breakpoint homology information used to
+    # filter spanning reads and build a lookup table
+    # from reference name to chimera name
+    homology_dict = {}
+    rname_chimeras_5p = collections.defaultdict(lambda: set())
+    rname_chimeras_3p = collections.defaultdict(lambda: set())
+    for c in Chimera.parse(open(input_chimera_file)):
+        homology_dict[c.name] = (c.breakpoint_homology_5p, 
+                                 c.breakpoint_homology_3p)
+        rname_chimeras_5p[GENE_REF_PREFIX + c.partner5p.tx_name].add(c.name)
+        rname_chimeras_3p[GENE_REF_PREFIX + c.partner3p.tx_name].add(c.name)
+    # aggregate breakpoint alignment data from bam file
+    # into a dictionary keyed by chimera name
+    encomp_spanning_dict = \
+        process_encomp_spanning_reads(encomp_spanning_bam_file,
+                                      breakpoint_map_file,
+                                      homology_dict,
+                                      anchor_min, 
+                                      anchor_length,
+                                      anchor_mismatches)
+    unaligned_spanning_dict = \
+        process_unaligned_spanning_reads(unaligned_bam_file,
+                                         spanning_bam_file,
+                                         breakpoint_map_file,
+                                         homology_dict,
+                                         rname_chimeras_5p,
+                                         rname_chimeras_3p,                       
+                                         anchor_min, 
+                                         anchor_length,
+                                         anchor_mismatches)            
+    # add breakpoint spanning reads to chimera objects
     f = open(output_chimera_file, "w")
     for c in Chimera.parse(open(input_chimera_file)):
-        pass
-    f.close()
-
-    
-    f = open(output_file, "w")
-    rname_tid_map, spanning_data_dict = \
-        parse_spanning_bam(bam_file, junc_map_file, anchor_min, anchor_max,
-                           anchor_mismatches)
-    for c in make_spanning_chimeras(spanning_data_dict, junc_map_file, 
-                                    rname_tid_map):    
-        print >>f, '\t'.join(map(str, c.to_list()))
+        # index encomp reads by qname
+        encomp_qname_pair_dict = dict((pair[0].qname,pair) for pair in c.encomp_read_pairs)
+        spanning_frags = collections.defaultdict(lambda: ([],[]))
+        # does chimera have any encompassing/spanning reads?
+        if c.name in encomp_spanning_dict:
+            for dr in encomp_spanning_dict[c.name]:
+                if dr.qname not in encomp_qname_pair_dict:
+                    continue
+                encomp_qname_pair_dict[dr.qname][dr.readnum].is_spanning = True
+                spanning_frags[dr.qname][dr.readnum].append(dr)
+                c.spanning_reads.append(dr)                
+        # does chimera have purely spanning reads?
+        if c.name in unaligned_spanning_dict:
+            for dr in unaligned_spanning_dict[c.name]:
+                spanning_frags[dr.qname][dr.readnum].append(dr)
+                c.spanning_reads.append(dr)                
+        c.num_spanning_frags = len(spanning_frags.keys())
+        # write to output file
+        fields = c.to_list()
+        print >>f, '\t'.join(map(str, fields))                
     f.close()
 
 def main():
@@ -325,20 +338,26 @@ def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")    
     parser = OptionParser("usage: %prog [options] <chimeras.in.txt> "
-                          "<in.bam> <breakpoint_map> <chimeras.out.txt>")
-    parser.add_option("--anchor-min", type="int", dest="anchor_min", default=0)
-    parser.add_option("--anchor-max", type="int", dest="anchor_max", default=0)
+                          "<encomp.bam> <unaligned.bam> <breakpoint_map> "
+                          "<chimeras.out.txt>")
+    parser.add_option("--anchor-min", type="int", dest="anchor_min", default=4)
+    parser.add_option("--anchor-length", type="int", dest="anchor_length", default=8)
     parser.add_option("--anchor-mismatches", type="int", dest="anchor_mismatches", default=0)
     options, args = parser.parse_args()
     input_chimera_file = args[0]
-    bam_file = args[1]
-    breakpoint_map_file = args[2]
-    output_chimera_file = args[3]
-    merge_spanning_alignments(input_chimera_file, bam_file, 
+    encomp_spanning_bam_file = args[1]
+    unaligned_bam_file = args[2]
+    spanning_bam_file = args[3]
+    breakpoint_map_file = args[4]
+    output_chimera_file = args[5]
+    merge_spanning_alignments(input_chimera_file, 
+                              encomp_spanning_bam_file,
+                              unaligned_bam_file,
+                              spanning_bam_file, 
                               breakpoint_map_file, 
                               output_chimera_file,
                               options.anchor_min, 
-                              options.anchor_max,
+                              options.anchor_length,
                               options.anchor_mismatches)
 
 if __name__ == '__main__':

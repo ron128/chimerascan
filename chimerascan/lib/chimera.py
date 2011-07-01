@@ -16,7 +16,6 @@ class DiscordantTags(object):
     DISCORDANT_STRAND_GENOME = 5
     DISCORDANT_GENE = 9
     DISCORDANT_GENOME = 17
-    DISCORDANT_SPANNING = 32
 
 ORIENTATION_TAG_NAME = "XD"
 class OrientationTags(object):
@@ -74,6 +73,7 @@ class DiscordantRead(object):
         self.mismatches = 0
         self.discordant_type = 0
         self.orientation = 0
+        self.is_spanning = False
 
     @staticmethod
     def from_read(r):
@@ -91,6 +91,7 @@ class DiscordantRead(object):
         a.mismatches = r.opt('NM')
         a.discordant_type = r.opt(DISCORDANT_TAG_NAME)
         a.orientation = r.opt(ORIENTATION_TAG_NAME)
+        a.is_spanning = False
         return a
 
     @staticmethod
@@ -110,6 +111,7 @@ class DiscordantRead(object):
         a.mismatches = int(fields[11])
         a.discordant_type = int(fields[12])
         a.orientation = int(fields[13])
+        a.is_spanning = True if int(fields[14]) == 1 else False
         return a
 
     def to_list(self):
@@ -117,7 +119,7 @@ class DiscordantRead(object):
                 self.tid, self.pos, self.aend, self.clipstart, 
                 self.clipend, int(self.is_reverse), self.numhits, 
                 self.mismatches, self.discordant_type, 
-                self.orientation]
+                self.orientation, int(self.is_spanning)]
 
 
 class ChimeraPartner(object):
@@ -177,7 +179,7 @@ class Chimera(object):
         self.chimera_type = 0
         self.distance = None
         self.num_encomp_frags = 0
-        self.num_spanning_reads = 0
+        self.num_spanning_frags = 0
         self.read1_sense_frags = 0
         # junction information
         self.breakpoint_name = None
@@ -200,8 +202,8 @@ class Chimera(object):
         c.distance = parse_string_none(fields[FIRSTCOL+2])
         if c.distance is not None:
             c.distance = int(c.distance)
-        c.num_encomp_frags = int(fields[FIRSTCOL+3])        
-        c.num_spanning_reads = int(fields[FIRSTCOL+4])
+        c.num_encomp_frags = int(fields[FIRSTCOL+3])   
+        c.num_spanning_frags = int(fields[FIRSTCOL+4])   
         c.read1_sense_frags = int(fields[FIRSTCOL+5])
         # breakpoint information
         c.breakpoint_name = parse_string_none(fields[FIRSTCOL+6])
@@ -240,7 +242,8 @@ class Chimera(object):
         fields.extend(self.partner5p.to_list())
         fields.extend(self.partner3p.to_list())
         fields.extend([self.name, self.chimera_type, self.distance,
-                       self.num_encomp_frags, self.num_spanning_reads,
+                       self.num_encomp_frags,
+                       self.num_spanning_frags,
                        self.read1_sense_frags, 
                        self.breakpoint_name,
                        self.breakpoint_homology_5p, 
