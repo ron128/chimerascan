@@ -118,6 +118,31 @@ def build_tx_cluster_map(line_iter, rname_prefix=None):
                 #print strand, [bamfh.getrname(tid) for tid in tids]
     return tx_cluster_map
 
+def build_cluster_gene_map(line_iter):
+    cluster_trees = collections.defaultdict(lambda: ClusterTree(0,1))
+    genes = []    
+    for g in GeneFeature.parse(line_iter):
+        # insert into cluster tree        
+        cluster_trees[g.chrom].insert(g.tx_start, g.tx_end, len(genes)) 
+        genes.append(g)
+    # extract gene clusters
+    cluster_gene_map = {}
+    current_cluster_id = 0
+    for chrom, tree in cluster_trees.iteritems():
+        for start, end, indexes in tree.getregions():
+            # group overlapping transcripts on same strand together            
+            strand_gene_dict = collections.defaultdict(lambda: set())
+            for index in indexes:
+                strand_gene_dict[g.strand].add(genes[index])
+            # build a map between transcript tids and all the overlapping
+            # transcripts on the same strand
+            for strand, strand_genes in strand_gene_dict.iteritems():
+                for g in strand_genes:
+                    cluster_gene_map[current_cluster_id].append(g)
+                current_cluster_id += 1
+                #print strand, [bamfh.getrname(tid) for tid in tids]
+    return cluster_gene_map
+
 def build_tid_to_genome_map(bamfh, line_iter, rname_prefix=None):
     rname_tid_map = get_rname_tid_map(bamfh)
     rname_prefix = '' if rname_prefix is None else rname_prefix

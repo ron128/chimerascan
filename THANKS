@@ -11,7 +11,8 @@ efforts to make samtools accessible to the python community
 
 Christopher Maher wrote the original 'chimerascan' in Perl and was 
 among the first to use a bioinformatics approach to discover gene 
-fusions in cancer.
+fusions in cancer.  The Perl implementation was used as a basis for
+this python-based rewrite.
 
-Finally we would like to thank Arul Chinnaiyan and members of the
+Finally, we would like to thank Arul Chinnaiyan and members of the
 Chinnaiyan Lab for their support.  

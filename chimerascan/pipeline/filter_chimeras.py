@@ -24,7 +24,8 @@ import logging
 import collections
 import os
 
-from chimerascan.lib.gene_to_genome import build_tx_cluster_map
+from chimerascan.lib.gene_to_genome import build_gene_to_genome_map, \
+    gene_to_genome_pos, build_tx_cluster_map
 from chimerascan.lib.chimera import Chimera
 from chimerascan.lib import config
 
@@ -58,15 +59,23 @@ def get_highest_coverage_isoforms(input_file, gene_file):
     # place overlapping chimeras into clusters
     logging.debug("Building isoform cluster lookup table")
     tx_cluster_map = build_tx_cluster_map(open(gene_file))
+    # build a lookup table to get genome coordinates from transcript 
+    # coordinates
+    tx_genome_map = build_gene_to_genome_map(open(gene_file))
     cluster_chimera_dict = collections.defaultdict(lambda: [])
     for c in Chimera.parse(open(input_file)):
         key = (c.name,
                c.get_unique_spanning_reads(), 
                c.get_total_unique_reads(), 
                c.get_weighted_cov())
+        # get cluster of overlapping genes
         cluster5p = tx_cluster_map[c.partner5p.tx_name]
         cluster3p = tx_cluster_map[c.partner3p.tx_name]
-        cluster_chimera_dict[(cluster5p,cluster3p,c.breakpoint_name)].append(key)    
+        # get genomic positions of breakpoints
+        coord5p = gene_to_genome_pos(c.partner5p.tx_name, c.partner5p.end-1, tx_genome_map)
+        coord3p = gene_to_genome_pos(c.partner3p.tx_name, c.partner3p.start, tx_genome_map)
+        # add to dictionary
+        cluster_chimera_dict[(cluster5p,cluster3p,coord5p,coord3p)].append(key)    
     # choose highest coverage chimeras within each pair of clusters
     logging.debug("Finding highest coverage isoforms")
     kept_chimeras = set()
@@ -77,11 +86,7 @@ def get_highest_coverage_isoforms(input_file, gene_file):
             stats_dict[stats_info[1:]].add(stats_info[0])
         # find highest scoring key
         sorted_keys = sorted(stats_dict.keys(), reverse=True)
-        # TODO: just just one chimera for now, but eventually
-        # just group them together
-        arbitrary_chimera = list(stats_dict[sorted_keys[0]])[0]
-        kept_chimeras.add(arbitrary_chimera)
-        #kept_chimeras.update(stats_dict[sorted_keys[0]])
+        kept_chimeras.update(stats_dict[sorted_keys[0]])
     return kept_chimeras
 
 def filter_chimeras(input_file, output_file,

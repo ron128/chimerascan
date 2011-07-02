@@ -21,11 +21,12 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
+from chimerascan import __version__
+
 __author__ = "Matthew Iyer"
 __copyright__ = "Copyright 2011, chimerascan project"
 __credits__ = ["Matthew Iyer", "Christopher Maher"]
 __license__ = "GPL"
-__version__ = "0.4.0"
 __maintainer__ = "Matthew Iyer"
 __email__ = "mkiyer@med.umich.edu"
 __status__ = "beta"
@@ -450,6 +451,11 @@ def up_to_date(outfile, infile):
     return os.path.getmtime(outfile) >= os.path.getmtime(infile)
 
 def run_chimerascan(runconfig):
+    """
+    main function for running the chimerascan pipeline
+    """
+    logging.info("chimerascan version %s" % (__version__))
+    logging.info("------------------------------")
     # normal run
     config_passed = runconfig.check_config()
     if not config_passed:
@@ -472,6 +478,7 @@ def run_chimerascan(runconfig):
     # write the run config to a file
     xmlstring = runconfig.to_xml()
     runconfig_xml_file = os.path.join(runconfig.output_dir, config.RUNCONFIG_XML_FILE)
+    logging.info("Writing run configuration to XML file: %s" % (runconfig_xml_file))
     fh = open(runconfig_xml_file, "w")
     print >>fh, xmlstring
     fh.close()
@@ -495,11 +502,14 @@ def run_chimerascan(runconfig):
     # this effectively rules out the vast majority of reads as candidate
     # fusions
     unaligned_fastq_param = os.path.join(tmp_dir, config.UNALIGNED_FASTQ_PARAM)
+    unaligned_fastq_files = [os.path.join(tmp_dir, fq) 
+                             for fq in config.UNALIGNED_FASTQ_FILES]
     maxmultimap_fastq_param = os.path.join(tmp_dir, config.MAXMULTIMAP_FASTQ_PARAM)
     aligned_bam_file = os.path.join(runconfig.output_dir, config.ALIGNED_READS_BAM_FILE)
     aligned_log_file = os.path.join(log_dir, "bowtie_alignment.log")    
     msg = "Aligning reads with bowtie"
-    if all(up_to_date(aligned_bam_file, fq) for fq in runconfig.fastq_files):
+    if (all(up_to_date(aligned_bam_file, fq) for fq in runconfig.fastq_files) and
+        all(up_to_date(a,b) for a,b in zip(unaligned_fastq_files, runconfig.fastq_files))):
         logging.info("[SKIPPED] %s" % (msg))
     else:    
         logging.info(msg)
@@ -575,8 +585,6 @@ def run_chimerascan(runconfig):
     #
     realigned_bam_file = os.path.join(tmp_dir, config.REALIGNED_BAM_FILE)
     realigned_log_file = os.path.join(log_dir, "bowtie_trimmed_realignment.log")
-    unaligned_fastq_files = [os.path.join(tmp_dir, fq) 
-                             for fq in config.UNALIGNED_FASTQ_FILES]
     msg = "Trimming and re-aligning initially unmapped reads"
     if all(up_to_date(realigned_bam_file, fq) for fq in runconfig.fastq_files):
         logging.info("[SKIPPED] %s" % (msg))
@@ -812,7 +820,7 @@ def run_chimerascan(runconfig):
     # Write user-friendly output file
     # 
     chimera_bedpe_file = os.path.join(runconfig.output_dir, config.CHIMERA_BEDPE_FILE)
-    msg = "Writing chimeras to BEDPE file"
+    msg = "Writing chimeras to file %s" % (chimera_bedpe_file)
     if up_to_date(chimera_bedpe_file, filtered_chimera_file):
         logging.info("[SKIPPED] %s" % (msg))
     else:
@@ -822,12 +830,13 @@ def run_chimerascan(runconfig):
     #
     # Cleanup
     # 
-    #shutil.rmtree(tmp_dir)
+    if not runconfig.keep_tmp:
+        logging.info("Cleaning up temporary files")
+        shutil.rmtree(tmp_dir)
     #
     # Done
     #    
-    logging.info("Finished run. Chimeras written to file %s" %
-                 (chimera_bedpe_file))
+    logging.info("Finished run.")
     return JOB_SUCCESS
 
 

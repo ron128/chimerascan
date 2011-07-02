@@ -12,12 +12,12 @@ import os
 import glob
 
 # local imports
-import version
+import chimerascan
 
 # ------ Setup instructions -------------------------------------------------
 
 setup_kwargs = {"name": "chimerascan",
-                "version": version.__version__,
+                "version": chimerascan.__version__,
                 "description": "chimeric transcript discovery from RNA-seq",
                 "long_description": __doc__,
                 "author": "Matthew Iyer",

@@ -299,6 +299,5 @@ class Chimera(object):
                 qnames.add(pair[0].qname)
         # add spanning reads
         for dr in self.spanning_reads:
-            if dr.qname not in qnames:
-                qnames.add(dr.qname)
+            qnames.add(dr.qname)
         return len(qnames)

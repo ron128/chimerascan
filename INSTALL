@@ -69,6 +69,7 @@ for more options.
 Architecture specific options
 =============================
 
-chimerascan has been compiled on and tested on 64-bit RedHat Enterprise
-Linux 5 systems using python 2.6.  Testing on other Linux distributions
-is pending.
+chimerascan has been tested on the following platforms:
+* 64-bit RedHat Enterprise Linux systems using python 2.6+
+* Mac OS/X Snow Leopard using python 2.6+
+* Testing on other architectures is pending.
