@@ -95,6 +95,8 @@ def filter_spanning_reads(reads,
                           anchor_length,
                           anchor_mismatches):
     for i,r in enumerate(reads):
+        if r.is_unmapped:
+            continue
         # get breakpoint information
         b = tid_breakpoint_dict[r.rname]
         # determine whether this is breakpoint
@@ -168,7 +170,7 @@ def process_encomp_spanning_reads(bam_file,
     logging.debug("Encompassing/Spanning Fragments: %d" % (num_reads))
     logging.debug("\tMultimapping: %d" % (num_multimaps))
     logging.debug("\tAlignments: %d" % (num_alignments))
-    logging.debug("\tFiltered chimera hits: %d" % (num_filtered_hits))
+    logging.debug("\tBreakpoint spanning alignments: %d" % (num_filtered_hits))    
     # return dictionary keyed by chimera name with all valid breakpoint
     # reads mapping to that chimera
     return alignment_dict
@@ -265,7 +267,7 @@ def process_unaligned_spanning_reads(unaligned_bam_file,
     # report statistics
     logging.debug("Unaligned Spanning Fragments: %d" % (num_frags))
     logging.debug("\tAlignments: %d" % (num_alignments))
-    logging.debug("\tFiltered hits: %d" % (num_filtered_hits))    
+    logging.debug("\tBreakpoint spanning alignments: %d" % (num_filtered_hits))    
     return alignment_dict
 
 
@@ -309,6 +311,7 @@ def merge_spanning_alignments(input_chimera_file,
                                          anchor_length,
                                          anchor_mismatches)            
     # add breakpoint spanning reads to chimera objects
+    logging.debug("Writing spanning hits into chimeras")
     f = open(output_chimera_file, "w")
     for c in Chimera.parse(open(input_chimera_file)):
         # index encomp reads by qname
@@ -322,11 +325,11 @@ def merge_spanning_alignments(input_chimera_file,
                 encomp_qname_pair_dict[dr.qname][dr.readnum].is_spanning = True
                 spanning_frags[dr.qname][dr.readnum].append(dr)
                 c.spanning_reads.append(dr)                
-        # does chimera have purely spanning reads?
+        # does chimera have unaligned spanning reads?
         if c.name in unaligned_spanning_dict:
             for dr in unaligned_spanning_dict[c.name]:
                 spanning_frags[dr.qname][dr.readnum].append(dr)
-                c.spanning_reads.append(dr)                
+                c.spanning_reads.append(dr)     
         c.num_spanning_frags = len(spanning_frags.keys())
         # write to output file
         fields = c.to_list()

@@ -53,14 +53,12 @@ class SamtoolsDispatcher(object):
         # Note that there is sometimes output on stderr that is not an error,
         # for example: [sam_header_read2] 2 sequences loaded.
         # Ignore messages like these
-        stderr = [ x for x in stderr \
-                       if not x.startswith( "[sam_header_read2]" ) or \
-                       x.startswith("[bam_index_load]") or \
-                       x.startswith("[bam_sort_core]") or \
-                       x.startswith("[samopen] SAM header is present")
-                   ]
+        stderr = [x for x in stderr
+                  if not (x.startswith( "[sam_header_read2]" ) or
+                          x.startswith("[bam_index_load]") or
+                          x.startswith("[bam_sort_core]") or \
+                          x.startswith("[samopen] SAM header is present"))]
         if stderr: raise SamtoolsError( "\n".join( stderr ) )
-
         # call parser for stdout:
         if not kwargs.get("raw") and stdout and self.parsers:
             for options, parser in self.parsers:

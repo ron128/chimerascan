@@ -33,11 +33,9 @@ from chimerascan.lib.chimera import Chimera, \
     DiscordantTags, DISCORDANT_TAG_NAME, \
     OrientationTags, ORIENTATION_TAG_NAME, \
     DiscordantRead, ChimeraPartner, ChimeraTypes, \
-    MULTIMAP_BINS, CHIMERA_SEP
-from chimerascan.lib.feature import GeneFeature
+    MULTIMAP_BINS
 from chimerascan.lib.stats import scoreatpercentile, hist
-from chimerascan.lib.gene_to_genome import build_tid_tx_maps, \
-    build_tid_tx_cluster_map
+from chimerascan.lib.gene_to_genome import build_tid_tx_maps
 
 def parse_pairs(bamfh):
     bam_iter = iter(bamfh)
@@ -105,7 +103,7 @@ def build_chimera_partner(dreads, g, trim_bp, is_5prime):
     p.strand = g.strand
     # gather statistics from all the discordant reads that align to this
     # gene. these statistics will be used later to choose the most probable
-    # chimeras 
+    # chimeras
     starts = []
     ends = []
     multimaps = []
@@ -260,7 +258,7 @@ def nominate_chimeras(index_dir, input_bam_file, output_file, trim_bp):
     # group discordant read pairs by gene
     chimera_num = 0
     outfh = open(output_file, "w")
-    logging.info("Parsing discordant reads")
+    logging.debug("Parsing discordant reads")
     for tid5p,tid3p,readpairs in parse_gene_chimeric_reads(bamfh):
         c = read_pairs_to_chimera("C%07d" % (chimera_num),
                                   tid5p, tid3p, readpairs, tid_tx_map,

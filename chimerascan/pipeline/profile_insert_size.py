@@ -55,7 +55,7 @@ class InsertSizeDistribution(object):
         self.max_isize = None
         self.arr = None
 
-    def percentile(self, per):
+    def isize_at_percentile(self, per):
         n = sum(self.arr)
         per_n = n * per / 100.0
         count = 0
@@ -64,6 +64,16 @@ class InsertSizeDistribution(object):
             if (count >= per_n):
                 break
         return isize + self.min_isize
+    
+    def percentile_at_isize(self, isize):
+        if isize < self.min_isize:
+            return 0.0
+        elif isize > self.max_isize:
+            return 100.0
+        ind = isize - self.min_isize
+        count_le = sum(self.arr[:ind+1])
+        per = 100.0 * count_le / float(sum(self.arr))
+        return per
 
     @property
     def n(self):

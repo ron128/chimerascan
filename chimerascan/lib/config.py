@@ -45,6 +45,9 @@ UNALIGNED_FASTQ_FILES = ("unaligned_1.fq", "unaligned_2.fq")
 MAXMULTIMAP_FASTQ_PARAM = "maxmulti.fq"
 MAXMULTIMAP_FASTQ_FILES = ("maxmulti_1.fq", "maxmulti_2.fq")
 
+# sorted aligned reads bam file
+SORTED_ALIGNED_READS_BAM_FILE = "sorted_aligned_reads.bam"
+
 # insert size estimation parameters
 ISIZE_MAX_SAMPLES = 1e6
 ISIZE_NUM_STDEVS = 3
@@ -85,24 +88,6 @@ UNALIGNED_SPANNING_BAM_FILE = "unaligned_spanning_reads.bam"
 SPANNING_CHIMERA_FILE = "spanning_chimeras.txt"
 # results of filtering chimeras
 FILTERED_CHIMERA_FILE = "spanning_chimeras.filtered.txt"
-
-
-DISCORDANT_BAM_FILE = "discordant_reads.bam"
-DISCORDANT_PAIRED_BAM_FILE = "discordant_reads_paired.bam"
-DISCORDANT_GENE_BEDPE_FILE = "discordant_gene_reads.bedpe"
-DISCORDANT_GENOME_BEDPE_FILE = "discordant_genome_reads.bedpe"
-EXTENDED_DISCORDANT_GENE_BEDPE_FILE = "discordant_gene_reads.extended.bedpe"
-SORTED_DISCORDANT_GENE_BEDPE_FILE = "discordant_gene_reads.srt.bedpe"
-ENCOMPASSING_CHIMERA_BEDPE_FILE = "encompassing_chimeras.bedpe"
-FILTERED_ENCOMPASSING_CHIMERA_BEDPE_FILE = "encompassing_chimeras.filtered.bedpe"
-
-EXON_JUNCTION_TRIM_BP = 10
-JUNC_REF_FASTA_FILE = "spanning_juncs.fa"
-JUNC_REF_MAP_FILE = "spanning_juncs.txt"
-JUNC_BOWTIE_INDEX = "spanning_juncs"
-JUNC_BOWTIE_INDEX_FILE = "spanning_juncs.1.ebwt"
-JUNC_READS_BAM_FILE = "aligned_junc_reads.bam"
-RAW_CHIMERA_BEDPE_FILE = "chimeras.raw.bedpe"
+# output file
 CHIMERA_BEDPE_FILE = "chimeras.bedpe"
-RANKED_CHIMERA_BEDPE_FILE = "chimeras.ranked.bedpe"
 

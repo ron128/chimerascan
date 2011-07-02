@@ -153,7 +153,7 @@ class ChimeraPartner(object):
         p.strand = fields[4]
         p.exon_start_num = fields[5]
         p.exon_end_num = fields[6]
-        p.inner_dist = fields[7]
+        p.inner_dist = int(fields[7])
         p.mismatches = int(fields[8])
         p.frac = float(fields[9])
         p.multimap_hist = map(int, fields[10].split(","))
@@ -273,3 +273,32 @@ class Chimera(object):
         return 0.5 * (self.partner5p.weighted_cov +
                       self.partner3p.weighted_cov)
 
+    def get_total_unique_reads(self):
+        """
+        calculates total number of unique reads alignment
+        positions supporting chimera
+        """
+        # find all unique alignment positions and read names
+        encomp_pos = set()
+        encomp_qnames = set()
+        for pair in self.encomp_read_pairs:
+            encomp_pos.add((pair[0].pos, pair[1].pos))
+            encomp_qnames.add(pair[0].qname)
+        # add spanning reads
+        spanning_pos = set()
+        for dr in self.spanning_reads:
+            if dr.qname not in encomp_qnames:
+                spanning_pos.add(dr.pos)
+        return len(encomp_pos) + len(spanning_pos)
+
+    def get_unique_spanning_reads(self):
+        # find all unique alignment positions and read names
+        qnames = set()
+        for pair in self.encomp_read_pairs:
+            if pair[0].is_spanning or pair[1].is_spanning:
+                qnames.add(pair[0].qname)
+        # add spanning reads
+        for dr in self.spanning_reads:
+            if dr.qname not in qnames:
+                qnames.add(dr.qname)
+        return len(qnames)

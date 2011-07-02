@@ -44,11 +44,11 @@ if sys.version_info < (2,6,0):
     sys.exit(1)
 
 # local imports
-import chimerascan.pysam as pysam
+from chimerascan import pysam
 import chimerascan.lib.config as config
 from chimerascan.lib.config import JOB_SUCCESS, JOB_ERROR, MIN_SEGMENT_LENGTH
 from chimerascan.lib.base import LibraryTypes, check_executable, \
-    get_read_length, parse_library_type, parse_bool, indent
+    get_read_length, parse_bool, indent
 from chimerascan.lib.seq import FASTQ_QUAL_FORMATS, SANGER_FORMAT
 
 from chimerascan.pipeline.align_bowtie import align_pe, align_sr, trim_align_pe_sr
@@ -58,6 +58,8 @@ from chimerascan.pipeline.nominate_chimeras import nominate_chimeras
 from chimerascan.pipeline.chimeras_to_breakpoints import determine_chimera_breakpoints
 from chimerascan.pipeline.nominate_spanning_reads import nominate_encomp_spanning_reads, nominate_unmapped_spanning_reads
 from chimerascan.pipeline.merge_spanning_alignments import merge_spanning_alignments
+from chimerascan.pipeline.filter_chimeras import filter_chimeras
+from chimerascan.pipeline.write_output import write_output
 
 DEFAULT_NUM_PROCESSORS = config.BASE_PROCESSORS
 DEFAULT_KEEP_TMP = False
@@ -70,20 +72,14 @@ DEFAULT_TRIM5 = 0
 DEFAULT_TRIM3 = 0
 DEFAULT_MIN_FRAG_LENGTH = 0
 DEFAULT_MAX_FRAG_LENGTH = 1000 
-DEFAULT_MAX_INDEL_SIZE = 100
 DEFAULT_FASTQ_QUAL_FORMAT = SANGER_FORMAT
 DEFAULT_LIBRARY_TYPE = LibraryTypes.FR_UNSTRANDED
-
 DEFAULT_HOMOLOGY_MISMATCHES = config.BREAKPOINT_HOMOLOGY_MISMATCHES
 DEFAULT_ANCHOR_MIN = 4
 DEFAULT_ANCHOR_LENGTH = 8
 DEFAULT_ANCHOR_MISMATCHES = 0
-
-DEFAULT_FILTER_MAX_MULTIMAPS = 2
-DEFAULT_FILTER_MULTIMAP_RATIO = 0.10
-DEFAULT_FILTER_STRAND_PVALUE = 0.01
-DEFAULT_FILTER_ISIZE_PERCENTILE = 99.9
-DEFAULT_EMPIRICAL_PROB = 1.0
+DEFAULT_FILTER_ISIZE_PERCENTILE = 99.99
+DEFAULT_TOTAL_READS_THRESHOLD = 2
 
 NUM_POSITIONAL_ARGS = 4
 
@@ -194,17 +190,13 @@ class RunConfig(object):
              ("trim3", int, DEFAULT_TRIM3),
              ("min_fragment_length", int, DEFAULT_MIN_FRAG_LENGTH),
              ("max_fragment_length", int, DEFAULT_MAX_FRAG_LENGTH),
-             ("max_indel_size", int, DEFAULT_MAX_INDEL_SIZE),
              ("library_type", str, DEFAULT_LIBRARY_TYPE),
              ("homology_mismatches", int, DEFAULT_HOMOLOGY_MISMATCHES),
-             ("filter_max_multimaps", int, DEFAULT_FILTER_MAX_MULTIMAPS),
-             ("filter_multimap_ratio", float, DEFAULT_FILTER_MULTIMAP_RATIO),
-             ("filter_isize_percentile", float, DEFAULT_FILTER_ISIZE_PERCENTILE),
-             ("filter_strand_pval", float, DEFAULT_FILTER_STRAND_PVALUE),
              ("anchor_min", int, DEFAULT_ANCHOR_MIN),
              ("anchor_length", int, DEFAULT_ANCHOR_LENGTH),
              ("anchor_mismatches", int, DEFAULT_ANCHOR_MISMATCHES),
-             ("empirical_prob", float, DEFAULT_EMPIRICAL_PROB))
+             ("filter_total_reads", int, DEFAULT_TOTAL_READS_THRESHOLD),
+             ("filter_isize_percentile", float, DEFAULT_FILTER_ISIZE_PERCENTILE))
 
     def __init__(self):
         self.output_dir = None
@@ -335,15 +327,10 @@ class RunConfig(object):
                                 help="Number of mismatches to tolerate at "
                                 "breakpoints when computing homology "
                                 "[default=%default]", metavar="N")
-        filter_group.add_option("--max-indel-size", type="int", 
-                                dest="max_indel_size", 
-                                default=DEFAULT_MAX_INDEL_SIZE,
-                                help="Tolerate indels less than N bp "
-                                "[default=%default]", metavar="N")
         filter_group.add_option("--anchor-min", type="int", dest="anchor_min", 
-                          default=DEFAULT_ANCHOR_MIN, metavar="N",
-                          help="Minimum breakpoint overlap (bp) required "
-                          "to call spanning reads [default=%default]")
+                                default=DEFAULT_ANCHOR_MIN, metavar="N",
+                                help="Minimum breakpoint overlap (bp) required "
+                                "to call spanning reads [default=%default]")
         filter_group.add_option("--anchor-length", type="int", dest="anchor_length", 
                                 default=DEFAULT_ANCHOR_LENGTH, metavar="N",
                                 help="Size (bp) of anchor region where mismatch "
@@ -352,36 +339,18 @@ class RunConfig(object):
                                 default=DEFAULT_ANCHOR_MISMATCHES,
                                 metavar="N",
                                 help="Number of mismatches allowed within anchor "
-                                "region [default=%default]")        
-        filter_group.add_option("--filter-multimaps", type="int",
-                                dest="filter_max_multimaps",
-                                default=DEFAULT_FILTER_MAX_MULTIMAPS,
-                                help="Filter chimeras that lack a read "
-                                " with <= HITS alternative hits in both "
-                                " pairs [default=%default]")
-        filter_group.add_option("--filter-multimap-ratio", type="float",
-                                default=DEFAULT_FILTER_MULTIMAP_RATIO,
-                                dest="filter_multimap_ratio", metavar="RATIO",
-                                help="Filter chimeras with a weighted coverage "
-                                "versus total reads ratio <= RATIO "
-                                "[default=%default]")
-        filter_group.add_option("--filter-isize-prob", type="int",
+                                "region [default=%default]")
+        filter_group.add_option("--filter-total-reads", type="int",
+                                default=DEFAULT_TOTAL_READS_THRESHOLD,
+                                dest="filter_total_reads", metavar="N",
+                                help="Filter chimeras lacking more than N "
+                                "unique supporting reads [default=%default]")
+        filter_group.add_option("--filter-isize-percentile", type="float",
                                 default=DEFAULT_FILTER_ISIZE_PERCENTILE,
                                 dest="filter_isize_percentile", metavar="N",
                                 help="Filter chimeras when putative insert "
-                                "size is larger than the (1-N) percentile "
+                                "size is larger than the Nth percentile "
                                 "of the distribution [default=%default]")
-        filter_group.add_option("--filter-strand-pvalue", type="float",
-                                default=DEFAULT_FILTER_STRAND_PVALUE,
-                                dest="filter_strand_pval", metavar="p",
-                                help="p-value to reject chimera based on "
-                                " binomial test that balance of +/- strand "
-                                " encompassing reads should be 50/50 "
-                                "[default=%default]")
-        filter_group.add_option("--empirical-prob", type="float", metavar="p", 
-                                dest="empirical_prob", default=DEFAULT_EMPIRICAL_PROB, 
-                                help="empirical probability threshold for "
-                                "outputting chimeras [default=%default]")        
         parser.add_option_group(filter_group)
         return parser        
 
@@ -507,7 +476,6 @@ def run_chimerascan(runconfig):
     print >>fh, xmlstring
     fh.close()
     # gather and parse run parameters
-    gene_feature_file = os.path.join(runconfig.index_dir, config.GENE_FEATURE_FILE)
     bowtie_index = os.path.join(runconfig.index_dir, config.ALIGN_INDEX)
     bowtie_bin = os.path.join(runconfig.bowtie_path, "bowtie")
     bowtie_build_bin = os.path.join(runconfig.bowtie_path, "bowtie-build")
@@ -557,9 +525,32 @@ def run_chimerascan(runconfig):
             logging.error("Bowtie failed with error code %d" % (retcode))    
             sys.exit(retcode)
     #
+    # Sort aligned reads by position
+    #
+    msg = "Sorting aligned reads"
+    sorted_aligned_bam_file = os.path.join(runconfig.output_dir, 
+                                           config.SORTED_ALIGNED_READS_BAM_FILE)
+    if (up_to_date(sorted_aligned_bam_file, aligned_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        sorted_aligned_bam_prefix = os.path.splitext(sorted_aligned_bam_file)[0]
+        pysam.sort("-m", str(int(1e9)), aligned_bam_file, sorted_aligned_bam_prefix)
+    #
+    # Index BAM file
+    #
+    msg = "Indexing BAM file"
+    sorted_aligned_bam_index_file = sorted_aligned_bam_file + ".bai"
+    if (up_to_date(sorted_aligned_bam_index_file, sorted_aligned_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        pysam.index(sorted_aligned_bam_file)
+    #
     # Get insert size distribution
     #
-    isize_dist_file = os.path.join(runconfig.output_dir, config.ISIZE_DIST_FILE)
+    isize_dist_file = os.path.join(runconfig.output_dir, 
+                                   config.ISIZE_DIST_FILE)
     isize_dist = InsertSizeDistribution()
     if up_to_date(isize_dist_file, aligned_bam_file):
         logging.info("[SKIPPED] Profiling insert size distribution")
@@ -575,7 +566,7 @@ def run_chimerascan(runconfig):
         bamfh.close()
     logging.info("Insert size samples=%d mean=%f std=%f median=%d mode=%d" % 
                  (isize_dist.n, isize_dist.mean(), isize_dist.std(), 
-                  isize_dist.percentile(50.0), isize_dist.mode()))
+                  isize_dist.isize_at_percentile(50.0), isize_dist.mode()))
     #
     # Realignment step
     #
@@ -719,7 +710,7 @@ def run_chimerascan(runconfig):
     # Re-align encompassing reads that overlap breakpoint junctions
     # 
     encomp_spanning_bam_file = os.path.join(tmp_dir, config.ENCOMP_SPANNING_BAM_FILE)
-    encomp_spanning_log_file = os.path.join(log_dir, "bowtie_encomp_spanning.log")        
+    encomp_spanning_log_file = os.path.join(log_dir, "bowtie_encomp_spanning.log")
     msg = "Realigning encompassing reads to breakpoints"
     if (up_to_date(encomp_spanning_bam_file, breakpoint_bowtie_index_file) and
         up_to_date(encomp_spanning_bam_file, encomp_spanning_fastq_file)):
@@ -779,7 +770,7 @@ def run_chimerascan(runconfig):
     # Merge spanning read alignment information
     #
     spanning_chimera_file = os.path.join(tmp_dir, config.SPANNING_CHIMERA_FILE)
-    msg = "Merging spanning reads information with chimeras"
+    msg = "Merging spanning read information"
     if (up_to_date(spanning_chimera_file, breakpoint_chimera_file) and
         up_to_date(spanning_chimera_file, unaligned_spanning_bam_file) and
         up_to_date(spanning_chimera_file, encomp_spanning_bam_file) and
@@ -796,7 +787,6 @@ def run_chimerascan(runconfig):
                                   anchor_min=runconfig.anchor_min,
                                   anchor_length=runconfig.anchor_length,
                                   anchor_mismatches=runconfig.anchor_mismatches)
-    return
     #
     # Filter chimeras
     # 
@@ -806,47 +796,29 @@ def run_chimerascan(runconfig):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)
-        
-        merge_spanning_alignments(input_chimera_file=breakpoint_chimera_file, 
-                                  bam_file=spanning_bam_file, 
-                                  breakpoint_map_file=breakpoint_map_file,
-                                  output_chimera_file=spanning_chimera_file,
-                                  anchor_min=runconfig.anchor_min,
-                                  anchor_length=runconfig.anchor_length,
-                                  anchor_mismatches=runconfig.anchor_mismatches)
-
-
-    #
-    # Resolve chimeras supported by multimapping reads
-    #
-
-    return
-    #
-    # Choose best isoform for each junction
-    #
-    chimera_bedpe_file = os.path.join(tmp_dir, config.CHIMERA_BEDPE_FILE)
-    if (up_to_date(chimera_bedpe_file, raw_chimera_bedpe_file)):
-        logging.info("[SKIPPED] Filtering chimeras")
-    else:
-        logging.info("Filtering chimeras")
         # get insert size at prob    
-        max_isize = isize_dist.percentile(runconfig.filter_isize_percentile)
-        filter_spanning_chimeras(raw_chimera_bedpe_file, 
-                                 chimera_bedpe_file,
-                                 gene_feature_file,
-                                 mate_pval=runconfig.filter_strand_pval,
-                                 max_isize=max_isize)
+        max_isize = isize_dist.isize_at_percentile(runconfig.filter_isize_percentile)
+        filter_chimeras(spanning_chimera_file, 
+                        filtered_chimera_file,
+                        index_dir=runconfig.index_dir,
+                        total_reads_threshold=runconfig.filter_total_reads,
+                        max_isize=max_isize)
     #
-    # Rank chimeras
+    # Resolve reads mapping to multiple chimeras
+    # TODO: output looks good without this, so keep as a work in progress
     #
-    ranked_chimera_bedpe_file = os.path.join(runconfig.output_dir, 
-                                             config.RANKED_CHIMERA_BEDPE_FILE)
-    if (up_to_date(ranked_chimera_bedpe_file, chimera_bedpe_file)):
-        logging.info("[SKIPPED] Ranking chimeras")
+    pass
+    #
+    # Write user-friendly output file
+    # 
+    chimera_bedpe_file = os.path.join(runconfig.output_dir, config.CHIMERA_BEDPE_FILE)
+    msg = "Writing chimeras to BEDPE file"
+    if up_to_date(chimera_bedpe_file, filtered_chimera_file):
+        logging.info("[SKIPPED] %s" % (msg))
     else:
-        logging.info("Ranking chimeras")
-        rank_chimeras(chimera_bedpe_file, ranked_chimera_bedpe_file,
-                      empirical_prob=runconfig.empirical_prob)
+        logging.info(msg)
+        write_output(filtered_chimera_file, chimera_bedpe_file,
+                     index_dir=runconfig.index_dir)
     #
     # Cleanup
     # 
@@ -855,156 +827,9 @@ def run_chimerascan(runconfig):
     # Done
     #    
     logging.info("Finished run. Chimeras written to file %s" %
-                 (ranked_chimera_bedpe_file))
+                 (chimera_bedpe_file))
     return JOB_SUCCESS
 
-
-    #
-    # Filter encompassing chimeras step
-    #
-    # TODO: might be best to do this at the very end
-#    filtered_encomp_bedpe_file = \
-#        os.path.join(tmp_dir,
-#                     config.FILTERED_ENCOMPASSING_CHIMERA_BEDPE_FILE)
-#    if (up_to_date(filtered_encomp_bedpe_file, encompassing_bedpe_file)):
-#        logging.info("[SKIPPED] Filtering encompassing chimeras")
-#    else:
-#        logging.info("Filtering encompassing chimeras")
-#        # max_isize = isize_mean + runconfig.filter_isize_stdevs*isize_std
-#        filter_encompassing_chimeras(encompassing_bedpe_file,
-#                                     filtered_encomp_bedpe_file,
-#                                     gene_feature_file,
-#                                     max_multimap=runconfig.filter_max_multimaps,
-#                                     multimap_cov_ratio=runconfig.filter_multimap_ratio,
-#                                     max_isize=-1,
-#                                     strand_pval=runconfig.filter_strand_pval)
-    #
-    # Nominate spanning reads step
-    #
-#    spanning_fastq_file = os.path.join(runconfig.output_dir, 
-#                                       config.SPANNING_FASTQ_FILE)
-#    if all(up_to_date(spanning_fastq_file, f) for f in unaligned_fastq_files):
-#        logging.info("[SKIPPED] Preparing junction spanning reads")
-#    else:
-#        logging.info("Preparing junction spanning reads")
-#        outfh = open(spanning_fastq_file, "w")
-#        for f in unaligned_fastq_files:
-#            shutil.copyfileobj(open(f), outfh)
-#        outfh.close()        
-    # TODO: skip this step for now, and simply realign all the reads
-#    spanning_fastq_file = os.path.join(runconfig.output_dir, config.SPANNING_FASTQ_FILE)
-#    if (up_to_date(spanning_fastq_file, extended_discordant_bedpe_file) and 
-#        up_to_date(spanning_fastq_file, filtered_encomp_bedpe_file)):
-#        logging.info("[SKIPPED] Nominating junction spanning reads")
-#    else:
-#        logging.info("Nominating junction spanning reads")
-#        nominate_spanning_reads(open(extended_discordant_bedpe_file, 'r'),
-#                                open(filtered_encomp_bedpe_file, 'r'),
-#                                open(spanning_fastq_file, 'w'))    
-    #
-    # Extract junction sequences from chimeras file
-    #        
-    ref_fasta_file = os.path.join(runconfig.index_dir, config.ALIGN_INDEX + ".fa")
-    junc_fasta_file = os.path.join(tmp_dir, config.JUNC_REF_FASTA_FILE)
-    junc_map_file = os.path.join(tmp_dir, config.JUNC_REF_MAP_FILE)
-    spanning_read_length = get_read_length(spanning_fastq_file)    
-    if (up_to_date(junc_fasta_file, filtered_encomp_bedpe_file) and
-        up_to_date(junc_map_file, filtered_encomp_bedpe_file)):        
-        logging.info("[SKIPPED] Extracting junction read sequences")
-    else:        
-        logging.info("Extracting junction read sequences")
-        bedpe_to_junction_fasta(filtered_encomp_bedpe_file, ref_fasta_file,                                
-                                spanning_read_length, 
-                                open(junc_fasta_file, "w"),
-                                open(junc_map_file, "w"))
-    #
-    # Build a bowtie index to align and detect spanning reads
-    #
-    bowtie_spanning_index = os.path.join(tmp_dir, config.JUNC_BOWTIE_INDEX)
-    bowtie_spanning_index_file = os.path.join(tmp_dir, config.JUNC_BOWTIE_INDEX_FILE)
-    if (up_to_date(bowtie_spanning_index_file, junc_fasta_file)):
-        logging.info("[SKIPPED] Building bowtie index for junction-spanning reads")
-    else:        
-        logging.info("Building bowtie index for junction-spanning reads")
-        args = [runconfig.bowtie_build_bin, junc_fasta_file, bowtie_spanning_index]
-        f = open(os.path.join(log_dir, "bowtie_build.log"), "w")
-        subprocess.call(args, stdout=f, stderr=f)
-        f.close()
-    #
-    # Align unmapped reads across putative junctions
-    #
-    junc_bam_file = os.path.join(tmp_dir, config.JUNC_READS_BAM_FILE)
-    junc_log_file = os.path.join(log_dir, "bowtie_spanning_alignment.log")        
-    if (up_to_date(junc_bam_file, bowtie_spanning_index_file) and
-        up_to_date(junc_bam_file, spanning_fastq_file)):
-        logging.info("[SKIPPED] Aligning junction spanning reads")
-    else:            
-        logging.info("Aligning junction spanning reads")
-        retcode = align_sr_full(spanning_fastq_file, 
-                                bowtie_spanning_index,
-                                junc_bam_file,
-                                trim5=runconfig.trim5,
-                                trim3=runconfig.trim3,                                 
-                                num_processors=runconfig.num_processors,
-                                fastq_format=runconfig.fastq_format,
-                                multihits=runconfig.multihits,
-                                mismatches=runconfig.mismatches,
-                                bowtie_bin=runconfig.bowtie_bin,
-                                bowtie_mode=bowtie_mode,
-                                log_file=junc_log_file)
-        if retcode != 0:
-            logging.error("Bowtie failed with error code %d" % (retcode))    
-            sys.exit(retcode)
-    #
-    # Merge spanning and encompassing read information
-    #
-    raw_chimera_bedpe_file = os.path.join(tmp_dir, config.RAW_CHIMERA_BEDPE_FILE)
-    if (up_to_date(raw_chimera_bedpe_file, junc_bam_file) and
-        up_to_date(raw_chimera_bedpe_file, junc_map_file)):
-        logging.info("[SKIPPED] Merging spanning and encompassing read alignments")
-    else:
-        logging.info("Merging spanning and encompassing read alignments")
-        merge_spanning_alignments(junc_bam_file, junc_map_file, 
-                                  raw_chimera_bedpe_file,
-                                  anchor_min=0, 
-                                  anchor_max=0,
-                                  anchor_mismatches=0)
-    #
-    # Choose best isoform for each junction
-    #
-    chimera_bedpe_file = os.path.join(tmp_dir, config.CHIMERA_BEDPE_FILE)
-    if (up_to_date(chimera_bedpe_file, raw_chimera_bedpe_file)):
-        logging.info("[SKIPPED] Filtering chimeras")
-    else:
-        logging.info("Filtering chimeras")
-        # get insert size at prob    
-        max_isize = isize_dist.percentile(runconfig.filter_isize_percentile)
-        filter_spanning_chimeras(raw_chimera_bedpe_file, 
-                                 chimera_bedpe_file,
-                                 gene_feature_file,
-                                 mate_pval=runconfig.filter_strand_pval,
-                                 max_isize=max_isize)
-    #
-    # Rank chimeras
-    #
-    ranked_chimera_bedpe_file = os.path.join(runconfig.output_dir, 
-                                             config.RANKED_CHIMERA_BEDPE_FILE)
-    if (up_to_date(ranked_chimera_bedpe_file, chimera_bedpe_file)):
-        logging.info("[SKIPPED] Ranking chimeras")
-    else:
-        logging.info("Ranking chimeras")
-        rank_chimeras(chimera_bedpe_file, ranked_chimera_bedpe_file,
-                      empirical_prob=runconfig.empirical_prob)
-    #
-    # Cleanup
-    # 
-    #shutil.rmtree(tmp_dir)
-    #
-    # Done
-    #    
-    logging.info("Finished run. Chimeras written to file %s" %
-                 (ranked_chimera_bedpe_file))
-    return JOB_SUCCESS
 
 def main():
     logging.basicConfig(level=logging.INFO,

@@ -21,93 +21,116 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 import logging
+import collections
 import os
 
-def filter_spurious_spanning_reads(c):
-    """
-    removes spanning reads that lack paired 
-    """
-    pass
+from chimerascan.lib.gene_to_genome import build_tx_cluster_map
+from chimerascan.lib.chimera import Chimera
+from chimerascan.lib import config
 
-def filter_coverage(c, encomp_min=2, spanning_threshold=1):
+def filter_total_reads(c, threshold):
     """
-    filters chimeras with fewer than 'spanning_threshold' spanning
-    reads and fewer than 'encomp_min' encompassing reads
+    filters chimeras with fewer than 'threshold' total
+    unique read alignments
     """
-    
-    
-    pass
+    #I am using score > 3 or score >=2 + spanning > 0
+    return (c.get_total_unique_reads() >= threshold)
 
-
-def filter_multimapping(c, max_multimap=1, multimap_cov_ratio=0.0):
+def filter_inner_dist(c, max_isize):
     '''
-    returns True/False based on the uniqueness of supporting reads.  
-    chimeras with multimapping reads with more than 'max_multimap' 
-    hits will be ignored, and chimeras with less than 'weighted_cov_ratio' 
-    fraction of coverage to reads will be ignored.
-
-    for example, if a chimera has a coverage of 2.0, but has 200 reads,
-    the ratio will be 2.0/200 = 1/100.  this suggests that the majority of
-    reads supporting the candidate are multimapping.
-    
-    however, if there is one completely unique read supporting the candidate,
-    then 1.0 out of 2.0 coverage is accountable to a single read.  so this
-    candidate would pass the 'max_multimap' filter and not be removed
+    filters chimeras whenever either the 5' or the 3'
+    partner has a predicted insert size larger than
+    'max_isize' bp
     '''
-    # get index of first read
-    for ind,x in enumerate(c.multimap_cov_hist):
-        if x > 0:
-            break
-    mmap = MULTIMAP_BINS[ind]
-    ratio = c.weighted_cov / float(c.encompassing_reads)
-    if (mmap <= max_multimap) and (ratio >= multimap_cov_ratio):
+    if max_isize <= 0:
         return True
-    if c.weighted_cov >= 5:
-        logging.debug("Excluding chimera with %f cov, %d reads, and %s mmap hist" %
-                      (c.weighted_cov, c.encompassing_reads, c.multimap_cov_hist))
-    return False
+    inner_dist = c.partner5p.inner_dist + c.partner3p.inner_dist
+    return inner_dist <= max_isize
+
+def filter_chimeric_isoform_fraction(c, frac):
+    """
+    filters chimeras with fewer than 'threshold' total
+    unique read alignments
+    """ 
+    pass
+
+def get_highest_coverage_isoforms(input_file, gene_file):
+    # place overlapping chimeras into clusters
+    logging.debug("Building isoform cluster lookup table")
+    tx_cluster_map = build_tx_cluster_map(open(gene_file))
+    cluster_chimera_dict = collections.defaultdict(lambda: [])
+    for c in Chimera.parse(open(input_file)):
+        key = (c.name,
+               c.get_unique_spanning_reads(), 
+               c.get_total_unique_reads(), 
+               c.get_weighted_cov())
+        cluster5p = tx_cluster_map[c.partner5p.tx_name]
+        cluster3p = tx_cluster_map[c.partner3p.tx_name]
+        cluster_chimera_dict[(cluster5p,cluster3p,c.breakpoint_name)].append(key)    
+    # choose highest coverage chimeras within each pair of clusters
+    logging.debug("Finding highest coverage isoforms")
+    kept_chimeras = set()
+    for stats_list in cluster_chimera_dict.itervalues():
+        stats_dict = collections.defaultdict(lambda: set())
+        for stats_info in stats_list:
+            # index chimera names
+            stats_dict[stats_info[1:]].add(stats_info[0])
+        # find highest scoring key
+        sorted_keys = sorted(stats_dict.keys(), reverse=True)
+        # TODO: just just one chimera for now, but eventually
+        # just group them together
+        arbitrary_chimera = list(stats_dict[sorted_keys[0]])[0]
+        kept_chimeras.add(arbitrary_chimera)
+        #kept_chimeras.update(stats_dict[sorted_keys[0]])
+    return kept_chimeras
+
+def filter_chimeras(input_file, output_file,
+                    index_dir,
+                    total_reads_threshold,
+                    max_isize):
+    # find highest coverage chimeras among isoforms
+    gene_file = os.path.join(index_dir, config.GENE_FEATURE_FILE)
+    kept_chimeras = get_highest_coverage_isoforms(input_file, gene_file)
+    # filter chimeras
+    num_chimeras = 0
+    num_filtered_chimeras = 0
+    f = open(output_file, "w")
+    for c in Chimera.parse(open(input_file)):
+        good = filter_total_reads(c, total_reads_threshold)
+        good = good and filter_inner_dist(c, max_isize)
+        good = good and (c.name in kept_chimeras)
+        if good:
+            print >>f, '\t'.join(map(str, c.to_list()))
+            num_filtered_chimeras += 1
+        num_chimeras += 1
+    f.close()
+    logging.debug("\ttotal reads threshold = %d" % (total_reads_threshold))
+    logging.debug("\tmax isize = %d" % (max_isize))
+    logging.debug("\tChimeras: %d" % num_chimeras)
+    logging.debug("\tFiltered chimeras: %d" % num_filtered_chimeras)
+    return config.JOB_SUCCESS
 
 def main():
     from optparse import OptionParser
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    parser = OptionParser("usage: %prog [options] <sortedchimeras.bedpe> <chimeras.txt>")
-    parser.add_option("--index", dest="index_dir",
-                      help="Path to chimerascan index directory")
-    parser.add_option("--max-multimap", type="int", dest="max_multimap", 
-                      default=1, help="Threshold to eliminate multimapping "
-                      "chimeras, where '1' is completely unique, '2' is "
-                      "multimapping to two locations, etc.")
-    parser.add_option("--multimap-ratio", type="float", dest="multimap_cov_ratio",
-                      default=0.10, help="Ratio of weighted coverage to "
-                      "total encompassing reads below which chimeras are "
-                      "considered false positives and removed "
-                      "[default=%default]")
-    parser.add_option("--max-isize", type="float", dest="max_isize",
-                      default=500, help="Maximum predicted insert size of "
-                      "fragments spanning a hypothetical chimeric junction "
-                      "[default=%default]")
-    parser.add_option("--strand-pval", type="float", metavar="p", 
-                      dest="strand_pval", default=0.01,                       
-                      help="p-value to reject chimera based on binomial "
-                      "test that balance of +/- strand encompassing reads "
-                      "should be 50/50 [default=%default]")
-    parser.add_option("--keep-overlap", action="store_true", 
-                      default=False, dest="keep_overlap",
-                      help="keep chimera candidates that occur between "
-                      "overlapping genes.  these are likely to be splice "
-                      "variants that did not occur in the reference. "
-                      "[default=%default]")
+    parser = OptionParser("usage: %prog [options] <index_dir> <in.txt> <out.txt>")
+    parser.add_option("--total-reads", type="int", default=2,
+                      dest="total_reads_threshold", metavar="N",
+                      help="Filter chimeras with less than N total "
+                      "unique supporting reads")
+    parser.add_option("--max-isize", type="int", default=1e6,
+                      dest="max_isize", metavar="N",
+                      help="Filter chimeras when inner distance "
+                      "is larger than N bases [default=%default]")
     options, args = parser.parse_args()
-    gene_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)
-    input_file = args[0]
-    output_file = args[1]
-    filter_encompassing_chimeras(input_file, output_file, gene_file,
-                                 max_multimap=options.max_multimap,
-                                 multimap_cov_ratio=options.multimap_cov_ratio,
-                                 max_isize=options.max_isize,
-                                 strand_pval=options.strand_pval,
-                                 keep_overlap=options.keep_overlap)
+    index_dir = args[0]
+    input_file = args[1]
+    output_file = args[2]
+    return filter_chimeras(input_file, output_file, index_dir,
+                           total_reads_threshold=options.total_reads_threshold,
+                           max_isize=options.max_isize)
+
 
 if __name__ == "__main__":
     main()
