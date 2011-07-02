@@ -90,7 +90,7 @@ def qsub(job_name, args, num_processors, cwd=None, walltime="60:00:00",
 
 def main():
     import sys
-    import chimerascan_run    
+    from chimerascan import chimerascan_run    
     parser = chimerascan_run.RunConfig.get_option_parser()
     parser.set_usage("%prog [--big] <JOB_NAME> [chimerascan arguments]")
     parser.add_option("--big", dest="big", action="store_true", 
