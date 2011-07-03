@@ -28,6 +28,7 @@ from chimerascan.lib.gene_to_genome import build_gene_to_genome_map, \
     gene_to_genome_pos, build_tx_cluster_map
 from chimerascan.lib.chimera import Chimera
 from chimerascan.lib import config
+from chimerascan.lib.base import make_temp
 
 def filter_weighted_cov(c, threshold_wo_spanning,
                         threshold_w_spanning):
@@ -51,8 +52,13 @@ def filter_inner_dist(c, max_isize):
     '''
     if max_isize <= 0:
         return True
-    inner_dist = c.partner5p.inner_dist + c.partner3p.inner_dist
-    return inner_dist <= max_isize
+    if c.partner5p.inner_dist > max_isize:
+        return False
+    if c.partner3p.inner_dist > max_isize:
+        return False
+    return True
+    #inner_dist = c.partner5p.inner_dist + c.partner3p.inner_dist
+    #return inner_dist <= max_isize
 
 def filter_chimeric_isoform_fraction(c, frac):
     """
@@ -100,13 +106,11 @@ def filter_chimeras(input_file, output_file,
                     cov_wo_spanning,
                     cov_w_spanning,
                     max_isize):
-    # find highest coverage chimeras among isoforms
-    gene_file = os.path.join(index_dir, config.GENE_FEATURE_FILE)
-    kept_chimeras = get_highest_coverage_isoforms(input_file, gene_file)
     # filter chimeras
     num_chimeras = 0
     num_filtered_chimeras = 0
-    f = open(output_file, "w")
+    tmp_file = make_temp(os.path.dirname(output_file), suffix=".txt")
+    f = open(tmp_file, "w")
     logging.debug("Filtering chimeras")
     logging.debug("\tcoverage without spanning reads: %f" % (cov_wo_spanning))
     logging.debug("\tcoverage with spanning reads: %f" % (cov_w_spanning))
@@ -114,7 +118,6 @@ def filter_chimeras(input_file, output_file,
     for c in Chimera.parse(open(input_file)):
         good = filter_weighted_cov(c, cov_wo_spanning, cov_w_spanning)
         good = good and filter_inner_dist(c, max_isize)
-        good = good and (c.name in kept_chimeras)
         if good:
             print >>f, '\t'.join(map(str, c.to_list()))
             num_filtered_chimeras += 1
@@ -122,6 +125,19 @@ def filter_chimeras(input_file, output_file,
     f.close()
     logging.debug("\tChimeras: %d" % num_chimeras)
     logging.debug("\tFiltered chimeras: %d" % num_filtered_chimeras)
+    # find highest coverage chimeras among isoforms
+    gene_file = os.path.join(index_dir, config.GENE_FEATURE_FILE)
+    kept_chimeras = get_highest_coverage_isoforms(tmp_file, gene_file)
+    num_filtered_chimeras = 0
+    f = open(output_file, "w")
+    for c in Chimera.parse(open(input_file)):
+        if c.name in kept_chimeras:
+            num_filtered_chimeras += 1
+            print >>f, '\t'.join(map(str, c.to_list()))
+    f.close()
+    logging.debug("\tAfter choosing best isoform: %d" % 
+                  num_filtered_chimeras)
+    os.remove(tmp_file)
     return config.JOB_SUCCESS
 
 def main():
