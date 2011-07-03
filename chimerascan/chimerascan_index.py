@@ -75,7 +75,7 @@ def bed12_to_fasta(gene_feature_file, reference_seq_file):
         # break seq onto multiple lines
         seqlines = split_seq(seq, BASES_PER_LINE)    
         yield (">%s range=%s:%d-%d gene=%s strand=%s\n%s" % 
-               (GENE_REF_PREFIX + g.tx_name, g.chrom, start, end, g.strand, g.gene_name, seqlines))
+               (GENE_REF_PREFIX + g.tx_name, g.chrom, start, end, g.gene_name, g.strand, seqlines))
     ref_fa.close()
 
 def build_exon_trees(genes):
@@ -198,6 +198,8 @@ def create_chimerascan_index(output_dir,
                                         index_fasta_file):
             print >>fh, fa_record
         fh.close()
+        # remove old fasta index
+        os.remove(index_fasta_file + ".fai")
         # re-index the combined fasta file
         logging.info("Re-indexing FASTA file...")
         fh = pysam.Fastafile(index_fasta_file)
