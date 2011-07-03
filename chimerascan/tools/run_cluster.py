@@ -24,6 +24,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import os
 import subprocess
 
+# TODO: change to allow customization
 NODE_MEMORY = 45000.0
 NODE_PROCESSORS = 12
 MEM_PER_PROCESSOR = int(float(NODE_MEMORY) / NODE_PROCESSORS)
