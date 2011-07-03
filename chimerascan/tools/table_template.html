@@ -383,7 +383,7 @@ table.sortable tr.sortbottom td {
     <td>
       {% if datatype == "genecards" %}
         {% for gene in col %}
-          <a href="http://www.genecards.org/cgi-bin/carddisp.pl?gene={{ gene }}">{{ gene }}</a><br/>
+          <a href="http://www.genecards.org/cgi-bin/carddisp.pl?gene={{ gene }}" target="_blank">{{ gene }}</a><br/>
         {% endfor %}
       {% elif datatype == "list" %}
         {% for itm in col %}{{ itm }}<br/>{% endfor %}

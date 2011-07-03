@@ -37,7 +37,7 @@ from chimerascan.lib.base import up_to_date, check_executable
 from chimerascan.bx.intersection import Interval, IntervalTree
 from chimerascan.lib.config import JOB_ERROR, JOB_SUCCESS, ALIGN_INDEX, \
     BOWTIE_INDEX_FILE, FRAG_SIZE_INDEX, FRAG_SIZE_INDEX_FILE, \
-    GENE_FEATURE_FILE, GENE_REF_PREFIX, TOPHAT_JUNCS_FILE
+    GENE_FEATURE_FILE, GENE_REF_PREFIX, RAW_JUNCS_FILE
 
 BASES_PER_LINE = 50
 
