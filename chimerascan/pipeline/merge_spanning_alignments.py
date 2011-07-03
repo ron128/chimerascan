@@ -63,10 +63,10 @@ def check_breakpoint_alignment(r, b,
     # calculate amount in bp that read overlaps breakpoint
     # and ensure overlap is sufficient
     left_anchor_bp = b.pos - r.pos
-    if left_anchor_bp <= max(homology5p, anchor_min):
+    if left_anchor_bp < max(homology5p, anchor_min):
         return False
     right_anchor_bp = r.aend - b.pos
-    if right_anchor_bp <= max(homology3p, anchor_min):
+    if right_anchor_bp < max(homology3p, anchor_min):
         return False
     # ensure that alignments with anchor overlap less than 'anchor_length'
     # do not have more than 'anchor_mismatches' mismatches in the 

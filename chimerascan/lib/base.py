@@ -69,6 +69,15 @@ def check_executable(filename):
     devnullfh.close()
     return True
 
+def up_to_date(outfile, infile):
+    if not os.path.exists(infile):
+        return False
+    if not os.path.exists(outfile):
+        return False
+    if os.path.getsize(outfile) == 0:
+        return False    
+    return os.path.getmtime(outfile) >= os.path.getmtime(infile)
+
 # in-place XML prettyprint formatter
 def indent(elem, level=0):
     i = "\n" + level*"  "

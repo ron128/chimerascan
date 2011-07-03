@@ -26,8 +26,11 @@ JOB_ERROR = 1
 # constants for index
 ALIGN_INDEX = 'align_index'
 BOWTIE_INDEX_FILE = 'align_index.1.ebwt'
+FRAG_SIZE_INDEX = "frag_size_index"
+FRAG_SIZE_INDEX_FILE = "frag_size_index.1.ebwt"
 GENE_REF_PREFIX = 'gene_'
 GENE_FEATURE_FILE = "gene_features.txt"
+TOPHAT_JUNCS_FILE = "known_juncs.txt"
 
 # chimerascan subdirectories
 LOG_DIR = "log"

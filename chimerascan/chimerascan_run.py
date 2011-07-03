@@ -49,7 +49,7 @@ from chimerascan import pysam
 import chimerascan.lib.config as config
 from chimerascan.lib.config import JOB_SUCCESS, JOB_ERROR, MIN_SEGMENT_LENGTH
 from chimerascan.lib.base import LibraryTypes, check_executable, \
-    get_read_length, parse_bool, indent
+    get_read_length, parse_bool, indent, up_to_date
 from chimerascan.lib.seq import FASTQ_QUAL_FORMATS, SANGER_FORMAT
 
 from chimerascan.pipeline.align_bowtie import align_pe, align_sr, trim_align_pe_sr
@@ -448,15 +448,6 @@ class RunConfig(object):
         if self.num_processors < config.BASE_PROCESSORS:
             logging.warning("Please specify >=2 processes using '-p' to allow program to run efficiently")
         return config_passed
-
-def up_to_date(outfile, infile):
-    if not os.path.exists(infile):
-        return False
-    if not os.path.exists(outfile):
-        return False
-    if os.path.getsize(outfile) == 0:
-        return False    
-    return os.path.getmtime(outfile) >= os.path.getmtime(infile)
 
 def run_chimerascan(runconfig):
     """
