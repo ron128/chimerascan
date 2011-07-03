@@ -74,6 +74,7 @@ def write_output(input_file, output_file, index_dir):
     # group chimera isoforms together
     # TODO: requires reading all chimeras into memory
     lines = []
+    chimera_clusters = 0
     for key,chimeras in get_chimera_groups(input_file, gene_file):
         #cluster5p,cluster3p,coord5p,coord3p = key
         #cluster5p,cluster3p = key
@@ -95,6 +96,8 @@ def write_output(input_file, output_file, index_dir):
                   c.get_num_unique_positions(),
                   c.get_num_unique_spanning_positions()]
         lines.append(fields)
+        chimera_clusters += 1
+    logging.debug("Clustered chimeras: %d" % (chimera_clusters))
     # sort
     lines = sorted(lines, key=operator.itemgetter(16, 12, 13), reverse=True)    
     f = open(output_file, "w")
