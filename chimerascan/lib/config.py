@@ -52,8 +52,8 @@ MAXMULTIMAP_FASTQ_FILES = ("maxmulti_1.fq", "maxmulti_2.fq")
 SORTED_ALIGNED_READS_BAM_FILE = "sorted_aligned_reads.bam"
 
 # insert size estimation parameters
+ISIZE_MIN_SAMPLES = 100
 ISIZE_MAX_SAMPLES = 1e6
-ISIZE_NUM_STDEVS = 3
 ISIZE_DIST_FILE = "isize_dist.txt"
 
 # output from realignment of trimmed reads
@@ -92,5 +92,5 @@ SPANNING_CHIMERA_FILE = "spanning_chimeras.txt"
 # results of filtering chimeras
 FILTERED_CHIMERA_FILE = "spanning_chimeras.filtered.txt"
 # output file
-CHIMERA_BEDPE_FILE = "chimeras.bedpe"
+CHIMERA_OUTPUT_FILE = "chimeras.txt"
 

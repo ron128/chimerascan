@@ -204,13 +204,6 @@ def create_chimerascan_index(output_dir,
         logging.info("Re-indexing FASTA file...")
         fh = pysam.Fastafile(index_fasta_file)
         fh.close()
-    # copy gene bed file to index directory
-    dst_gene_feature_file = os.path.join(output_dir, GENE_FEATURE_FILE)
-    if up_to_date(dst_gene_feature_file, gene_feature_file):
-        logging.info("[SKIPPED] Adding transcript features to index...")
-    else:
-        logging.info("Adding transcript features to index...")
-        shutil.copyfile(gene_feature_file, dst_gene_feature_file)
     # build bowtie index on the reference sequence file
     bowtie_index_file = os.path.join(output_dir, BOWTIE_INDEX_FILE)
     msg = "Building bowtie index"
@@ -225,6 +218,13 @@ def create_chimerascan_index(output_dir,
             if os.path.exists(bowtie_index_file):
                 os.remove(bowtie_index_file)
             return JOB_ERROR
+    # copy gene bed file to index directory
+    dst_gene_feature_file = os.path.join(output_dir, GENE_FEATURE_FILE)
+    if up_to_date(dst_gene_feature_file, gene_feature_file):
+        logging.info("[SKIPPED] Adding transcript features to index...")
+    else:
+        logging.info("Adding transcript features to index...")
+        shutil.copyfile(gene_feature_file, dst_gene_feature_file)
     # create tophat junctions file from gene features
 #    juncs_file = os.path.join(output_dir, TOPHAT_JUNCS_FILE)
 #    if up_to_date(juncs_file, dst_gene_feature_file):

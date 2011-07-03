@@ -75,6 +75,8 @@ DEFAULT_MIN_FRAG_LENGTH = 0
 DEFAULT_MAX_FRAG_LENGTH = 1000 
 DEFAULT_FASTQ_QUAL_FORMAT = SANGER_FORMAT
 DEFAULT_LIBRARY_TYPE = LibraryTypes.FR_UNSTRANDED
+DEFAULT_ISIZE_MEAN = 200
+DEFAULT_ISIZE_STDEV = 40
 DEFAULT_HOMOLOGY_MISMATCHES = config.BREAKPOINT_HOMOLOGY_MISMATCHES
 DEFAULT_ANCHOR_MIN = 4
 DEFAULT_ANCHOR_LENGTH = 8
@@ -192,6 +194,8 @@ class RunConfig(object):
              ("min_fragment_length", int, DEFAULT_MIN_FRAG_LENGTH),
              ("max_fragment_length", int, DEFAULT_MAX_FRAG_LENGTH),
              ("library_type", str, DEFAULT_LIBRARY_TYPE),
+             ("isize_mean", int, DEFAULT_ISIZE_MEAN),
+             ("isize_stdev", float, DEFAULT_ISIZE_STDEV),
              ("homology_mismatches", int, DEFAULT_HOMOLOGY_MISMATCHES),
              ("anchor_min", int, DEFAULT_ANCHOR_MIN),
              ("anchor_length", int, DEFAULT_ANCHOR_LENGTH),
@@ -268,6 +272,16 @@ class RunConfig(object):
                           choices=FASTQ_QUAL_FORMATS, 
                           default=DEFAULT_FASTQ_QUAL_FORMAT, metavar="FMT",
                           help="FASTQ quality score format [default=%default]")
+        parser.add_option("--isize-mean", dest="isize_mean", type="int",
+                          default=DEFAULT_ISIZE_MEAN, metavar="N",
+                          help="Mean insert size to sample from when "
+                          "insert size distribution cannot be determined "
+                          "empirically [default=%default]")
+        parser.add_option("--isize-stdev", dest="isize_stdev", type="float",
+                          default=DEFAULT_ISIZE_STDEV, metavar="N",
+                          help="Insert size standard deviation to sample "
+                          "from when insert size distribution cannot be "
+                          "determined empirically [default=%default]")
         # alignment options
         bowtie_group = OptionGroup(parser, "Bowtie options",
                                    "Adjust these options to change "
@@ -562,19 +576,31 @@ def run_chimerascan(runconfig):
     #
     isize_dist_file = os.path.join(runconfig.output_dir, 
                                    config.ISIZE_DIST_FILE)
-    isize_dist = InsertSizeDistribution()
     if up_to_date(isize_dist_file, aligned_bam_file):
         logging.info("[SKIPPED] Profiling insert size distribution")
-        isize_dist.from_file(open(isize_dist_file, "r"))
+        isize_dist = InsertSizeDistribution.from_file(open(isize_dist_file, "r"))
     else:
         logging.info("Profiling insert size distribution")
         max_isize_samples = config.ISIZE_MAX_SAMPLES
         bamfh = pysam.Samfile(aligned_bam_file, "rb")
-        isize_dist.from_bam(bamfh, min_isize=min_fragment_length, 
-                            max_isize=runconfig.max_fragment_length, 
-                            max_samples=max_isize_samples)
-        isize_dist.to_file(open(isize_dist_file, "w"))
+        isize_dist = InsertSizeDistribution.from_bam(bamfh, min_isize=min_fragment_length, 
+                                                     max_isize=runconfig.max_fragment_length, 
+                                                     max_samples=max_isize_samples)
         bamfh.close()
+        # if not enough samples, use a normal distribution instead
+        # of the empirical distribution
+        if isize_dist.n < config.ISIZE_MIN_SAMPLES:
+            logging.warning("Not enough fragments to sample insert size "
+                            "distribution empirically.  Using mean=%d "
+                            "stdev=%f instead" % 
+                            (runconfig.isize_mean, 
+                             runconfig.isize_stdev))
+            isize_dist = InsertSizeDistribution.from_random(runconfig.isize_mean, 
+                                                            runconfig.isize_stdev, 
+                                                            min_isize=runconfig.min_fragment_length,
+                                                            max_isize=runconfig.max_fragment_length,
+                                                            samples=max_isize_samples)
+        isize_dist.to_file(open(isize_dist_file, "w"))
     logging.info("Insert size samples=%d mean=%f std=%f median=%d mode=%d" % 
                  (isize_dist.n, isize_dist.mean(), isize_dist.std(), 
                   isize_dist.isize_at_percentile(50.0), isize_dist.mode()))
@@ -821,13 +847,13 @@ def run_chimerascan(runconfig):
     #
     # Write user-friendly output file
     # 
-    chimera_bedpe_file = os.path.join(runconfig.output_dir, config.CHIMERA_BEDPE_FILE)
-    msg = "Writing chimeras to file %s" % (chimera_bedpe_file)
-    if up_to_date(chimera_bedpe_file, filtered_chimera_file):
+    chimera_output_file = os.path.join(runconfig.output_dir, config.CHIMERA_OUTPUT_FILE)
+    msg = "Writing chimeras to file %s" % (chimera_output_file)
+    if up_to_date(chimera_output_file, filtered_chimera_file):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)
-        write_output(filtered_chimera_file, chimera_bedpe_file,
+        write_output(filtered_chimera_file, chimera_output_file,
                      index_dir=runconfig.index_dir)
     #
     # Cleanup

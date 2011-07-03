@@ -108,6 +108,9 @@ def filter_chimeras(input_file, output_file,
     num_filtered_chimeras = 0
     f = open(output_file, "w")
     logging.debug("Filtering chimeras")
+    logging.debug("\tcoverage without spanning reads: %f" % (cov_wo_spanning))
+    logging.debug("\tcoverage with spanning reads: %f" % (cov_w_spanning))
+    logging.debug("\tmax insert size allowed: %d" % (max_isize))
     for c in Chimera.parse(open(input_file)):
         good = filter_weighted_cov(c, cov_wo_spanning, cov_w_spanning)
         good = good and filter_inner_dist(c, max_isize)

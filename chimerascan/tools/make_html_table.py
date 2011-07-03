@@ -78,7 +78,7 @@ def main():
     from optparse import OptionParser
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    parser = OptionParser("usage: %prog [options] <chimeras.bedpe>")
+    parser = OptionParser("usage: %prog [options] <chimeras.txt>")
     parser.add_option("-o", dest="output_file", default=None,
                       help="output file [default=stdout]")
     parser.add_option("--read-throughs", dest="show_read_throughs",
