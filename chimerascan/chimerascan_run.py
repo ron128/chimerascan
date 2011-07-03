@@ -79,9 +79,9 @@ DEFAULT_HOMOLOGY_MISMATCHES = config.BREAKPOINT_HOMOLOGY_MISMATCHES
 DEFAULT_ANCHOR_MIN = 4
 DEFAULT_ANCHOR_LENGTH = 8
 DEFAULT_ANCHOR_MISMATCHES = 0
-DEFAULT_FILTER_ISIZE_PERCENTILE = 99.99
-DEFAULT_TOTAL_READS_THRESHOLD = 2
-
+DEFAULT_FILTER_ISIZE_PERCENTILE = 99.9
+DEFAULT_COV_WITHOUT_SPANNING = 3
+DEFAULT_COV_WITH_SPANNING = 2
 NUM_POSITIONAL_ARGS = 4
 
 def check_fastq_files(parser, fastq_files, segment_length, trim5, trim3):
@@ -196,7 +196,8 @@ class RunConfig(object):
              ("anchor_min", int, DEFAULT_ANCHOR_MIN),
              ("anchor_length", int, DEFAULT_ANCHOR_LENGTH),
              ("anchor_mismatches", int, DEFAULT_ANCHOR_MISMATCHES),
-             ("filter_total_reads", int, DEFAULT_TOTAL_READS_THRESHOLD),
+             ("filter_cov_wo_spanning", float, DEFAULT_COV_WITHOUT_SPANNING),
+             ("filter_cov_w_spanning", float, DEFAULT_COV_WITH_SPANNING),
              ("filter_isize_percentile", float, DEFAULT_FILTER_ISIZE_PERCENTILE))
 
     def __init__(self):
@@ -341,11 +342,18 @@ class RunConfig(object):
                                 metavar="N",
                                 help="Number of mismatches allowed within anchor "
                                 "region [default=%default]")
-        filter_group.add_option("--filter-total-reads", type="int",
-                                default=DEFAULT_TOTAL_READS_THRESHOLD,
-                                dest="filter_total_reads", metavar="N",
-                                help="Filter chimeras lacking more than N "
-                                "unique supporting reads [default=%default]")
+        filter_group.add_option("--filter-cov-wo-spanning", type="float",
+                                default=DEFAULT_COV_WITHOUT_SPANNING,
+                                dest="filter_cov_wo_spanning", metavar="N",
+                                help="Filter chimeras lacking weighted "
+                                "coverage >= N when spanning reads are NOT "
+                                "present [default=%default]")
+        filter_group.add_option("--filter-cov-w-spanning", type="float",
+                                default=DEFAULT_COV_WITH_SPANNING,
+                                dest="filter_cov_w_spanning", metavar="N",
+                                help="Filter chimeras lacking weighted "
+                                "coverage >= N when spanning reads ARE "
+                                "present [default=%default]")
         filter_group.add_option("--filter-isize-percentile", type="float",
                                 default=DEFAULT_FILTER_ISIZE_PERCENTILE,
                                 dest="filter_isize_percentile", metavar="N",
@@ -454,13 +462,15 @@ def run_chimerascan(runconfig):
     """
     main function for running the chimerascan pipeline
     """
-    logging.info("chimerascan version %s" % (__version__))
-    logging.info("------------------------------")
-    # normal run
+    # print a welcome message
+    title_string = "Running chimerascan version %s" % (__version__)
+    logging.info(title_string)
+    logging.info("-" * len(title_string))
+    # validate run configuration
     config_passed = runconfig.check_config()
     if not config_passed:
         logging.error("Invalid run configuration, aborting.")
-        sys.exit(JOB_ERROR)
+        return JOB_ERROR
     # create output dir if it does not exist
     if not os.path.exists(runconfig.output_dir):
         os.makedirs(runconfig.output_dir)
@@ -532,8 +542,8 @@ def run_chimerascan(runconfig):
                            log_file=aligned_log_file,
                            keep_unmapped=False)
         if retcode != 0:
-            logging.error("Bowtie failed with error code %d" % (retcode))    
-            sys.exit(retcode)
+            logging.error("Bowtie failed with error code %d" % (retcode))
+            return JOB_ERROR
     #
     # Sort aligned reads by position
     #
@@ -809,7 +819,8 @@ def run_chimerascan(runconfig):
         filter_chimeras(spanning_chimera_file, 
                         filtered_chimera_file,
                         index_dir=runconfig.index_dir,
-                        total_reads_threshold=runconfig.filter_total_reads,
+                        cov_wo_spanning=runconfig.filter_cov_wo_spanning,
+                        cov_w_spanning=runconfig.filter_cov_w_spanning,
                         max_isize=max_isize)
     #
     # Resolve reads mapping to multiple chimeras

@@ -17,7 +17,7 @@ def main():
     for c in Chimera.parse(open(input_file)):
         fields = [c.partner5p.tx_name, c.partner3p.tx_name,
                   '|'.join([c.partner5p.gene_name, c.partner3p.gene_name]),
-                  c.get_weighted_cov(), c.get_unique_spanning_reads()]
+                  c.get_weighted_cov(), c.get_unique_spanning_positions()]
         print '\t'.join(map(str, fields))
 
 

@@ -267,37 +267,56 @@ class Chimera(object):
 
     def get_weighted_cov(self):
         """
-        weighted coverage is average of weighted coverage of 
-        both partners in the chimera
+        weighted coverage is the number of reads supporting the
+        chimera divided by the number of alignments of the reads
+        such that multimapping reads will be assigned a fractional
+        weight
         """
-        return 0.5 * (self.partner5p.weighted_cov +
-                      self.partner3p.weighted_cov)
+        cov = 0.0  
+        qnames = set()
+        for dpair in self.encomp_read_pairs:
+            cov += 2.0 / (dpair[0].numhits + dpair[1].numhits)
+            qnames.add(dpair[0].qname)
+        for dr in self.spanning_reads:
+            if dr.qname not in qnames:
+                cov += 1.0 / dr.numhits
+        return cov
 
-    def get_total_unique_reads(self):
+    def get_num_frags(self):
+        qnames = set()
+        for pair in self.encomp_read_pairs:
+            qnames.add(pair[0].qname)
+        for dr in self.spanning_reads:
+            qnames.add(dr.qname)
+        return len(qnames)
+
+    def get_num_spanning_frags(self):
+        qnames = set()
+        for dr in self.spanning_reads:
+            qnames.add(dr.qname)
+        return len(qnames)  
+
+    def get_num_unique_positions(self):
         """
         calculates total number of unique reads alignment
         positions supporting chimera
         """
         # find all unique alignment positions and read names
         encomp_pos = set()
-        encomp_qnames = set()
+        qnames = set()
         for pair in self.encomp_read_pairs:
             encomp_pos.add((pair[0].pos, pair[1].pos))
-            encomp_qnames.add(pair[0].qname)
+            qnames.add(pair[0].qname)
         # add spanning reads
         spanning_pos = set()
         for dr in self.spanning_reads:
-            if dr.qname not in encomp_qnames:
+            if dr.qname not in qnames:
                 spanning_pos.add(dr.pos)
         return len(encomp_pos) + len(spanning_pos)
 
-    def get_unique_spanning_reads(self):
-        # find all unique alignment positions and read names
-        qnames = set()
-        for pair in self.encomp_read_pairs:
-            if pair[0].is_spanning or pair[1].is_spanning:
-                qnames.add(pair[0].qname)
-        # add spanning reads
+    def get_num_unique_spanning_positions(self):
+        pos = set()
         for dr in self.spanning_reads:
-            qnames.add(dr.qname)
-        return len(qnames)
+            pos.add(dr.pos)
+        return len(pos)
+

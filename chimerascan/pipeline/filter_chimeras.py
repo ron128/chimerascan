@@ -29,13 +29,19 @@ from chimerascan.lib.gene_to_genome import build_gene_to_genome_map, \
 from chimerascan.lib.chimera import Chimera
 from chimerascan.lib import config
 
-def filter_total_reads(c, threshold):
+def filter_weighted_cov(c, threshold_wo_spanning,
+                        threshold_w_spanning):
     """
-    filters chimeras with fewer than 'threshold' total
-    unique read alignments
+    filters chimeras with weighted coverage greater than
+    'threshold'.  chimeras with scores less than the threshold
+    can pass filter at a lower threshold when spanning reads
+    are present
     """
-    #I am using score > 3 or score >=2 + spanning > 0
-    return (c.get_total_unique_reads() >= threshold)
+    wtcov = c.get_weighted_cov()
+    if wtcov >= threshold_wo_spanning:
+        return True
+    num_spanning_pos = c.get_num_unique_spanning_positions()
+    return (wtcov >= threshold_w_spanning) and (num_spanning_pos > 0)
 
 def filter_inner_dist(c, max_isize):
     '''
@@ -65,9 +71,9 @@ def get_highest_coverage_isoforms(input_file, gene_file):
     cluster_chimera_dict = collections.defaultdict(lambda: [])
     for c in Chimera.parse(open(input_file)):
         key = (c.name,
-               c.get_unique_spanning_reads(), 
-               c.get_total_unique_reads(), 
-               c.get_weighted_cov())
+               c.get_num_unique_spanning_positions(),
+               c.get_weighted_cov(),
+               c.get_num_frags())
         # get cluster of overlapping genes
         cluster5p = tx_cluster_map[c.partner5p.tx_name]
         cluster3p = tx_cluster_map[c.partner3p.tx_name]
@@ -91,7 +97,8 @@ def get_highest_coverage_isoforms(input_file, gene_file):
 
 def filter_chimeras(input_file, output_file,
                     index_dir,
-                    total_reads_threshold,
+                    cov_wo_spanning,
+                    cov_w_spanning,
                     max_isize):
     # find highest coverage chimeras among isoforms
     gene_file = os.path.join(index_dir, config.GENE_FEATURE_FILE)
@@ -100,8 +107,9 @@ def filter_chimeras(input_file, output_file,
     num_chimeras = 0
     num_filtered_chimeras = 0
     f = open(output_file, "w")
+    logging.debug("Filtering chimeras")
     for c in Chimera.parse(open(input_file)):
-        good = filter_total_reads(c, total_reads_threshold)
+        good = filter_weighted_cov(c, cov_wo_spanning, cov_w_spanning)
         good = good and filter_inner_dist(c, max_isize)
         good = good and (c.name in kept_chimeras)
         if good:
@@ -109,8 +117,6 @@ def filter_chimeras(input_file, output_file,
             num_filtered_chimeras += 1
         num_chimeras += 1
     f.close()
-    logging.debug("\ttotal reads threshold = %d" % (total_reads_threshold))
-    logging.debug("\tmax isize = %d" % (max_isize))
     logging.debug("\tChimeras: %d" % num_chimeras)
     logging.debug("\tFiltered chimeras: %d" % num_filtered_chimeras)
     return config.JOB_SUCCESS
@@ -120,10 +126,16 @@ def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = OptionParser("usage: %prog [options] <index_dir> <in.txt> <out.txt>")
-    parser.add_option("--total-reads", type="int", default=2,
-                      dest="total_reads_threshold", metavar="N",
-                      help="Filter chimeras with less than N total "
-                      "unique supporting reads")
+    parser.add_option("--cov-wo-spanning", type="float", default=4,
+                      dest="cov_wo_spanning", metavar="N",
+                      help="Filter chimeras lacking weighted "
+                      "coverage >= N when spanning reads are NOT "
+                      "present [default=%default]")
+    parser.add_option("--cov-w-spanning", type="float", default=2,
+                      dest="cov_w_spanning", metavar="N",
+                      help="Filter chimeras lacking weighted "
+                      "coverage >= N when spanning reads ARE "
+                      "present [default=%default]")
     parser.add_option("--max-isize", type="int", default=1e6,
                       dest="max_isize", metavar="N",
                       help="Filter chimeras when inner distance "
@@ -133,7 +145,8 @@ def main():
     input_file = args[1]
     output_file = args[2]
     return filter_chimeras(input_file, output_file, index_dir,
-                           total_reads_threshold=options.total_reads_threshold,
+                           cov_wo_spanning=options.cov_wo_spanning,
+                           cov_w_spanning=options.cov_w_spanning,
                            max_isize=options.max_isize)
 
 

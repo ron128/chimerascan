@@ -2,50 +2,12 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 
 <head>
+<head>
   <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
-  <title>chimerascan</title>
+  <title>chimerascan results</title>
   <!-- <link rel="stylesheet" type="text/css" href="table_style.css"/> -->
   <!-- <script type="text/javascript" src="sortable.js"></script> -->
-  <style type="text/css">
-a img {
-	border: 0;
-}
-table.sortable {
-	border-spacing: 0;
-	border: 1px solid #000;
-	border-collapse: collapse;
-}
-table.sortable th, table.sortable td {
-	text-align: left;
-	padding: 2px 4px 2px 4px;
-	width: 100px;
-	border-style: solid;
-	border-color: #444;
-}
-table.sortable th {
-	border-width: 0px 1px 1px 1px;
-	background-color: #ccc;
-	font: 14px "Lucida Grande", Helvetica, "Arial Unicode MS", "Arial Unicode", Arial, sans-serif;	
-	font-weight: bold;
-}
-table.sortable td {
-	border-width: 0px 1px 0px 1px;
-	font: 12px "Lucida Grande", Helvetica, "Arial Unicode MS", "Arial Unicode", Arial, sans-serif;
-}
-table.sortable tr.odd td {
-	background-color: #BFEFFF;
-}
-table.sortable tr.even td {
-	#background-color: #FFFACD;
-	background-color: #ffffff;
-}
-table.sortable tr.sortbottom td {
-	border-top: 1px solid #444;
-	background-color: #ccc;
-	font-weight: bold;
-}    
-  </style>
-  <script>
+  <script type="text/javascript">
 /*
 Table sorting script  by Joost de Valk, check it out at http://www.joostdevalk.nl/code/sortable-table/.
 Based on a script from http://www.kryogenix.org/code/browser/sorttable/.
@@ -61,7 +23,7 @@ var image_path = "http://www.joostdevalk.nl/code/sortable-table/";
 var image_up = "arrow-up.gif";
 var image_down = "arrow-down.gif";
 var image_none = "arrow-none.gif";
-var europeandate = true;
+var europeandate = false;
 var alternate_row_colors = true;
 
 /* Don't change anything below this unless you know what you're doing */
@@ -139,7 +101,7 @@ function ts_resortTable(lnk, clid) {
 	// Work out a type for the column
 	if (t.rows.length <= 1) return;
 	var itm = "";
-	var i = 0;
+	var i = 1;
 	while (itm == "" && i < t.tBodies[0].rows.length) {
 		var itm = ts_getInnerText(t.tBodies[0].rows[i].cells[column]);
 		itm = trim(itm);
@@ -149,9 +111,11 @@ function ts_resortTable(lnk, clid) {
 		i++;
 	}
 	if (itm == "") return; 
+	alert(itm)
 	sortfn = ts_sort_caseinsensitive;
 	if (itm.match(/^\d\d[\/\.-][a-zA-z][a-zA-Z][a-zA-Z][\/\.-]\d\d\d\d$/)) sortfn = ts_sort_date;
 	if (itm.match(/^\d\d[\/\.-]\d\d[\/\.-]\d\d\d{2}?$/)) sortfn = ts_sort_date;
+	if (itm.match(/^-?[$\u017d]\d/)) sortfn = ts_sort_numeric;
 	if (itm.match(/^-?(\d+[,\.]?)+(E[-+][\d]+)?%?$/)) sortfn = ts_sort_numeric;
 	SORT_COLUMN_INDEX = column;
 	var firstRow = new Array();
@@ -367,27 +331,70 @@ function alternate(table) {
 			} 
 		}
 	}
-}  
+}
   </script>
+  <style type="text/css">
+a img {
+	border: 0;
+}
+table.sortable {
+	border-spacing: 0;
+	border: 1px solid #000;
+	border-collapse: collapse;
+}
+table.sortable th, table.sortable td {
+	text-align: left;
+	padding: 2px 4px 2px 4px;
+	width: 100px;
+	border-style: solid;
+	border-color: #444;
+}
+table.sortable th {
+	border-width: 0px 1px 1px 1px;
+	background-color: #ccc;
+	font: 14px "Lucida Grande", Helvetica, "Arial Unicode MS", "Arial Unicode", Arial, sans-serif;	
+	font-weight: bold;
+}
+table.sortable td {
+	border-width: 0px 1px 0px 1px;
+	font: 12px "Lucida Grande", Helvetica, "Arial Unicode MS", "Arial Unicode", Arial, sans-serif;
+}
+table.sortable tr.odd td {
+	background-color: #BFEFFF;
+}
+table.sortable tr.even td {
+	background-color: #ffffff;
+}
+table.sortable tr.sortbottom td {
+	border-top: 1px solid #444;
+	background-color: #ccc;
+	font-weight: bold;
+}    
+  </style>
 </head>
 
 <body>
 
 <table class="sortable" id="anyid" cellpadding="0" cellspacing="0">
-<tr>
-  {% for colname in colnames %}
-    <th>{{ colname }}</th>
-  {% endfor %}
-</tr>
-
+<tr>{% for colname in colnames %}<th>{{ colname }}</th>{% endfor %}</tr>
 {% for rowdata in rows %}
 <tr>
-  {% for col in rowdata %}
-    <td>{{ col }}</td>
+  {% for datatype,col in rowdata %}
+    <td>
+      {% if datatype == "genecards" %}
+        {% for gene in col %}
+          <a href="http://www.genecards.org/cgi-bin/carddisp.pl?gene={{ gene }}">{{ gene }}</a><br/>
+        {% endfor %}
+      {% elif datatype == "list" %}
+        {% for itm in col %}{{ itm }}<br/>{% endfor %}
+      {% else %}
+        {{ col }}
+      {% endif %}
+    </td>
   {% endfor %}
 </tr>
 {% endfor %}
-
 </table>
+
 </body>
 </html>
