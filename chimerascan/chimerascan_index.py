@@ -261,9 +261,9 @@ def main():
     #parser.add_option('-i', '--min-fragment-size', dest="min_fragment_size", default=0)
     #parser.add_option('-I', '--max-fragment-size', dest="max_fragment_size", default=700)    
     parser.add_option("--bowtie-dir", dest="bowtie_dir", default="",
-                      help="Path to 'bowtie-build' program (by default, "
-                      "expects the 'bowtie-build' binary to be in current " 
-                      "PATH)")
+                      help="Path to the 'bowtie' software (by default, "
+                      "expects the 'bowtie' and 'bowtie-build' "
+                      "binaries to be in current PATH)")
     options, args = parser.parse_args()
     # check command line arguments
     if len(args) < 3:

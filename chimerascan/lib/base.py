@@ -196,7 +196,6 @@ def get_aligned_read_intervals(read):
     return intervals
 
 def get_refs_from_bowtie_index(bowtie_index, split=True):
-    import subprocess
     args = ['bowtie-inspect', '-s', bowtie_index]    
     p = subprocess.Popen(args, stdout=subprocess.PIPE)
     output = p.communicate()[0]
