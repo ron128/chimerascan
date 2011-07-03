@@ -30,7 +30,7 @@ FRAG_SIZE_INDEX = "frag_size_index"
 FRAG_SIZE_INDEX_FILE = "frag_size_index.1.ebwt"
 GENE_REF_PREFIX = 'gene_'
 GENE_FEATURE_FILE = "gene_features.txt"
-#RAW_JUNCS_FILE = "known_juncs.txt"
+RAW_JUNCS_FILE = "known_juncs.txt"
 
 # chimerascan subdirectories
 LOG_DIR = "log"
