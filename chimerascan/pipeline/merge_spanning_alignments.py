@@ -99,6 +99,12 @@ def filter_spanning_reads(reads,
             continue
         # get breakpoint information
         b = tid_breakpoint_dict[r.rname]
+        # add tags to read
+        r.tags = r.tags + [("HI",i),
+                           ("IH",len(reads)),
+                           ("NH", len(reads)),
+                           (DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_GENE),
+                           (ORIENTATION_TAG_NAME, OrientationTags.NONE)]
         # determine whether this is breakpoint
         # alignment meets filtering criteria
         for chimera_name in b.chimera_names:
@@ -109,12 +115,6 @@ def filter_spanning_reads(reads,
                                           anchor_min,
                                           anchor_length,
                                           anchor_mismatches):
-                # add tags to read
-                r.tags = r.tags + [("HI",i),
-                                   ("IH",len(reads)),
-                                   ("NH", len(reads)),
-                                   (DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_GENE),
-                                   (ORIENTATION_TAG_NAME, OrientationTags.NONE)]
                 yield r,b,chimera_name
 
 def make_tid_breakpoint_dict(bamfh, breakpoint_map_file):
