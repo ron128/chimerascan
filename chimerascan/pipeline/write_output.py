@@ -82,6 +82,7 @@ def write_output(input_file, output_file, index_dir):
         txs3p = ",".join(set(c.partner3p.tx_name for c in chimeras))
         genes5p = ",".join(set(c.partner5p.gene_name for c in chimeras))
         genes3p = ",".join(set(c.partner3p.gene_name for c in chimeras))
+        names = ",".join(set(c.name for c in chimeras))
         c = get_best_coverage_chimera(chimeras)
         # get genomic positions of breakpoints
         chrom5p,strand5p,pos5p = gene_to_genome_pos(c.partner5p.tx_name, c.partner5p.end-1, tx_genome_map)
@@ -94,7 +95,8 @@ def write_output(input_file, output_file, index_dir):
                   c.get_num_frags(),
                   c.get_num_spanning_frags(),
                   c.get_num_unique_positions(),
-                  c.get_num_unique_spanning_positions()]
+                  c.get_num_unique_spanning_positions(),
+                  names]
         lines.append(fields)
         chimera_clusters += 1
     logging.debug("Clustered chimeras: %d" % (chimera_clusters))
@@ -109,7 +111,8 @@ def write_output(input_file, output_file, index_dir):
                           'multimap_weighted_cov',
                           'total_frags', 'spanning_frags',
                           'unique_alignment_positions',
-                          'unique_spanning_alignment_positions'])
+                          'unique_spanning_alignment_positions',
+                          'chimera_ids'])
     for fields in lines:
         print >>f, '\t'.join(map(str, fields))
     f.close()

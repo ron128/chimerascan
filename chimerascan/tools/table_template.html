@@ -111,7 +111,7 @@ function ts_resortTable(lnk, clid) {
 		i++;
 	}
 	if (itm == "") return; 
-	alert(itm)
+	// alert(itm)
 	sortfn = ts_sort_caseinsensitive;
 	if (itm.match(/^\d\d[\/\.-][a-zA-z][a-zA-Z][a-zA-Z][\/\.-]\d\d\d\d$/)) sortfn = ts_sort_date;
 	if (itm.match(/^\d\d[\/\.-]\d\d[\/\.-]\d\d\d{2}?$/)) sortfn = ts_sort_date;
@@ -381,9 +381,13 @@ table.sortable tr.sortbottom td {
 <tr>
   {% for datatype,col in rowdata %}
     <td>
-      {% if datatype == "genecards" %}
-        {% for gene in col %}
-          <a href="http://www.genecards.org/cgi-bin/carddisp.pl?gene={{ gene }}" target="_blank">{{ gene }}</a><br/>
+      {% if datatype == "ucsc_pos" %}
+        {% for itm in col %}
+          <a href="{{ ucsc_pos_url }}{{ itm }}" target="_blank">{{ itm }}</a><br/>
+        {% endfor %}
+      {% elif datatype == "genecards" %}
+        {% for itm in col %}
+          <a href="{{ genecards_url }}{{ itm }}" target="_blank">{{ itm }}</a><br/>
         {% endfor %}
       {% elif datatype == "list" %}
         {% for itm in col %}{{ itm }}<br/>{% endfor %}

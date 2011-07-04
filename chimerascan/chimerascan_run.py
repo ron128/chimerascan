@@ -63,7 +63,7 @@ from chimerascan.pipeline.filter_chimeras import filter_chimeras
 from chimerascan.pipeline.write_output import write_output
 
 DEFAULT_NUM_PROCESSORS = config.BASE_PROCESSORS
-DEFAULT_KEEP_TMP = False
+DEFAULT_KEEP_TMP = True
 DEFAULT_BOWTIE_PATH = ""
 DEFAULT_BOWTIE_ARGS = "--best --strata"
 DEFAULT_MULTIHITS = 100
@@ -183,7 +183,7 @@ class RunConfig(object):
     
     attrs = (("num_processors", int, DEFAULT_NUM_PROCESSORS),
              ("quals", str, DEFAULT_FASTQ_QUAL_FORMAT),
-             ("keep_tmp", parse_bool, DEFAULT_KEEP_TMP),
+             ("rm_tmp", parse_bool, DEFAULT_KEEP_TMP),
              ("bowtie_path", str, DEFAULT_BOWTIE_PATH),
              ("bowtie_args", str, DEFAULT_BOWTIE_ARGS),
              ("multihits", int, DEFAULT_MULTIHITS),
@@ -265,9 +265,9 @@ class RunConfig(object):
                           type="int", default=DEFAULT_NUM_PROCESSORS,
                           help="Number of processor cores to allocate to "
                           "chimerascan [default=%default]")
-        parser.add_option("--keep-tmp", dest="keep_tmp", action="store_true", 
+        parser.add_option("--rm-tmp", dest="rm_tmp", action="store_false", 
                           default=DEFAULT_KEEP_TMP,
-                          help="Do not delete intermediate files from run")
+                          help="Delete intermediate files after run")
         parser.add_option("--quals", dest="quals",
                           choices=FASTQ_QUAL_FORMATS, 
                           default=DEFAULT_FASTQ_QUAL_FORMAT, metavar="FMT",
@@ -858,12 +858,12 @@ def run_chimerascan(runconfig):
     #
     # Cleanup
     # 
-    if not runconfig.keep_tmp:
+    if runconfig.rm_tmp:
         logging.info("Cleaning up temporary files")
         shutil.rmtree(tmp_dir)
     #
     # Done
-    #    
+    # 
     logging.info("Finished run.")
     return JOB_SUCCESS
 

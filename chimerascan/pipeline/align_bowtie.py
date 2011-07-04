@@ -42,7 +42,6 @@ def translate_library_type(library_type):
 
 _sam2bam_script = os.path.join(os.path.dirname(__file__), "sam2bam.py")
 _fastq_trim_script = os.path.join(os.path.dirname(__file__), "fastq_merge_trim.py")
-_discordant_script = os.path.join(os.path.dirname(__file__), "find_discordant_reads.py")
 
 def align_pe(fastq_files, 
              bowtie_index,
