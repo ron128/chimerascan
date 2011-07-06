@@ -27,7 +27,6 @@ from chimerascan.bx.cluster import ClusterTree
 from chimerascan.bx.intersection import Interval, IntervalTree
 
 # local imports
-import config
 from feature import GeneFeature
 
 def get_rname_tid_map(bamfh):
@@ -35,6 +34,28 @@ def get_rname_tid_map(bamfh):
     for tid,ref in enumerate(bamfh.references):
         rname_tid_map[ref] = tid
     return rname_tid_map
+
+def build_tx_name_gene_map(genefile, rname_prefix=None):
+    rname_prefix = '' if rname_prefix is None else rname_prefix
+    tx_map = {}
+    # build gene and genome data structures for fast lookup
+    for g in GeneFeature.parse(open(genefile)):
+        tx_map[rname_prefix + g.tx_name] = g
+    return tx_map
+
+def build_tid_tx_map(bamfh, genefile, rname_prefix=None):
+    rname_tid_map = get_rname_tid_map(bamfh)
+    rname_prefix = '' if rname_prefix is None else rname_prefix
+    tid_tx_map = {}
+    # build gene and genome data structures for fast lookup
+    for g in GeneFeature.parse(open(genefile)):
+        # only use genes that are references in the sam file
+        rname = rname_prefix + g.tx_name
+        if rname not in rname_tid_map:
+            continue
+        tid = rname_tid_map[rname]
+        tid_tx_map[tid] = g
+    return tid_tx_map
 
 def build_tid_tx_maps(bamfh, genefile, rname_prefix=None):
     rname_tid_map = get_rname_tid_map(bamfh)

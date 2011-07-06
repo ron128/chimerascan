@@ -82,6 +82,26 @@ class GeneFeature(object):
                 continue
             yield GeneFeature.from_string(line)
 
+    def get_exon_interval(self, pos):
+        """
+        returns a tuple containing the exon number and start/end
+        coordinates relative to the transcript
+        """
+        exon_iter = reversed(self.exons) if self.strand == '-' else iter(self.exons)
+        exon_pos = 0
+        exon_num = 0
+        for exon_start, exon_end in exon_iter:
+            exon_size = exon_end - exon_start
+            if exon_pos + exon_size >= pos:
+                break
+            exon_pos += exon_size
+            exon_num += 1    
+        if exon_pos + exon_size < pos:
+            logging.warning("exon_pos %d + exon_size %d < pos %d - clipping to "
+                            "end of gene" % (exon_pos, exon_size, pos))
+        return exon_num, exon_pos, exon_pos + exon_size
+
+
 class BEDFeature(object):    
     __slots__ = ('chrom', 'tx_start', 'tx_end', 'name', 'score', 'strand',
                  'cds_start', 'cds_end', 'exon_count', 'block_starts', 

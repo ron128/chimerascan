@@ -1,3 +1,8 @@
+'''
+Created on Jul 6, 2011
+
+@author: mkiyer
+'''
 # From http://code.activestate.com/recipes/466302-sorting-big-files-the-python-24-way/
 ## {{{ http://code.activestate.com/recipes/466302/ (r6)
 from heapq import heapify, heappop, heappush

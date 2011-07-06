@@ -5,6 +5,9 @@ Created on Jun 3, 2011
 '''
 from base import parse_string_none
 from sam import get_clipped_interval
+from stats import hist, scoreatpercentile
+import itertools
+import operator
 
 DISCORDANT_TAG_NAME = "XC"
 class DiscordantTags(object):
@@ -31,6 +34,9 @@ def cmp_orientation(a,b):
 # constants
 MULTIMAP_BINS = (1,2,4,8,16,32,64,128)
 CHIMERA_SEP = "|"
+# amount of trimming to use to stop reads from overlapping 
+# exon boundaries and going into intronic space
+EXON_JUNCTION_TRIM_BP = 10
 
 # chimera types
 class ChimeraTypes(object):
@@ -123,8 +129,8 @@ class DiscordantRead(object):
 
 
 class ChimeraPartner(object):
-    NUM_FIELDS = 12
-    
+    NUM_FIELDS = 11
+
     def __init__(self):
         self.gene_name = None
         self.tx_name = None
@@ -135,7 +141,6 @@ class ChimeraPartner(object):
         self.exon_end_num = 0
         self.inner_dist = 0
         self.mismatches = 0
-        self.frac = 0.0
         self.multimap_hist = []
         self.weighted_cov = 0.0
     
@@ -155,16 +160,83 @@ class ChimeraPartner(object):
         p.exon_end_num = fields[6]
         p.inner_dist = int(fields[7])
         p.mismatches = int(fields[8])
-        p.frac = float(fields[9])
-        p.multimap_hist = map(int, fields[10].split(","))
-        p.weighted_cov = float(fields[11])
+        p.multimap_hist = map(int, fields[9].split(","))
+        p.weighted_cov = float(fields[10])
         return p
     
     def to_list(self):
         return [self.gene_name, self.tx_name, self.start, self.end, 
                 self.strand, self.exon_start_num, self.exon_end_num,
-                self.inner_dist, self.mismatches, self.frac, 
-                ",".join(map(str,self.multimap_hist)), self.weighted_cov]
+                self.inner_dist, self.mismatches, 
+                ','.join(map(str, self.multimap_hist)),
+                self.weighted_cov]
+
+    @staticmethod
+    def from_discordant_reads(dreads, g, 
+                              trim_bp=EXON_JUNCTION_TRIM_BP):
+        p = ChimeraPartner()
+        p.dreads = dreads
+        # fix gene names with spaces    
+        p.gene_name = '_'.join(g.gene_name.split())
+        p.tx_name = g.tx_name
+        p.strand = g.strand
+        # gather statistics from all the discordant reads that align 
+        # to this gene. these statistics will be used later to choose 
+        # the most probable chimeras
+        starts = []
+        ends = []
+        multimaps = []
+        mismatches = 0
+        num5p, num3p = 0,0
+        for r in dreads:
+            starts.append(r.pos)
+            ends.append(r.aend)
+            multimaps.append(r.numhits)
+            mismatches += r.mismatches
+            if r.orientation == OrientationTags.FIVEPRIME:
+                num5p += 1
+            elif r.orientation == OrientationTags.THREEPRIME:
+                num3p += 1
+        starts = sorted(starts)
+        ends = sorted(ends)
+        # get exons corresponding to the start/end, and trim to account for the
+        # occasional presence of unmapped "splash" around exon boundaries
+        # TODO: the correct way to account for this is to clip reads that have 
+        # mismatches to the edge of the nearest exon, accounting for any homology
+        # between genomic DNA and the transcript
+        firststart, lastend = starts[0], ends[-1]
+        trimstart = min(firststart + trim_bp, lastend)
+        trimend = max(lastend - trim_bp, trimstart + 1)
+        # translate transcript position to exon number
+        firstexon_num, firstexon_start, firstexon_end = g.get_exon_interval(trimstart)
+        lastexon_num, lastexon_start, lastexon_end = g.get_exon_interval(trimend)
+        # set start/end position of chimera partner
+        if (num5p > 0) and (num3p > 0):
+            raise ValueError("Both 5' and 3' reads found in ChimeraPartner")
+        elif num5p > 0:
+            p.start = 0
+            p.end = lastexon_end
+        else:
+            tx_length = sum(end - start for start, end in g.exons)
+            p.start = firstexon_start
+            p.end = tx_length
+        p.exon_start_num = firstexon_num
+        p.exon_end_num = lastexon_num
+        # estimate inner distance between read pairs based on the
+        # distribution of reads on this chimera.  inner distance plus
+        # twice the segment length should equal the total fragment length
+        # TODO: here, we use 95% of start/end positions to account for
+        # spuriously large fragments
+        p.inner_dist = int(scoreatpercentile(ends, 0.95) - 
+                           scoreatpercentile(starts, 0.05))
+        # total number of mismatches in all reads
+        p.mismatches = mismatches
+        # get a histogram of the multimapping profile of this chimera
+        p.multimap_hist = hist(multimaps, MULTIMAP_BINS)
+        # compute the weighted coverage (allocating equal weight to each
+        # mapping of ambiguous reads)
+        p.weighted_cov = sum((1.0/x) for x in multimaps) 
+        return p
 
 
 class Chimera(object):
@@ -178,9 +250,6 @@ class Chimera(object):
         self.name = None
         self.chimera_type = 0
         self.distance = None
-        self.num_encomp_frags = 0
-        self.num_spanning_frags = 0
-        self.read1_sense_frags = 0
         # junction information
         self.breakpoint_name = None
         self.breakpoint_homology_5p = 0
@@ -189,32 +258,59 @@ class Chimera(object):
         self.encomp_read_pairs = []
         self.spanning_reads = []       
 
+    def to_list(self):
+        fields = []
+        fields.extend(self.partner5p.to_list())
+        fields.extend(self.partner3p.to_list())
+        fields.extend([self.name, 
+                       self.chimera_type, 
+                       self.distance,
+                       self.breakpoint_name,
+                       self.breakpoint_homology_5p, 
+                       self.breakpoint_homology_3p])
+        # encompassing read pairs
+        encomp_reads = []
+        for dreads in self.encomp_read_pairs:
+            r5p = self.FIELD_DELIM.join(map(str,dreads[0].to_list()))
+            r3p = self.FIELD_DELIM.join(map(str,dreads[1].to_list()))                        
+            pair_fields = self.PAIR_DELIM.join([r5p,r3p])
+            encomp_reads.append(pair_fields)
+        fields.append(self.READ_DELIM.join(encomp_reads))
+        # spanning single reads
+        if len(self.spanning_reads) == 0:
+            fields.append("None")
+        else:
+            spanning_reads = []
+            for dread in self.spanning_reads:
+                r = self.FIELD_DELIM.join(map(str,dread.to_list()))                        
+                spanning_reads.append(r)
+            fields.append(self.READ_DELIM.join(spanning_reads))
+        return fields
+
     @staticmethod
     def from_list(fields):
         c = Chimera()
-        # chimera partner information
+        # 5' and 3' partner information
         c.partner5p = ChimeraPartner.from_list(fields[0:ChimeraPartner.NUM_FIELDS])
-        c.partner3p = ChimeraPartner.from_list(fields[ChimeraPartner.NUM_FIELDS:2*ChimeraPartner.NUM_FIELDS])
+        FIRSTCOL = ChimeraPartner.NUM_FIELDS
+        c.partner3p = ChimeraPartner.from_list(fields[FIRSTCOL:FIRSTCOL+ChimeraPartner.NUM_FIELDS])
+        FIRSTCOL = FIRSTCOL+ChimeraPartner.NUM_FIELDS
         # chimera information
-        FIRSTCOL = 2*ChimeraPartner.NUM_FIELDS
-        c.name = fields[FIRSTCOL]
+        c.name = fields[FIRSTCOL+0]
         c.chimera_type = fields[FIRSTCOL+1]
         c.distance = parse_string_none(fields[FIRSTCOL+2])
         if c.distance is not None:
             c.distance = int(c.distance)
-        c.num_encomp_frags = int(fields[FIRSTCOL+3])   
-        c.num_spanning_frags = int(fields[FIRSTCOL+4])   
-        c.read1_sense_frags = int(fields[FIRSTCOL+5])
         # breakpoint information
-        c.breakpoint_name = parse_string_none(fields[FIRSTCOL+6])
-        c.breakpoint_homology_5p = parse_string_none(fields[FIRSTCOL+7])
+        c.breakpoint_name = parse_string_none(fields[FIRSTCOL+3])
+        c.breakpoint_homology_5p = parse_string_none(fields[FIRSTCOL+4])
         if c.breakpoint_homology_5p is not None:
             c.breakpoint_homology_5p = int(c.breakpoint_homology_5p)
-        c.breakpoint_homology_3p = parse_string_none(fields[FIRSTCOL+8])
+        c.breakpoint_homology_3p = parse_string_none(fields[FIRSTCOL+5])
         if c.breakpoint_homology_3p is not None:
             c.breakpoint_homology_3p = int(c.breakpoint_homology_3p)
         # raw encompassing read information
-        encomp_reads_field = parse_string_none(fields[FIRSTCOL+9])
+        encomp_reads_field = parse_string_none(fields[FIRSTCOL+6])
         if encomp_reads_field is None:
             c.encomp_read_pairs = []
         for read_pair_fields in encomp_reads_field.split(c.READ_DELIM):
@@ -223,7 +319,7 @@ class Chimera(object):
                 dreads.append(DiscordantRead.from_list(read_fields.split(c.FIELD_DELIM)))
             c.encomp_read_pairs.append(dreads)
         # raw spanning read information
-        spanning_reads_field = parse_string_none(fields[FIRSTCOL+10])
+        spanning_reads_field = parse_string_none(fields[FIRSTCOL+7])
         if spanning_reads_field is not None:
             for read_fields in spanning_reads_field.split(c.READ_DELIM):
                 c.spanning_reads.append(DiscordantRead.from_list(read_fields.split(c.FIELD_DELIM)))
@@ -236,34 +332,6 @@ class Chimera(object):
                 continue            
             fields = line.strip().split('\t')
             yield Chimera.from_list(fields)
-
-    def to_list(self):
-        fields = []
-        fields.extend(self.partner5p.to_list())
-        fields.extend(self.partner3p.to_list())
-        fields.extend([self.name, self.chimera_type, self.distance,
-                       self.num_encomp_frags,
-                       self.num_spanning_frags,
-                       self.read1_sense_frags, 
-                       self.breakpoint_name,
-                       self.breakpoint_homology_5p, 
-                       self.breakpoint_homology_3p])
-        encomp_reads = []
-        for dreads in self.encomp_read_pairs:
-            r5p = self.FIELD_DELIM.join(map(str,dreads[0].to_list()))
-            r3p = self.FIELD_DELIM.join(map(str,dreads[1].to_list()))                        
-            pair_fields = self.PAIR_DELIM.join([r5p,r3p])
-            encomp_reads.append(pair_fields)
-        fields.append(self.READ_DELIM.join(encomp_reads))
-        spanning_reads = []
-        for dread in self.spanning_reads:
-            r = self.FIELD_DELIM.join(map(str,dread.to_list()))                        
-            spanning_reads.append(r)
-        if len(spanning_reads) == 0:
-            fields.append("None")
-        else:
-            fields.append(self.READ_DELIM.join(spanning_reads))
-        return fields
 
     def get_weighted_cov(self):
         """
@@ -320,3 +388,9 @@ class Chimera(object):
             pos.add(dr.pos)
         return len(pos)
 
+    def get_read1_sense_frags(self):
+        """
+        returns the number of fragments where read1 aligns
+        in the 'sense' direction relative to the transcript
+        """
+        return sum(int(r5p.readnum == 0) for r5p,r3p in self.encomp_read_pairs)

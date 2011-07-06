@@ -183,7 +183,7 @@ class RunConfig(object):
     
     attrs = (("num_processors", int, DEFAULT_NUM_PROCESSORS),
              ("quals", str, DEFAULT_FASTQ_QUAL_FORMAT),
-             ("rm_tmp", parse_bool, DEFAULT_KEEP_TMP),
+             ("keep_tmp", parse_bool, DEFAULT_KEEP_TMP),
              ("bowtie_path", str, DEFAULT_BOWTIE_PATH),
              ("bowtie_args", str, DEFAULT_BOWTIE_ARGS),
              ("multihits", int, DEFAULT_MULTIHITS),
@@ -265,8 +265,10 @@ class RunConfig(object):
                           type="int", default=DEFAULT_NUM_PROCESSORS,
                           help="Number of processor cores to allocate to "
                           "chimerascan [default=%default]")
-        parser.add_option("--rm-tmp", dest="rm_tmp", action="store_false", 
+        parser.add_option("--keep-tmp", dest="keep_tmp", action="store_true",
                           default=DEFAULT_KEEP_TMP,
+                          help="DO NOT delete intermediate files after run")
+        parser.add_option("--rm-tmp", dest="keep_tmp", action="store_false", 
                           help="Delete intermediate files after run")
         parser.add_option("--quals", dest="quals",
                           choices=FASTQ_QUAL_FORMATS, 
@@ -858,7 +860,7 @@ def run_chimerascan(runconfig):
     #
     # Cleanup
     # 
-    if runconfig.rm_tmp:
+    if not runconfig.keep_tmp:
         logging.info("Cleaning up temporary files")
         shutil.rmtree(tmp_dir)
     #

@@ -35,8 +35,8 @@ GENECARDS_URL = "http://www.genecards.org/cgi-bin/carddisp.pl?gene="
 UCSC_POS_URL = "http://genome.ucsc.edu/cgi-bin/hgTracks?"
 
 def get_header_row():
-    return ["5' breakpoint pos", "5' strand",
-            "3' breakpoint pos", "3' strand",
+    return ["5' genomic region", "5' strand",
+            "3' genomic region", "3' strand",
             "5' transcripts", "3' transcripts",
             "5' genes", "3' genes",
             "Type", "5' -> 3' distance",
@@ -53,9 +53,6 @@ def generate_row_data(line_iter, show_read_throughs,
     txs3p_col_num = header_fields.index("transcript_ids_3p")
     genes5p_col_num = header_fields.index("genes5p")
     genes3p_col_num = header_fields.index("genes3p")
-    special_cols = set([txs5p_col_num, txs3p_col_num,
-                        genes5p_col_num, genes3p_col_num])
-                        
     for line in line_iter:
         fields = line.strip().split('\t')
         if ((not show_read_throughs) and 
@@ -63,11 +60,11 @@ def generate_row_data(line_iter, show_read_throughs,
             continue
         newfields = []
         # 5' position (chr12:65432) and strand
-        newfields.append(("ucsc_pos", ["%s:%s" % (fields[0], fields[1])]))
-        newfields.append(("string", fields[2]))
+        newfields.append(("ucsc_pos", ["%s:%s-%s" % (fields[0], fields[1], fields[2])]))
+        newfields.append(("string", fields[3]))
         # 3' position (chr12:76543) and strand
-        newfields.append(("ucsc_pos", ["%s:%s" % (fields[3], fields[4])]))
-        newfields.append(("string", fields[5]))
+        newfields.append(("ucsc_pos", ["%s:%s-%s" % (fields[4], fields[5], fields[6])]))
+        newfields.append(("string", fields[7]))
         # transcripts
         newfields.append(("ucsc_pos", fields[txs5p_col_num].split(",")))
         newfields.append(("ucsc_pos", fields[txs3p_col_num].split(",")))

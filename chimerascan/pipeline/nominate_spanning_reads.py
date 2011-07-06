@@ -20,31 +20,28 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
-import collections
 import logging
+import os
 
 from chimerascan import pysam
 from chimerascan.lib import config
 from chimerascan.lib.sam import parse_pe_reads
-from chimerascan.lib.chimera import Chimera, DiscordantRead
-from chimerascan.lib.config import GENE_REF_PREFIX
+from chimerascan.lib.chimera import Chimera
 
 def to_fastq(qname, readnum, seq, qual):
     return "@%s/%d\n%s\n+\n%s" % (qname, readnum+1, seq, qual)
 
 def nominate_encomp_spanning_reads(chimera_file, output_fastq_file):
-    # find all reads that need to be remapped to see if they span the 
-    # breakpoint junction
+    """
+    find all encompassing reads that should to be remapped to see if they
+    span the breakpoint junction
+    """
     fqfh = open(output_fastq_file, "w")
     remap_qnames = set()
-    #breaks5p = collections.defaultdict(lambda: [])
-    #breaks3p = collections.defaultdict(lambda: [])
     for c in Chimera.parse(open(chimera_file)):
+        # find breakpoint coords of chimera
         end5p = c.partner5p.end
         start3p = c.partner3p.start
-        # keep track of all breakpoints
-        #breaks5p[GENE_REF_PREFIX + c.partner5p.tx_name].append(end5p)
-        #breaks3p[GENE_REF_PREFIX + c.partner3p.tx_name].append(start3p)
         for r5p,r3p in c.encomp_read_pairs:            
             # if 5' read overlaps breakpoint then it should be remapped
             if r5p.clipstart < end5p < r5p.clipend:
@@ -60,11 +57,6 @@ def nominate_encomp_spanning_reads(chimera_file, output_fastq_file):
                     remap_qnames.add((r3p.qname, r3p.readnum))
                     print >>fqfh, to_fastq(r3p.qname, r3p.readnum, 
                                            r3p.seq, "I" * len(r3p.seq))
-    # sort breakpoint positions within each gene
-    #for rname in breaks5p.keys():
-    #    breaks5p[rname] = sorted(breaks5p[rname])
-    #for tx_name in breaks3p.keys():
-    #    breaks3p[rname] = sorted(breaks3p[rname])
     fqfh.close()
     return config.JOB_SUCCESS
 

@@ -26,15 +26,12 @@ import itertools
 import operator
 
 from chimerascan import pysam
-from chimerascan.bx.intersection import Interval, IntervalTree
 
 from chimerascan.lib import config
 from chimerascan.lib.chimera import Chimera, \
     DiscordantTags, DISCORDANT_TAG_NAME, \
     OrientationTags, ORIENTATION_TAG_NAME, \
-    DiscordantRead, ChimeraPartner, ChimeraTypes, \
-    MULTIMAP_BINS
-from chimerascan.lib.stats import scoreatpercentile, hist
+    DiscordantRead, ChimeraTypes, ChimeraPartner
 from chimerascan.lib.gene_to_genome import build_tid_tx_maps
 
 def parse_pairs(bamfh):
@@ -54,8 +51,8 @@ def parse_gene_chimeric_reads(bamfh):
         #
         # TODO:
         # for now we are only going to deal with gene-gene
-        # chimeras and leave the other cryptic chimeras for
-        # study at a later time
+        # chimeras and leave other chimeras for study at a 
+        # later time
         #
         dr1 = r1.opt(DISCORDANT_TAG_NAME)
         dr2 = r2.opt(DISCORDANT_TAG_NAME)
@@ -80,85 +77,16 @@ def parse_gene_chimeric_reads(bamfh):
         rname1,rname2 = key
         yield rname1, rname2, pairs
 
-def get_exon_interval(g, pos):
-    exon_iter = reversed(g.exons) if g.strand == '-' else iter(g.exons)
-    exon_pos = 0
-    exon_num = 0
-    for exon_start, exon_end in exon_iter:
-        exon_size = exon_end - exon_start
-        if exon_pos + exon_size >= pos:
-            break
-        exon_pos += exon_size
-        exon_num += 1    
-    if exon_pos + exon_size < pos:
-        logging.warning("exon_pos %d + exon_size %d < pos %d - clipping to "
-                        "end of gene" % (exon_pos, exon_size, pos))
-    return exon_num, exon_pos, exon_pos + exon_size
-
-def build_chimera_partner(dreads, g, trim_bp, is_5prime):
-    p = ChimeraPartner()
-    # fix gene names with spaces    
-    p.gene_name = '_'.join(g.gene_name.split())
-    p.tx_name = g.tx_name
-    p.strand = g.strand
-    # gather statistics from all the discordant reads that align to this
-    # gene. these statistics will be used later to choose the most probable
-    # chimeras
-    starts = []
-    ends = []
-    multimaps = []
-    p.mismatches = 0
-    for r in dreads:
-        starts.append(r.pos)
-        ends.append(r.aend)
-        multimaps.append(r.numhits)
-        p.mismatches += r.mismatches
-    starts = sorted(starts)
-    ends = sorted(ends)
-    # get a histogram of the multimapping profile of this chimera
-    p.multimap_hist = hist(multimaps, MULTIMAP_BINS)
-    # compute the weighted coverage (allocating equal weight to each
-    # mapping of ambiguous reads)
-    p.weighted_cov = sum((1.0/x) for x in multimaps) 
-    # estimate inner distance between read pairs based on the
-    # distribution of reads on this chimera.  inner distance plus
-    # twice the segment length should equal the total fragment length
-    # TODO: here, we use 95% of start/end positions to account for
-    # spuriously large fragments
-    p.inner_dist = int(scoreatpercentile(ends, 0.95) - scoreatpercentile(starts, 0.05))
-    # get exons corresponding to the start/end, and trim to account for the
-    # occasional presence of unmapped "splash" around exon boundaries
-    # TODO: the correct way to account for this is to clip reads that have 
-    # mismatches to the edge of the nearest exon, accounting for any homology
-    # between genomic DNA and the transcript
-    firststart, lastend = starts[0], ends[-1]
-    trimstart = min(firststart + trim_bp, lastend)
-    trimend = max(lastend - trim_bp, trimstart + 1)
-    # translate transcript position to exon number
-    firstexon_num, firstexon_start, firstexon_end = get_exon_interval(g, trimstart)
-    lastexon_num, lastexon_start, lastexon_end = get_exon_interval(g, trimend)
-    # set start/end position of chimera partner
-    if is_5prime:
-        p.start = 0
-        p.end = lastexon_end
-    else:
-        tx_length = sum(end - start for start, end in g.exons)
-        p.start = firstexon_start
-        p.end = tx_length
-    p.exon_start_num = firstexon_num
-    p.exon_end_num = lastexon_num
-    return p
-
 def get_chimera_type(fiveprime_gene, threeprime_gene, gene_trees):
     """
     return tuple containing ChimeraType and distance 
     between 5' and 3' genes 
     """
     # get gene information
-    chrom1, start5p, end5p, strand1 = fiveprime_gene.chrom, fiveprime_gene.tx_start, fiveprime_gene.tx_end, fiveprime_gene.strand
-    chrom2, start3p, end3p, strand2 = threeprime_gene.chrom, threeprime_gene.tx_start, threeprime_gene.tx_end, threeprime_gene.strand
+    chrom5p, start5p, end5p, strand1 = fiveprime_gene.chrom, fiveprime_gene.tx_start, fiveprime_gene.tx_end, fiveprime_gene.strand
+    chrom3p, start3p, end3p, strand2 = threeprime_gene.chrom, threeprime_gene.tx_start, threeprime_gene.tx_end, threeprime_gene.strand
     # interchromosomal
-    if chrom1 != chrom2:
+    if chrom5p != chrom3p:
         return ChimeraTypes.INTERCHROMOSOMAL, None
     # orientation
     same_strand = strand1 == strand2
@@ -181,22 +109,22 @@ def get_chimera_type(fiveprime_gene, threeprime_gene, gene_trees):
     # overlap.  first calculate distance (minimum distance between genes)
     if start5p <= start3p:
         distance = start3p - end5p
-        between_interval = Interval(end5p, start3p)
+        between_start,between_end = end5p,start3p
     else:
         distance = end3p - start5p
-        between_interval = Interval(end3p, start5p)
+        between_start,between_end = end3p,start5p
     # check whether there are genes intervening between the
     # chimera candidates
     genes_between = []
     genes_between_same_strand = []
-    for hit in gene_trees[chrom1].find(between_interval.start,
-                                       between_interval.end):
-        if (hit.start > between_interval.start and
-            hit.end < between_interval.end):             
+    for hit in gene_trees[chrom5p].find(between_start,
+                                       between_end):
+        if (hit.start > between_start and
+            hit.end < between_end):             
             if hit.strand == strand1:
                 genes_between_same_strand.append(hit)
             genes_between.append(hit)
-
+            
     if same_strand:
         if len(genes_between_same_strand) == 0:
             return ChimeraTypes.READTHROUGH, distance
@@ -221,32 +149,25 @@ def get_chimera_type(fiveprime_gene, threeprime_gene, gene_trees):
             return ChimeraTypes.INTRA_COMPLEX, distance    
     return ChimeraTypes.UNKNOWN, distance
 
-
-def read_pairs_to_chimera(chimera_name, tid5p, tid3p, readpairs, tid_tx_map, 
-                          genome_tx_trees, trim_bp):
-    # create chimera object
-    chimera = Chimera()
-    # build 5' and 3' partner objects
+def read_pairs_to_chimera(chimera_name, tid5p, tid3p, readpairs, 
+                          tid_tx_map, genome_tx_trees, trim_bp):
+    # get gene information
     tx5p = tid_tx_map[tid5p]
-    tx3p = tid_tx_map[tid3p]    
-    iter5p = itertools.imap(operator.itemgetter(0), readpairs)
-    iter3p = itertools.imap(operator.itemgetter(1), readpairs)
-    chimera.partner5p = build_chimera_partner(iter5p, tx5p, trim_bp, is_5prime=True)
-    chimera.partner3p = build_chimera_partner(iter3p, tx3p, trim_bp, is_5prime=False)
+    tx3p = tid_tx_map[tid3p]
     # categorize chimera type
     chimera_type, distance = get_chimera_type(tx5p, tx3p, genome_tx_trees)
-    chimera.chimera_type = chimera_type
-    chimera.distance = distance
-    # count number of times read1 is 5' read
-    chimera.read1_sense_frags = sum(int(r5p.readnum == 0)
-                                    for r5p,r3p in readpairs)
-    # number of reads supporting chimera
-    chimera.num_encomp_frags = len(readpairs)
-    # save encompassing information
-    chimera.encomp_read_pairs = readpairs
-    # name this chimera
-    chimera.name = chimera_name
-    return chimera
+    # create chimera object
+    c = Chimera()
+    iter5p = itertools.imap(operator.itemgetter(0), readpairs)
+    iter3p = itertools.imap(operator.itemgetter(1), readpairs)
+    c.partner5p = ChimeraPartner.from_discordant_reads(iter5p, tx5p, trim_bp)
+    c.partner3p = ChimeraPartner.from_discordant_reads(iter3p, tx3p, trim_bp)
+    c.name = chimera_name
+    c.chimera_type = chimera_type
+    c.distance = distance
+    # raw reads
+    c.encomp_read_pairs = readpairs
+    return c
 
 def nominate_chimeras(index_dir, input_bam_file, output_file, trim_bp):
     logging.debug("Reading gene information")
@@ -260,8 +181,8 @@ def nominate_chimeras(index_dir, input_bam_file, output_file, trim_bp):
     outfh = open(output_file, "w")
     logging.debug("Parsing discordant reads")
     for tid5p,tid3p,readpairs in parse_gene_chimeric_reads(bamfh):
-        c = read_pairs_to_chimera("C%07d" % (chimera_num),
-                                  tid5p, tid3p, readpairs, tid_tx_map,
+        c = read_pairs_to_chimera("C%07d" % (chimera_num), tid5p, tid3p, 
+                                  readpairs, tid_tx_map,
                                   genome_tx_trees, trim_bp)
         fields = c.to_list()
         chimera_num += 1

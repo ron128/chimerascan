@@ -78,33 +78,48 @@ def write_output(input_file, output_file, index_dir):
     for key,chimeras in get_chimera_groups(input_file, gene_file):
         #cluster5p,cluster3p,coord5p,coord3p = key
         #cluster5p,cluster3p = key
-        txs5p = ",".join(set(c.partner5p.tx_name for c in chimeras))
-        txs3p = ",".join(set(c.partner3p.tx_name for c in chimeras))
-        genes5p = ",".join(set(c.partner5p.gene_name for c in chimeras))
-        genes3p = ",".join(set(c.partner3p.gene_name for c in chimeras))
-        names = ",".join(set(c.name for c in chimeras))
+        txs5p = set()
+        txs3p = set()
+        genes5p = set()
+        genes3p = set()
+        names = set()
+        for c in chimeras:
+            txs5p.add("%s:%d-%d" % (c.partner5p.tx_name, c.partner5p.start, c.partner5p.end-1))
+            txs3p.add("%s:%d-%d" % (c.partner3p.tx_name, c.partner3p.start, c.partner3p.end-1))
+            genes5p.add(c.partner5p.gene_name)
+            genes3p.add(c.partner3p.gene_name)
+            names.add(c.name)
         c = get_best_coverage_chimera(chimeras)
-        # get genomic positions of breakpoints
-        chrom5p,strand5p,pos5p = gene_to_genome_pos(c.partner5p.tx_name, c.partner5p.end-1, tx_genome_map)
-        chrom3p,strand3p,pos3p = gene_to_genome_pos(c.partner3p.tx_name, c.partner3p.start, tx_genome_map)
-        fields = [chrom5p, pos5p, "+" if (strand5p == 0) else "-",
-                  chrom3p, pos3p, "+" if (strand3p == 0) else "-",
-                  txs5p, txs3p, genes5p, genes3p,
+        # get genomic positions of chimera
+        chrom5p,strand5p,start5p = gene_to_genome_pos(c.partner5p.tx_name, c.partner5p.start, tx_genome_map)
+        chrom5p,strand5p,end5p = gene_to_genome_pos(c.partner5p.tx_name, c.partner5p.end-1, tx_genome_map)
+        if strand5p == 1:
+            start5p,end5p = end5p,start5p
+        chrom3p,strand3p,start3p = gene_to_genome_pos(c.partner3p.tx_name, c.partner3p.start, tx_genome_map)
+        chrom3p,strand3p,end3p = gene_to_genome_pos(c.partner3p.tx_name, c.partner3p.end-1, tx_genome_map)
+        if strand3p == 1:
+            start3p,end3p = end3p,start3p
+        fields = [chrom5p, start5p, end5p, "+" if (strand5p == 0) else "-",
+                  chrom3p, start3p, end3p, "+" if (strand3p == 0) else "-",
+                  ','.join(txs5p),
+                  ','.join(txs3p),
+                  ','.join(genes5p),
+                  ','.join(genes3p),
                   c.chimera_type, c.distance,
                   c.get_weighted_cov(),
                   c.get_num_frags(),
                   c.get_num_spanning_frags(),
                   c.get_num_unique_positions(),
                   c.get_num_unique_spanning_positions(),
-                  names]
+                  ','.join(names)]
         lines.append(fields)
         chimera_clusters += 1
     logging.debug("Clustered chimeras: %d" % (chimera_clusters))
     # sort
     lines = sorted(lines, key=operator.itemgetter(16, 12, 13), reverse=True)    
     f = open(output_file, "w")
-    print >>f, '\t'.join(['#chrom5p', 'breakpoint_pos_5p', 'strand5p',
-                          'chrom3p', 'breakpoint_pos_3p', 'strand3p',
+    print >>f, '\t'.join(['#chrom5p', 'start5p', 'end5p', 'strand5p',
+                          'chrom3p', 'start3p', 'end3p', 'strand3p',
                           'transcript_ids_5p', 'transcript_ids_3p',
                           'genes5p', 'genes3p',
                           'type', 'distance',

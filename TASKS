@@ -1,0 +1,4 @@
+
+1) Resolve multimapping reads using full chimera information
+
+2) Include all the reads in the main output, so that a single BAM file contains alignment results for all reads
