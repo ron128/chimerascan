@@ -101,11 +101,27 @@ def get_highest_coverage_isoforms(input_file, gene_file):
         kept_chimeras.update(stats_dict[sorted_keys[0]])
     return kept_chimeras
 
+def read_false_pos_file(filename):
+    false_pos_chimeras = set()
+    for line in open(filename):
+        fields = line.strip().split("\t")
+        tx_name_5p, end5p, tx_name_3p, start3p = fields
+        end5p = int(end5p)
+        start3p = int(start3p)
+        false_pos_chimeras.add((tx_name_5p, end5p, tx_name_3p, start3p))
+    return false_pos_chimeras
+
 def filter_chimeras(input_file, output_file,
                     index_dir,
                     cov_wo_spanning,
                     cov_w_spanning,
-                    max_isize):
+                    max_isize,
+                    false_pos_file):
+    if (false_pos_file is not None) and (false_pos_file is not ""):
+        logging.debug("Parsing false positive chimeras")
+        false_pos_pairs = read_false_pos_file(false_pos_file)
+    else:
+        false_pos_pairs = set()
     # filter chimeras
     num_chimeras = 0
     num_filtered_chimeras = 0
@@ -118,6 +134,9 @@ def filter_chimeras(input_file, output_file,
     for c in Chimera.parse(open(input_file)):
         good = filter_weighted_cov(c, cov_wo_spanning, cov_w_spanning)
         good = good and filter_inner_dist(c, max_isize)
+        false_pos_key = (c.partner5p.tx_name, c.partner5p.end, 
+                         c.partner3p.tx_name, c.partner3p.start)
+        good = good and (false_pos_key not in false_pos_pairs)
         if good:
             print >>f, '\t'.join(map(str, c.to_list()))
             num_filtered_chimeras += 1
@@ -159,6 +178,10 @@ def main():
                       dest="max_isize", metavar="N",
                       help="Filter chimeras when inner distance "
                       "is larger than N bases [default=%default]")
+    parser.add_option("--false-pos", dest="false_pos_file",
+                      default=None, 
+                      help="File containing known false positive "
+                      "transcript pairs to subtract from output")
     options, args = parser.parse_args()
     index_dir = args[0]
     input_file = args[1]
@@ -166,7 +189,8 @@ def main():
     return filter_chimeras(input_file, output_file, index_dir,
                            cov_wo_spanning=options.cov_wo_spanning,
                            cov_w_spanning=options.cov_w_spanning,
-                           max_isize=options.max_isize)
+                           max_isize=options.max_isize,
+                           false_pos_file=options.false_pos_file)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,3 @@
-
-1) Resolve multimapping reads using full chimera information
-
-2) Include all the reads in the main output, so that a single BAM file contains alignment results for all reads
+1) Memory requirement is high during merge_spanning_reads script
+2) Resolve multimapping reads using full chimera information
+3) Include all the reads in the main output, so that a single BAM file contains alignment results for all reads

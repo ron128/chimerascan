@@ -202,7 +202,8 @@ class RunConfig(object):
              ("anchor_mismatches", int, DEFAULT_ANCHOR_MISMATCHES),
              ("filter_cov_wo_spanning", float, DEFAULT_COV_WITHOUT_SPANNING),
              ("filter_cov_w_spanning", float, DEFAULT_COV_WITH_SPANNING),
-             ("filter_isize_percentile", float, DEFAULT_FILTER_ISIZE_PERCENTILE))
+             ("filter_isize_percentile", float, DEFAULT_FILTER_ISIZE_PERCENTILE),
+             ("filter_false_pos_file", float, ""))
 
     def __init__(self):
         self.output_dir = None
@@ -376,6 +377,10 @@ class RunConfig(object):
                                 help="Filter chimeras when putative insert "
                                 "size is larger than the Nth percentile "
                                 "of the distribution [default=%default]")
+        filter_group.add_option("--filter-false-pos", default="",
+                                dest="filter_false_pos_file",
+                                help="File containing known false positive "
+                                "chimeric transcript pairs to filter out")
         parser.add_option_group(filter_group)
         return parser        
 
@@ -840,7 +845,8 @@ def run_chimerascan(runconfig):
                         index_dir=runconfig.index_dir,
                         cov_wo_spanning=runconfig.filter_cov_wo_spanning,
                         cov_w_spanning=runconfig.filter_cov_w_spanning,
-                        max_isize=max_isize)
+                        max_isize=max_isize,
+                        false_pos_file=runconfig.filter_false_pos_file)
     #
     # Resolve reads mapping to multiple chimeras
     # TODO: output looks good without this, so keep as a work in progress
@@ -860,9 +866,9 @@ def run_chimerascan(runconfig):
     #
     # Cleanup
     # 
-    if not runconfig.keep_tmp:
-        logging.info("Cleaning up temporary files")
-        shutil.rmtree(tmp_dir)
+    #if not runconfig.keep_tmp:
+    #    logging.info("Cleaning up temporary files")
+    #    shutil.rmtree(tmp_dir)
     #
     # Done
     # 
