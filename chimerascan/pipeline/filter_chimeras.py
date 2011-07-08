@@ -30,19 +30,14 @@ from chimerascan.lib.chimera import Chimera
 from chimerascan.lib import config
 from chimerascan.lib.base import make_temp
 
-def filter_weighted_cov(c, threshold_wo_spanning,
-                        threshold_w_spanning):
+def filter_weighted_frags(c, threshold):
     """
     filters chimeras with weighted coverage greater than
     'threshold'.  chimeras with scores less than the threshold
     can pass filter at a lower threshold when spanning reads
     are present
     """
-    wtcov = c.get_weighted_cov()
-    if wtcov >= threshold_wo_spanning:
-        return True
-    num_spanning_pos = c.get_num_unique_spanning_positions()
-    return (wtcov >= threshold_w_spanning) and (num_spanning_pos > 0)
+    return c.get_weighted_unique_frags() >= threshold
 
 def filter_inner_dist(c, max_isize):
     '''
@@ -113,8 +108,7 @@ def read_false_pos_file(filename):
 
 def filter_chimeras(input_file, output_file,
                     index_dir,
-                    cov_wo_spanning,
-                    cov_w_spanning,
+                    weighted_unique_frags,
                     max_isize,
                     false_pos_file):
     if (false_pos_file is not None) and (false_pos_file is not ""):
@@ -128,11 +122,11 @@ def filter_chimeras(input_file, output_file,
     tmp_file = make_temp(os.path.dirname(output_file), suffix=".txt")
     f = open(tmp_file, "w")
     logging.debug("Filtering chimeras")
-    logging.debug("\tcoverage without spanning reads: %f" % (cov_wo_spanning))
-    logging.debug("\tcoverage with spanning reads: %f" % (cov_w_spanning))
+    logging.debug("\tweighted unique fragments: %f" % (weighted_unique_frags))
     logging.debug("\tmax insert size allowed: %d" % (max_isize))
+    logging.debug("\tfalse positive chimeras file: %s" % (false_pos_file))
     for c in Chimera.parse(open(input_file)):
-        good = filter_weighted_cov(c, cov_wo_spanning, cov_w_spanning)
+        good = filter_weighted_frags(c, weighted_unique_frags)
         good = good and filter_inner_dist(c, max_isize)
         false_pos_key = (c.partner5p.tx_name, c.partner5p.end, 
                          c.partner3p.tx_name, c.partner3p.start)
@@ -142,8 +136,10 @@ def filter_chimeras(input_file, output_file,
             num_filtered_chimeras += 1
         num_chimeras += 1
     f.close()
-    logging.debug("\tChimeras: %d" % num_chimeras)
-    logging.debug("\tFiltered chimeras: %d" % num_filtered_chimeras)
+    logging.debug("Total chimeras: %d" % num_chimeras)
+    logging.debug("Filtered chimeras: %d" % num_filtered_chimeras)
+    # cleanup memory for false positive chimeras
+    del false_pos_pairs
     # find highest coverage chimeras among isoforms
     gene_file = os.path.join(index_dir, config.GENE_FEATURE_FILE)
     kept_chimeras = get_highest_coverage_isoforms(tmp_file, gene_file)
@@ -164,16 +160,11 @@ def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = OptionParser("usage: %prog [options] <index_dir> <in.txt> <out.txt>")
-    parser.add_option("--cov-wo-spanning", type="float", default=4,
-                      dest="cov_wo_spanning", metavar="N",
-                      help="Filter chimeras lacking weighted "
-                      "coverage >= N when spanning reads are NOT "
-                      "present [default=%default]")
-    parser.add_option("--cov-w-spanning", type="float", default=2,
-                      dest="cov_w_spanning", metavar="N",
-                      help="Filter chimeras lacking weighted "
-                      "coverage >= N when spanning reads ARE "
-                      "present [default=%default]")
+    parser.add_option("--unique-frags", type="float", default=3.0,
+                      dest="weighted_unique_frags", metavar="N",
+                      help="Filter chimeras with less than N unique "
+                      "aligned fragments (multimapping fragments are "
+                      "assigned fractional weights) [default=%default]")
     parser.add_option("--max-isize", type="int", default=1e6,
                       dest="max_isize", metavar="N",
                       help="Filter chimeras when inner distance "
@@ -187,8 +178,7 @@ def main():
     input_file = args[1]
     output_file = args[2]
     return filter_chimeras(input_file, output_file, index_dir,
-                           cov_wo_spanning=options.cov_wo_spanning,
-                           cov_w_spanning=options.cov_w_spanning,
+                           weighted_unique_frags=options.weighted_unique_frags,
                            max_isize=options.max_isize,
                            false_pos_file=options.false_pos_file)
 

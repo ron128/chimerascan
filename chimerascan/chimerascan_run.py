@@ -82,8 +82,7 @@ DEFAULT_ANCHOR_MIN = 4
 DEFAULT_ANCHOR_LENGTH = 8
 DEFAULT_ANCHOR_MISMATCHES = 0
 DEFAULT_FILTER_ISIZE_PERCENTILE = 99.0
-DEFAULT_COV_WITHOUT_SPANNING = 3
-DEFAULT_COV_WITH_SPANNING = 2
+DEFAULT_FILTER_UNIQUE_FRAGS = 3.0
 NUM_POSITIONAL_ARGS = 4
 
 def check_fastq_files(parser, fastq_files, segment_length, trim5, trim3):
@@ -200,8 +199,7 @@ class RunConfig(object):
              ("anchor_min", int, DEFAULT_ANCHOR_MIN),
              ("anchor_length", int, DEFAULT_ANCHOR_LENGTH),
              ("anchor_mismatches", int, DEFAULT_ANCHOR_MISMATCHES),
-             ("filter_cov_wo_spanning", float, DEFAULT_COV_WITHOUT_SPANNING),
-             ("filter_cov_w_spanning", float, DEFAULT_COV_WITH_SPANNING),
+             ("filter_unique_frags", float, DEFAULT_FILTER_UNIQUE_FRAGS),
              ("filter_isize_percentile", float, DEFAULT_FILTER_ISIZE_PERCENTILE),
              ("filter_false_pos_file", float, ""))
 
@@ -359,18 +357,12 @@ class RunConfig(object):
                                 metavar="N",
                                 help="Number of mismatches allowed within anchor "
                                 "region [default=%default]")
-        filter_group.add_option("--filter-cov-wo-spanning", type="float",
-                                default=DEFAULT_COV_WITHOUT_SPANNING,
-                                dest="filter_cov_wo_spanning", metavar="N",
-                                help="Filter chimeras lacking weighted "
-                                "coverage >= N when spanning reads are NOT "
-                                "present [default=%default]")
-        filter_group.add_option("--filter-cov-w-spanning", type="float",
-                                default=DEFAULT_COV_WITH_SPANNING,
-                                dest="filter_cov_w_spanning", metavar="N",
-                                help="Filter chimeras lacking weighted "
-                                "coverage >= N when spanning reads ARE "
-                                "present [default=%default]")
+        filter_group.add_option("--filter-unique-frags", type="float",
+                                default=DEFAULT_FILTER_UNIQUE_FRAGS,
+                                dest="filter_unique_frags", metavar="N",
+                                help="Filter chimeras with less than N unique "
+                                "aligned fragments (multimapping fragments are "
+                                "assigned fractional weights) [default=%default]")
         filter_group.add_option("--filter-isize-percentile", type="float",
                                 default=DEFAULT_FILTER_ISIZE_PERCENTILE,
                                 dest="filter_isize_percentile", metavar="N",
@@ -843,8 +835,7 @@ def run_chimerascan(runconfig):
         filter_chimeras(spanning_chimera_file, 
                         filtered_chimera_file,
                         index_dir=runconfig.index_dir,
-                        cov_wo_spanning=runconfig.filter_cov_wo_spanning,
-                        cov_w_spanning=runconfig.filter_cov_w_spanning,
+                        weighted_unique_frags=runconfig.filter_unique_frags,
                         max_isize=max_isize,
                         false_pos_file=runconfig.filter_false_pos_file)
     #

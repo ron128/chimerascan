@@ -6,8 +6,7 @@ Created on Jun 3, 2011
 from base import parse_string_none
 from sam import get_clipped_interval
 from stats import hist, scoreatpercentile
-import itertools
-import operator
+import collections
 
 DISCORDANT_TAG_NAME = "XC"
 class DiscordantTags(object):
@@ -350,6 +349,36 @@ class Chimera(object):
                 cov += 1.0 / dr.numhits
         return cov
 
+    def get_weighted_unique_frags(self):
+        """
+        weighted coverage is the number of unique alignment positions 
+        supporting the chimera divided by the number of alignments 
+        of the reads such that multimapping reads will be assigned 
+        a fractional weight
+        """
+        encomp_pos_dict = collections.defaultdict(lambda: 1e6)
+        qnames = set()
+        # add encompassing reads
+        for pair in self.encomp_read_pairs:
+            key = (pair[0].pos, pair[1].pos)
+            weighted_numhits = (pair[0].numhits + pair[1].numhits)/2.0
+            encomp_pos_dict[key] = min(encomp_pos_dict[key], weighted_numhits)
+            qnames.add(pair[0].qname)
+        # add spanning reads
+        # TODO: we don't have a way to compute the "true" number of multimapping
+        # hits for spanning reads, since breakpoints may be almost the same but
+        # have slightly different sequences.  the best thing to do would be to
+        # translate spanning reads to their relative position on the transcript
+        # and then keep track of unique positions in transcript space
+        spanning_pos_set = set()
+        for dr in self.spanning_reads:
+            if dr.qname not in qnames:
+                spanning_pos_set.add(dr.pos)
+        # compute weighted unique frags
+        wtfrags = sum(1.0/numhits for numhits in encomp_pos_dict.itervalues())
+        wtfrags += len(spanning_pos_set)
+        return wtfrags
+
     def get_num_frags(self):
         qnames = set()
         for pair in self.encomp_read_pairs:
@@ -366,7 +395,7 @@ class Chimera(object):
 
     def get_num_unique_positions(self):
         """
-        calculates total number of unique reads alignment
+        calculates total number of unique read alignment
         positions supporting chimera
         """
         # find all unique alignment positions and read names
