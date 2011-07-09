@@ -83,6 +83,7 @@ DEFAULT_ANCHOR_LENGTH = 8
 DEFAULT_ANCHOR_MISMATCHES = 0
 DEFAULT_FILTER_ISIZE_PERCENTILE = 99.0
 DEFAULT_FILTER_UNIQUE_FRAGS = 3.0
+DEFAULT_FILTER_ISOFORM_FRACTION = 0.10
 NUM_POSITIONAL_ARGS = 4
 
 def check_fastq_files(parser, fastq_files, segment_length, trim5, trim3):
@@ -201,6 +202,7 @@ class RunConfig(object):
              ("anchor_mismatches", int, DEFAULT_ANCHOR_MISMATCHES),
              ("filter_unique_frags", float, DEFAULT_FILTER_UNIQUE_FRAGS),
              ("filter_isize_percentile", float, DEFAULT_FILTER_ISIZE_PERCENTILE),
+             ("filter_isoform_fraction", float, DEFAULT_FILTER_ISOFORM_FRACTION),
              ("filter_false_pos_file", float, ""))
 
     def __init__(self):
@@ -369,6 +371,11 @@ class RunConfig(object):
                                 help="Filter chimeras when putative insert "
                                 "size is larger than the Nth percentile "
                                 "of the distribution [default=%default]")
+        filter_group.add_option("--filter-isoform-fraction", type="float", 
+                                default=DEFAULT_FILTER_ISOFORM_FRACTION, metavar="X",
+                                help="Filter chimeras with expression ratio "
+                                " less than X (0.0-1.0) relative to the wild-type "
+                                "5' transcript level [default=%default]")
         filter_group.add_option("--filter-false-pos", default="",
                                 dest="filter_false_pos_file",
                                 help="File containing known false positive "
@@ -832,11 +839,15 @@ def run_chimerascan(runconfig):
         logging.info(msg)
         # get insert size at prob    
         max_isize = isize_dist.isize_at_percentile(runconfig.filter_isize_percentile)
+        median_isize = isize_dist.isize_at_percentile(50.0)
         filter_chimeras(spanning_chimera_file, 
                         filtered_chimera_file,
                         index_dir=runconfig.index_dir,
+                        bam_file=sorted_aligned_bam_file,
                         weighted_unique_frags=runconfig.filter_unique_frags,
+                        median_isize=median_isize,
                         max_isize=max_isize,
+                        isoform_fraction=runconfig.filter_isoform_fraction,
                         false_pos_file=runconfig.filter_false_pos_file)
     #
     # Resolve reads mapping to multiple chimeras

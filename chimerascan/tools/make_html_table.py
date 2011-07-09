@@ -54,6 +54,7 @@ def generate_row_data(line_iter, show_read_throughs,
     txs3p_col_num = header_fields.index("transcript_ids_3p")
     genes5p_col_num = header_fields.index("genes5p")
     genes3p_col_num = header_fields.index("genes3p")
+    spanning_reads_col_num = header_fields.index("breakpoint_spanning_reads")
     for line in line_iter:
         fields = line.strip().split('\t')
         if ((not show_read_throughs) and 
@@ -73,9 +74,9 @@ def generate_row_data(line_iter, show_read_throughs,
         newfields.append(("genecards", fields[genes5p_col_num].split(",")))
         newfields.append(("genecards", fields[genes3p_col_num].split(",")))
         # all but last column not modified
-        for i in xrange(genes3p_col_num+1, len(fields)-1):
+        for i in xrange(genes3p_col_num+1, spanning_reads_col_num):
             newfields.append(("string", fields[i]))
-        # last column is a list
+        # chimera ids
         newfields.append(("list", fields[-1].split(",")))
         yield newfields
 

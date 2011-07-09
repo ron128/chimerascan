@@ -99,6 +99,14 @@ def write_output(input_file, output_file, index_dir):
         chrom3p,strand3p,end3p = gene_to_genome_pos(c.partner3p.tx_name, c.partner3p.end-1, tx_genome_map)
         if strand3p == 1:
             start3p,end3p = end3p,start3p
+        # get breakpoint spanning sequences
+        spanning_seq_lines = []
+        spanning_pos_set = set()
+        for dr in c.spanning_reads:
+            if dr.pos in spanning_pos_set:
+                continue
+            spanning_pos_set.add(dr.pos)
+            spanning_seq_lines.extend([">%s/%d" % (dr.qname, dr.readnum+1), dr.seq])
         fields = [chrom5p, start5p, end5p, "+" if (strand5p == 0) else "-",
                   chrom3p, start3p, end3p, "+" if (strand3p == 0) else "-",
                   ','.join(txs5p),
@@ -111,6 +119,7 @@ def write_output(input_file, output_file, index_dir):
                   c.get_num_spanning_frags(),
                   c.get_num_unique_positions(),
                   c.get_num_unique_spanning_positions(),
+                  ','.join(spanning_seq_lines),
                   ','.join(names)]
         lines.append(fields)
         chimera_clusters += 1
@@ -127,6 +136,7 @@ def write_output(input_file, output_file, index_dir):
                           'total_frags', 'spanning_frags',
                           'unique_alignment_positions',
                           'unique_spanning_alignment_positions',
+                          'breakpoint_spanning_reads',
                           'chimera_ids'])
     for fields in lines:
         print >>f, '\t'.join(map(str, fields))
