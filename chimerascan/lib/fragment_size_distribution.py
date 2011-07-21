@@ -22,19 +22,19 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 import array
 import logging
-import subprocess
-import sys
+import random
 
-from chimerascan.lib.sam import parse_pe_reads, get_insert_size
-from chimerascan import pysam
+# local imports
+from sam import parse_pe_reads
 
-class FragmentSizeDistribution(object):
+class InsertSizeDistribution(object):
+    
     def __init__(self):
         self.min_isize = None
         self.max_isize = None
         self.arr = None
 
-    def percentile(self, per):
+    def isize_at_percentile(self, per):
         n = sum(self.arr)
         per_n = n * per / 100.0
         count = 0
@@ -43,6 +43,16 @@ class FragmentSizeDistribution(object):
             if (count >= per_n):
                 break
         return isize + self.min_isize
+    
+    def percentile_at_isize(self, isize):
+        if isize < self.min_isize:
+            return 0.0
+        elif isize > self.max_isize:
+            return 100.0
+        ind = isize - self.min_isize
+        count_le = sum(self.arr[:ind+1])        
+        per = 100.0 * count_le / float(sum(self.arr))
+        return per
 
     @property
     def n(self):
@@ -81,7 +91,6 @@ class FragmentSizeDistribution(object):
 
     @staticmethod
     def from_file(fileh):
-        res = FragmentSizeDistribution()
         isizes = []
         counts = []
         for line in fileh:
@@ -91,68 +100,82 @@ class FragmentSizeDistribution(object):
             i,x = map(int, fields[0:2])
             isizes.append(i)
             counts.append(x)
-        res.min_isize = isizes[0]
-        res.max_isize = isizes[-1]
-        res.arr = array.array('L', counts)
-        return res 
+        d = InsertSizeDistribution()
+        d.min_isize = isizes[0]
+        d.max_isize = isizes[-1]
+        d.arr = array.array('L', counts) 
+        return d
 
     @staticmethod
-    def from_bam(bamfh, min_isize, max_isize, max_samples=None):
+    def from_random(mean, stdev, min_isize, max_isize, samples=100000):
         """
-        iterates through a BAM file looking for uniquely mapping concordant
-        reads.  keeps a histogram of all observed insert sizes in the
-        reads.  stops once 'max_samples' valid reads are encountered, or
-        the end of the file is reached
+        initialize from a random sample using normal distribution with 
+        mean 'mean' and stdev 'stdev'
         """
-        res = FragmentSizeDistribution()
-        res.min_isize = min_isize
-        res.max_isize = max_isize
-        res.arr = array.array('L', (0 for x in xrange(min_isize, max_isize+1)))        
+        d = InsertSizeDistribution()
+        # implement simple checks
+        assert min_isize < mean < max_isize
+        assert stdev < (max_isize - min_isize)
+        # initialize
+        d.min_isize = min_isize
+        d.max_isize = max_isize
+        d.arr = array.array('L', (0 for x in xrange(min_isize, max_isize+1)))
         count = 0
         outside_range = 0
-        unmapped = 0
-        multimapping = 0
-        discordant = 0
-        # setup debugging logging messages
-        debug_count = 0
-        debug_every = 1e5
-        debug_next = debug_every
-        for pe_reads in parse_pe_reads(bamfh):
-            # progress log
-            debug_count += 1
-            if debug_count == debug_next:
-                debug_next += debug_every
-                logging.debug("Processed reads: %d" % (debug_count))
-                logging.debug("Unique paired reads: %d" % (count))
-                logging.debug("Unmapped: %d" % (unmapped))
-                logging.debug("Ambiguous (multimapping): %d" % (multimapping))
-                logging.debug("Outside range: %d" % (outside_range))
-            if (max_samples is not None) and count > max_samples:
+        while True:
+            if count > samples:
                 break
-            # only use uniquely mapping reads on the same chromosome
-            num_read1_mappings = len(pe_reads[0])
-            num_read2_mappings = len(pe_reads[1])
-            if (num_read1_mappings == 0) or (num_read2_mappings == 0):
-                unmapped += 1
-                continue
-            if (num_read1_mappings > 1) or (num_read2_mappings > 1):
-                multimapping += 1
-                continue
-            # each read has exactly one alignment
-            r1 = pe_reads[0][0]
-            r2 = pe_reads[1][0]
-            if r1.is_unmapped or r2.is_unmapped:
-                unmapped += 1
-                continue
-            if r1.rname != r2.rname:
-                discordant += 1
-                continue
-            # compute insert size
-            isize = get_insert_size(r1, r2)
-            if (res.min_isize <= isize <= res.max_isize):
+            isize = int(round(random.normalvariate(mean, stdev),0))
+            if (min_isize <= isize <= max_isize):
                 # store in array
-                res.arr[isize - res.min_isize] += 1
+                d.arr[isize - min_isize] += 1
                 count += 1
             else:
                 outside_range += 1
-        return res
+        return d
+
+    @staticmethod
+    def from_bam(bamfh, min_isize, max_isize, max_samples=None):
+        # initialize
+        d = InsertSizeDistribution()
+        d.min_isize = min_isize
+        d.max_isize = max_isize
+        d.arr = array.array('L', (0 for x in xrange(min_isize, max_isize+1)))     
+        frags = 0   
+        count = 0
+        outside_range = 0
+        unmapped = 0
+        isoforms = 0
+        for pe_reads in parse_pe_reads(bamfh):
+            frags += 1
+            if (max_samples is not None) and (count > max_samples):
+                break
+            # only allow mappings where there is a single
+            # insert size (multiple isoforms are ambiguous)
+            isizes = set()        
+            for r in pe_reads[0]:
+                if r.is_unmapped:
+                    continue
+                # get insert size
+                isize = r.isize
+                if isize < 0: isize = -isize
+                isizes.add(isize)
+            # insert size must be within range
+            if len(isizes) == 0:
+                unmapped += 1
+            elif len(isizes) > 1:
+                isoforms += 1
+            else:
+                isize = isizes.pop()
+                if (min_isize <= isize <= max_isize):
+                    # store in array
+                    d.arr[isize - min_isize] += 1
+                    count += 1
+                else:
+                    outside_range += 1
+        logging.debug("Processed fragments: %d" % (frags))
+        logging.debug("Unique paired frags: %d" % (count))
+        logging.debug("Unmapped: %d" % (unmapped))
+        logging.debug("Ambiguous (isoforms): %d" % (isoforms))
+        logging.debug("Outside range: %d" % (outside_range))
+        return d

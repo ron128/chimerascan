@@ -56,10 +56,7 @@ def parse_pe_reads(bamfh):
     for read in bamfh:
         # get read attributes
         qname = read.qname
-        if read.is_read1:
-            readnum = 0
-        elif read.is_read2:
-            readnum = 1
+        readnum = 1 if read.is_read2 else 0
         # if query name changes we have completely finished
         # the fragment and can reset the read data
         if num_reads > 0 and qname != prev_qname:

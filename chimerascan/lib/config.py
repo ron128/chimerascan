@@ -25,6 +25,7 @@ JOB_ERROR = 1
 
 # constants for index
 ALIGN_INDEX = 'align_index'
+ALIGN_INDEX_FASTA_FILE = 'align_index.fa'
 BOWTIE_INDEX_FILE = 'align_index.1.ebwt'
 FRAG_SIZE_INDEX = "frag_size_index"
 FRAG_SIZE_INDEX_FILE = "frag_size_index.1.ebwt"
@@ -40,6 +41,12 @@ TMP_DIR = "tmp"
 BASE_PROCESSORS = 2
 MIN_SEGMENT_LENGTH = 20
 RUNCONFIG_XML_FILE = "runconfig.xml"
+
+# output after read inspection, name conversion, and 
+# quality score conversion
+CONVERTED_FASTQ_PREFIX = "reads"
+CONVERTED_FASTQ_FILES = tuple(CONVERTED_FASTQ_PREFIX + "_%d.fq" % (x+1) 
+                              for x in xrange(2))
 
 # output from initial bowtie alignment
 ALIGNED_READS_BAM_FILE = "aligned_reads.bam"

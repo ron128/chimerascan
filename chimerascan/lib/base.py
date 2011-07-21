@@ -42,11 +42,16 @@ class LibraryTypes:
     @staticmethod
     def same_strand(library_type):
         return (library_type[0] == library_type[1])
-   
-def parse_library_type(library_type):
-    s1 = 0 if library_type[0] == 'f' else 1
-    s2 = 0 if library_type[1] == 'f' else 1
-    return (s1, s2)
+
+def parse_lines(line_iter, numlines=1):
+    """
+    generator that returns list of 'numlines' lines at a time
+    """
+    try:
+        while True:
+            yield [line_iter.next().rstrip() for x in xrange(4)]
+    except StopIteration:
+        pass
 
 def parse_bool(s):    
     return True if s[0].lower() == "t" else False
@@ -79,7 +84,7 @@ def up_to_date(outfile, infile):
     return os.path.getmtime(outfile) >= os.path.getmtime(infile)
 
 # in-place XML prettyprint formatter
-def indent(elem, level=0):
+def indent_xml(elem, level=0):
     i = "\n" + level*"  "
     if len(elem):
         if not elem.text or not elem.text.strip():
@@ -87,7 +92,7 @@ def indent(elem, level=0):
         if not elem.tail or not elem.tail.strip():
             elem.tail = i
         for elem in elem:
-            indent(elem, level+1)
+            indent_xml(elem, level+1)
         if not elem.tail or not elem.tail.strip():
             elem.tail = i
     else:

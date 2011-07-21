@@ -49,11 +49,12 @@ from chimerascan import pysam
 import chimerascan.lib.config as config
 from chimerascan.lib.config import JOB_SUCCESS, JOB_ERROR, MIN_SEGMENT_LENGTH
 from chimerascan.lib.base import LibraryTypes, check_executable, \
-    get_read_length, parse_bool, indent, up_to_date
+    get_read_length, parse_bool, indent_xml, up_to_date
 from chimerascan.lib.seq import FASTQ_QUAL_FORMATS, SANGER_FORMAT
+from chimerascan.lib.fragment_size_distribution import InsertSizeDistribution
 
+from chimerascan.pipeline.fastq_inspect_reads import inspect_reads
 from chimerascan.pipeline.align_bowtie import align_pe, align_sr, trim_align_pe_sr
-from chimerascan.pipeline.profile_insert_size import InsertSizeDistribution
 from chimerascan.pipeline.find_discordant_reads import find_discordant_fragments
 from chimerascan.pipeline.nominate_chimeras import nominate_chimeras
 from chimerascan.pipeline.chimeras_to_breakpoints import determine_chimera_breakpoints
@@ -62,10 +63,10 @@ from chimerascan.pipeline.merge_spanning_alignments import merge_spanning_alignm
 from chimerascan.pipeline.filter_chimeras import filter_chimeras
 from chimerascan.pipeline.write_output import write_output
 
+# defaults for bowtie
 DEFAULT_NUM_PROCESSORS = config.BASE_PROCESSORS
-DEFAULT_KEEP_TMP = True
 DEFAULT_BOWTIE_PATH = ""
-DEFAULT_BOWTIE_ARGS = "--best --strata"
+DEFAULT_BOWTIE_ARGS = "--best"
 DEFAULT_MULTIHITS = 100
 DEFAULT_MISMATCHES = 2
 DEFAULT_SEGMENT_LENGTH = 25
@@ -75,6 +76,7 @@ DEFAULT_MIN_FRAG_LENGTH = 0
 DEFAULT_MAX_FRAG_LENGTH = 1000 
 DEFAULT_FASTQ_QUAL_FORMAT = SANGER_FORMAT
 DEFAULT_LIBRARY_TYPE = LibraryTypes.FR_UNSTRANDED
+
 DEFAULT_ISIZE_MEAN = 200
 DEFAULT_ISIZE_STDEV = 40
 DEFAULT_HOMOLOGY_MISMATCHES = config.BREAKPOINT_HOMOLOGY_MISMATCHES
@@ -85,6 +87,7 @@ DEFAULT_FILTER_ISIZE_PERCENTILE = 99.0
 DEFAULT_FILTER_UNIQUE_FRAGS = 3.0
 DEFAULT_FILTER_ISOFORM_FRACTION = 0.10
 NUM_POSITIONAL_ARGS = 4
+DEFAULT_KEEP_TMP = True
 
 def check_fastq_files(parser, fastq_files, segment_length, trim5, trim3):
     """
@@ -247,7 +250,7 @@ class RunConfig(object):
             elem = etree.SubElement(root, attrname)
             elem.text = str(val)
         # indent for pretty printing
-        indent(root)        
+        indent_xml(root)        
         return etree.tostring(root)
 
     @staticmethod
@@ -512,16 +515,47 @@ def run_chimerascan(runconfig):
     trimmed_read_length = original_read_length - runconfig.trim5 - runconfig.trim3
     min_fragment_length = max(runconfig.min_fragment_length, 
                               trimmed_read_length)
+    # 
+    # Process and inspect the FASTQ files, performing several alterations 
+    # to the reads:
     #
-    # TODO: trim reads with polyA tails or bad quality scores
-    #
-    # skip this step for now
+    # 1) rename them from long string to numbers to save space throughout
+    # the pipeline
+    # 2) ensure the "/1" and "/2" suffixes exist to denote reads in a pair
+    # 3) convert quality scores to sanger format
+    # 4) #TODO# trim poor quality reads 
+    # (requires support for variable length reads)
+    # 
+    converted_fastq_files = [os.path.join(tmp_dir, fq) 
+                             for fq in config.CONVERTED_FASTQ_FILES]
+    msg = "Processing FASTQ files"
+    if (all(up_to_date(cfq, fq) for cfq,fq in 
+            zip(converted_fastq_files, runconfig.fastq_files))):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        converted_fastq_prefix = \
+            os.path.join(tmp_dir, config.CONVERTED_FASTQ_PREFIX)
+        try:
+            retcode = inspect_reads(runconfig.fastq_files, 
+                                    converted_fastq_prefix,
+                                    quals=runconfig.quals)
+            if retcode != config.JOB_SUCCESS:
+                logging.error("%s step failed" % (msg))
+                return JOB_ERROR
+        except Exception as e:
+            logging.info("Cleaning up after error %s" % (str(e)))
+            for fq in converted_fastq_files:
+                if os.path.isfile(fq):
+                    os.remove(fq)
+            
     #
     # Initial Bowtie alignment step
     #
     # align in paired-end mode, trying to resolve as many reads as possible
     # this effectively rules out the vast majority of reads as candidate
     # fusions
+    #
     unaligned_fastq_param = os.path.join(tmp_dir, config.UNALIGNED_FASTQ_PARAM)
     unaligned_fastq_files = [os.path.join(tmp_dir, fq) 
                              for fq in config.UNALIGNED_FASTQ_FILES]
@@ -529,12 +563,12 @@ def run_chimerascan(runconfig):
     aligned_bam_file = os.path.join(runconfig.output_dir, config.ALIGNED_READS_BAM_FILE)
     aligned_log_file = os.path.join(log_dir, "bowtie_alignment.log")    
     msg = "Aligning reads with bowtie"
-    if (all(up_to_date(aligned_bam_file, fq) for fq in runconfig.fastq_files) and
-        all(up_to_date(a,b) for a,b in zip(unaligned_fastq_files, runconfig.fastq_files))):
+    if (all(up_to_date(aligned_bam_file, fq) for fq in converted_fastq_files) and
+        all(up_to_date(a,b) for a,b in zip(unaligned_fastq_files, converted_fastq_files))):
         logging.info("[SKIPPED] %s" % (msg))
     else:    
         logging.info(msg)
-        retcode = align_pe(runconfig.fastq_files, 
+        retcode = align_pe(converted_fastq_files, 
                            bowtie_index,
                            aligned_bam_file, 
                            unaligned_fastq_param,
@@ -545,7 +579,7 @@ def run_chimerascan(runconfig):
                            trim3=runconfig.trim3,
                            library_type=runconfig.library_type,
                            num_processors=runconfig.num_processors,
-                           quals=runconfig.quals,
+                           quals=SANGER_FORMAT,
                            multihits=runconfig.multihits,
                            mismatches=runconfig.mismatches,
                            bowtie_bin=bowtie_bin,
@@ -619,7 +653,8 @@ def run_chimerascan(runconfig):
     realigned_bam_file = os.path.join(tmp_dir, config.REALIGNED_BAM_FILE)
     realigned_log_file = os.path.join(log_dir, "bowtie_trimmed_realignment.log")
     msg = "Trimming and re-aligning initially unmapped reads"
-    if all(up_to_date(realigned_bam_file, fq) for fq in runconfig.fastq_files):
+    if all(up_to_date(realigned_bam_file, fq) 
+           for fq in unaligned_fastq_files):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)
@@ -631,7 +666,7 @@ def run_chimerascan(runconfig):
                          trim5=runconfig.trim5,
                          library_type=runconfig.library_type,
                          num_processors=runconfig.num_processors,
-                         quals=runconfig.quals,
+                         quals=SANGER_FORMAT,
                          multihits=runconfig.multihits, 
                          mismatches=runconfig.mismatches,
                          bowtie_bin=bowtie_bin,
@@ -681,6 +716,9 @@ def run_chimerascan(runconfig):
                           gene_paired_bam_file, 
                           encompassing_chimera_file, 
                           trim_bp=config.EXON_JUNCTION_TRIM_BP)
+        
+    return
+
     #
     # Determine putative breakpoint sequences for chimera candidates
     # and group chimeras together if they share the same breakpoint

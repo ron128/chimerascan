@@ -113,6 +113,7 @@ def classify_unpaired_reads(reads, tid_genome_map, library_type):
     for r in reads:
         # check to see if this alignment is to a gene, or genomic
         if (r.rname not in tid_genome_map):
+            # this is a genome alignment
             orientation = get_genome_orientation(r, library_type)
             genome_hits.append(r)
             r.tags = r.tags + [(DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_GENOME),
@@ -284,9 +285,8 @@ def classify_read_pairs(pe_reads, max_isize,
                         tags = [(DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_STRAND_GENE)]
                         discordant_gene_pairs.append((cr1,cr2))
                     pair_reads(cr1,cr2,tags)
-    # at this point, we have tried all combinations.  return paired reads
-    # that are concordant, then discordant-but-still-paired reads, and finally
-    # discordant unpaired reads
+    # at this point, we have tried all combinations.  if any paired reads
+    # are concordant then return them without considering discordant reads 
     gene_pairs = []
     if len(concordant_tx_pairs) > 0:
         gene_pairs = concordant_tx_pairs
@@ -294,8 +294,9 @@ def classify_read_pairs(pe_reads, max_isize,
         gene_pairs = concordant_gene_pairs
     if len(gene_pairs) > 0 or len(concordant_genome_pairs) > 0:
         return gene_pairs, concordant_genome_pairs, []
-    # if no concordant reads in transcripts or genome, so return any
-    # discordant reads that may violate strand requirements
+    # if no concordant reads in transcripts or genome, return any
+    # discordant reads that may violate strand requirements but still
+    # remain colocalized on the same gene/chromosome
     gene_pairs = []
     if len(discordant_tx_pairs) > 0:
         gene_pairs = discordant_tx_pairs
@@ -340,7 +341,7 @@ def find_discordant_fragments(input_bam_file, gene_paired_bam_file,
     - discordant between different genes (chimeras)
     - discordant genome alignments (unannotated)
     """
-    logging.info("Finding read pair combinations")
+    logging.info("Finding discordant read pair combinations")
     logging.debug("\tInput file: %s" % (input_bam_file))
     logging.debug("\tMax insert size: '%d'" % (max_isize))
     logging.debug("\tLibrary type: '%s'" % (library_type))

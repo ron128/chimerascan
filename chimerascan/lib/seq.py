@@ -126,3 +126,13 @@ def parse_fastq_record(line_iter,
     except StopIteration:
         pass
 
+def calc_homology(seq1, seq2, num_mismatches):
+    smallest_len = min(len(seq1), len(seq2))
+    mm = 0
+    i = 0
+    for i in xrange(smallest_len):
+        if seq1[i] != seq2[i]:
+            mm += 1
+            if mm > num_mismatches:
+                return i
+    return i + 1
