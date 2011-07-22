@@ -768,30 +768,6 @@ def run_chimerascan(runconfig):
                                 breakpoint_map_file=breakpoint_map_file, 
                                 breakpoint_fasta_file=breakpoint_fasta_file,
                                 tmp_dir=tmp_dir)
-    return
-
-
-    #
-    # Determine putative breakpoint sequences for chimera candidates
-    # and group chimeras together if they share the same breakpoint
-    #
-    breakpoint_chimera_file = os.path.join(tmp_dir, config.BREAKPOINT_CHIMERA_FILE)
-    breakpoint_map_file = os.path.join(tmp_dir, config.BREAKPOINT_MAP_FILE)
-    breakpoint_fasta_file = os.path.join(tmp_dir, config.BREAKPOINT_FASTA_FILE)
-    msg = "Extracting breakpoint sequences from chimeras"
-    if (up_to_date(breakpoint_chimera_file, encompassing_chimera_file) and
-        up_to_date(breakpoint_map_file, encompassing_chimera_file) and
-        up_to_date(breakpoint_fasta_file, encompassing_chimera_file)):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        determine_chimera_breakpoints(index_dir=runconfig.index_dir, 
-                                      read_length=trimmed_read_length, 
-                                      input_chimera_file=encompassing_chimera_file,
-                                      output_chimera_file=breakpoint_chimera_file, 
-                                      breakpoint_map_file=breakpoint_map_file,
-                                      breakpoint_fasta_file=breakpoint_fasta_file,
-                                      homology_mismatches=runconfig.homology_mismatches)
     #
     # Build a bowtie index to align and detect spanning reads
     #
@@ -812,6 +788,9 @@ def run_chimerascan(runconfig):
             if os.path.exists(breakpoint_bowtie_index_file):
                 os.remove(breakpoint_bowtie_index_file)
             return config.JOB_ERROR
+        
+    return
+
     #
     # Extract reads to realign against breakpoint sequences
     #
