@@ -308,8 +308,8 @@ def discordant_reads_to_breakpoints(index_dir, isize_dist_file,
         # store pertinent read information in lightweight structure called
         # DiscordantRead object. this departs from SAM format into a 
         # custom read format
-        dr5p = DiscordantRead.from_read(r5p).to_list()
-        dr3p = DiscordantRead.from_read(r3p).to_list()
+        dr5p = DiscordantRead.from_read(r5p)
+        dr3p = DiscordantRead.from_read(r3p)
         # get gene information
         tx5p = tid_tx_map[r5p.rname]
         tx3p = tid_tx_map[r3p.rname]
@@ -329,12 +329,17 @@ def discordant_reads_to_breakpoints(index_dir, isize_dist_file,
                                             ref_fa, max_read_length,
                                             homology_mismatches)
             # write breakpoint information for each read to a file
-            fields = [breakpoint_seq_5p, breakpoint_seq_3p, 
-                      homology_left, homology_right, 
-                      exon_num_5p, tx_end_5p, exon_num_3p, tx_start_3p,
-                      isize_prob]
-            fields.extend(dr5p)
-            fields.extend(dr3p)            
+            fields = [tx5p.tx_name, 0, tx_end_5p,
+                      tx3p.tx_name, tx_start_3p, tx3p.tx_end,
+                      r5p.rname,  # name
+                      isize_prob, # score
+                      tx5p.strand, tx3p.strand, # strand 1, strand 2
+                      # user defined fields
+                      exon_num_5p, exon_num_3p,
+                      breakpoint_seq_5p, breakpoint_seq_3p, 
+                      homology_left, homology_right] 
+            fields.append('|'.join(map(str, dr5p.to_list())))
+            fields.append('|'.join(map(str, dr3p.to_list())))  
             print >>outfh, '\t'.join(map(str, fields))        
     # cleanup
     ref_fa.close()
@@ -347,7 +352,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = OptionParser("usage: %prog [options] <index> <isizedist.txt> "
-                          "<pairs.bam> <chimeras.txt>")
+                          "<discordant_reads.bedpe> <chimeras.txt>")
     parser.add_option("--trim", dest="trim", type="int", 
                       default=config.EXON_JUNCTION_TRIM_BP, metavar="N",
                       help="Trim ends of reads by N bp when determining "
@@ -367,11 +372,11 @@ def main():
     isize_dist_file = args[1]
     input_bam_file = args[2]
     output_file = args[3]
-    return discordant_reads_to_breakpoints(index_dir, isize_dist_file, 
-                                           input_bam_file, output_file, 
-                                           trim_bp=options.trim,
-                                           max_read_length=options.max_read_length,
-                                           homology_mismatches=options.homology_mismatches)
+    return nominate_chimeras(index_dir, isize_dist_file, 
+                             input_bam_file, output_file, 
+                             trim_bp=options.trim,
+                             max_read_length=options.max_read_length,
+                             homology_mismatches=options.homology_mismatches)
 
 
 if __name__ == '__main__':

@@ -136,3 +136,16 @@ def calc_homology(seq1, seq2, num_mismatches):
             if mm > num_mismatches:
                 return i
     return i + 1
+
+BASES_PER_LINE = 50
+def split_seq(seq, chars_per_line=BASES_PER_LINE):
+    pos = 0
+    newseq = []
+    while pos < len(seq):
+        if pos + chars_per_line > len(seq):        
+            endpos = len(seq)
+        else:
+            endpos = pos + chars_per_line
+        newseq.append(seq[pos:endpos])
+        pos = endpos
+    return '\n'.join(newseq)

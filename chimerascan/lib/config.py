@@ -72,6 +72,10 @@ GENOME_PAIRED_BAM_FILE = "genome_paired_reads.bam"
 REALIGNED_UNMAPPED_BAM_FILE = "unmapped_reads.bam"
 REALIGNED_COMPLEX_BAM_FILE = "complex_reads.bam"
 
+# discordant reads BEDPE file
+DISCORDANT_BEDPE_FILE = "discordant_reads.bedpe"
+SORTED_DISCORDANT_BEDPE_FILE = "discordant_reads.srt.bedpe"
+
 # chimera candidates with encompassing read support
 ENCOMPASSING_CHIMERA_FILE = "encompassing_chimeras.txt"
 

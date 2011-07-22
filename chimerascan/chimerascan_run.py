@@ -56,8 +56,10 @@ from chimerascan.lib.fragment_size_distribution import InsertSizeDistribution
 from chimerascan.pipeline.fastq_inspect_reads import inspect_reads
 from chimerascan.pipeline.align_bowtie import align_pe, align_sr, trim_align_pe_sr
 from chimerascan.pipeline.find_discordant_reads import find_discordant_fragments
+from chimerascan.pipeline.discordant_reads_to_bedpe import discordant_reads_to_bedpe, sort_bedpe
 from chimerascan.pipeline.nominate_chimeras import nominate_chimeras
-from chimerascan.pipeline.chimeras_to_breakpoints import determine_chimera_breakpoints
+from chimerascan.pipeline.chimeras_to_breakpoints import chimeras_to_breakpoints
+
 from chimerascan.pipeline.nominate_spanning_reads import nominate_encomp_spanning_reads, nominate_unmapped_spanning_reads
 from chimerascan.pipeline.merge_spanning_alignments import merge_spanning_alignments
 from chimerascan.pipeline.filter_chimeras import filter_chimeras
@@ -84,7 +86,7 @@ DEFAULT_ANCHOR_MIN = 4
 DEFAULT_ANCHOR_LENGTH = 8
 DEFAULT_ANCHOR_MISMATCHES = 0
 DEFAULT_FILTER_ISIZE_PERCENTILE = 99.0
-DEFAULT_FILTER_UNIQUE_FRAGS = 3.0
+DEFAULT_FILTER_UNIQUE_FRAGS = 2.0
 DEFAULT_FILTER_ISOFORM_FRACTION = 0.10
 NUM_POSITIONAL_ARGS = 4
 DEFAULT_KEEP_TMP = True
@@ -701,6 +703,32 @@ def run_chimerascan(runconfig):
                                   index_dir=runconfig.index_dir,
                                   max_isize=runconfig.max_fragment_length,
                                   library_type=runconfig.library_type) 
+
+    #
+    # Write a BEDPE file from discordant reads
+    #
+    discordant_bedpe_file = os.path.join(tmp_dir, config.DISCORDANT_BEDPE_FILE)
+    msg = "Converting discordant reads to BEDPE format"
+    if (up_to_date(discordant_bedpe_file, gene_paired_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        discordant_reads_to_bedpe(runconfig.index_dir,
+                                  gene_paired_bam_file,
+                                  discordant_bedpe_file)
+    #
+    # Sort BEDPE file
+    #
+    sorted_discordant_bedpe_file = os.path.join(tmp_dir, config.SORTED_DISCORDANT_BEDPE_FILE)
+    msg = "Sorting BEDPE file"
+    if (up_to_date(sorted_discordant_bedpe_file, discordant_bedpe_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        # sort BEDPE file by paired chromosome/position
+        sort_bedpe(input_file=discordant_bedpe_file,
+                   output_file=sorted_discordant_bedpe_file,
+                   tmp_dir=tmp_dir)
     #
     # Nominate chimeric genes
     #
@@ -708,16 +736,40 @@ def run_chimerascan(runconfig):
     #
     encompassing_chimera_file = os.path.join(tmp_dir, config.ENCOMPASSING_CHIMERA_FILE)
     msg = "Nominating chimeras from discordant reads"
-    if (up_to_date(encompassing_chimera_file, gene_paired_bam_file)):
+    if (up_to_date(encompassing_chimera_file, sorted_discordant_bedpe_file)):
         logging.info("[SKIPPED] %s" % (msg))
     else:        
         logging.info(msg)
-        nominate_chimeras(runconfig.index_dir, 
-                          gene_paired_bam_file, 
-                          encompassing_chimera_file, 
-                          trim_bp=config.EXON_JUNCTION_TRIM_BP)
-        
+        retcode = nominate_chimeras(runconfig.index_dir,
+                                    isize_dist_file=isize_dist_file,
+                                    input_file=sorted_discordant_bedpe_file,
+                                    output_file=encompassing_chimera_file,
+                                    trim_bp=config.EXON_JUNCTION_TRIM_BP,
+                                    min_frags=runconfig.filter_unique_frags,
+                                    max_read_length=trimmed_read_length,
+                                    homology_mismatches=runconfig.homology_mismatches)
+        if retcode != config.JOB_SUCCESS:
+            logging.error("Failed with error code %d" % (retcode))
+            return config.JOB_ERROR  
+
+    #
+    # Make a breakpoint FASTA file and map of breakpoints to chimeras
+    # for use in spanning read alignment
+    #
+    breakpoint_map_file = os.path.join(tmp_dir, config.BREAKPOINT_MAP_FILE)
+    breakpoint_fasta_file = os.path.join(tmp_dir, config.BREAKPOINT_FASTA_FILE)
+    msg = "Extracting breakpoint sequences from chimeras"
+    if (up_to_date(breakpoint_map_file, encompassing_chimera_file) and
+        up_to_date(breakpoint_fasta_file, encompassing_chimera_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        chimeras_to_breakpoints(input_file=encompassing_chimera_file, 
+                                breakpoint_map_file=breakpoint_map_file, 
+                                breakpoint_fasta_file=breakpoint_fasta_file,
+                                tmp_dir=tmp_dir)
     return
+
 
     #
     # Determine putative breakpoint sequences for chimera candidates
