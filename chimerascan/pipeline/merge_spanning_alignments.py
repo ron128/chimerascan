@@ -103,7 +103,10 @@ def parse_sync_by_breakpoint(chimera_file, bam_file):
             except StopIteration:
                 read_iter_valid = False
                 reads = []
-        yield chimeras, reads    
+        if chimera_breakpoint_name < read_breakpoint_name:
+            yield chimeras, []
+        else:
+            yield chimeras, reads    
     bamfh.close()
 
 def get_mismatch_positions(md):
@@ -213,7 +216,8 @@ def merge_spanning_alignments(breakpoint_chimera_file,
                                            anchor_min, anchor_length, 
                                            anchor_mismatches, library_type):
             # ensure read is also encompassing
-            # TODO: more checking necessary? (read1 vs. read2? check which of two reads overlaps breakpoint?)
+            # TODO: more checking necessary? (read1 vs. read2? check which 
+            # of two reads overlaps breakpoint?)
             if dr.qname not in chimera_qname_dict[c.name]:
                 continue
             # add read as a spanning read
