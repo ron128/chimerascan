@@ -1,4 +1,9 @@
 '''
+Created on Jul 28, 2011
+
+@author: mkiyer
+'''
+'''
 Created on Jan 31, 2011
 
 @author: mkiyer
@@ -31,24 +36,42 @@ from chimerascan.lib.chimera import Chimera
 from chimerascan.lib import config
 from chimerascan.lib.base import make_temp
 
-def filter_unique_frags(c, threshold):
+def filter_weighted_frags(c, threshold):
     """
-    filters chimeras with less than 'threshold' unique
-    alignment positions supporting the chimera 
+    filters chimeras with weighted coverage greater than
+    'threshold'.  chimeras with scores less than the threshold
+    can pass filter at a lower threshold when spanning reads
+    are present
     """
-    return c.get_num_unique_positions() >= threshold
+    return c.get_weighted_unique_frags() >= threshold
+
+def filter_inner_dist(c, max_isize):
+    '''
+    filters chimeras whenever either the 5' or the 3'
+    partner has a predicted insert size larger than
+    'max_isize' bp
+    '''
+    if max_isize <= 0:
+        return True
+    if c.partner5p.inner_dist > max_isize:
+        return False
+    if c.partner3p.inner_dist > max_isize:
+        return False
+    return True
+    #inner_dist = c.partner5p.inner_dist + c.partner3p.inner_dist
+    #return inner_dist <= max_isize
 
 def filter_chimeric_isoform_fraction(c, frac, median_isize, bamfh):
     """
     filters chimeras with fewer than 'threshold' total
     unique read alignments
     """
-    # get number of wild-type reads    
-    rname = config.GENE_REF_PREFIX + c.tx_name_5p
+    # get number of wild-type reads
+    rname = config.GENE_REF_PREFIX + c.partner5p.tx_name
     tid = bamfh.references.index(rname)
     rlen = bamfh.lengths[tid]
-    start = max(0, c.tx_end_5p - median_isize)
-    end = min(rlen, c.tx_end_5p + median_isize)
+    start = max(0, c.partner5p.end - median_isize)
+    end = min(rlen, c.partner5p.end + median_isize)
     # collect reads that cross breakpoint
     frag_dict = collections.defaultdict(lambda: set())   
     for r in bamfh.fetch(rname, start, end):
@@ -57,7 +80,7 @@ def filter_chimeric_isoform_fraction(c, frac, median_isize, bamfh):
     wildtype_frags = set()
     for qname,intervals in frag_dict.iteritems():
         sorted_intervals = sorted(intervals)
-        if sorted_intervals[0][0] < c.tx_end_5p < sorted_intervals[-1][1]:
+        if sorted_intervals[0][0] < c.partner5p.end < sorted_intervals[-1][1]:
             wildtype_frags.add(qname)
     num_wildtype_frags = len(wildtype_frags)
     num_chimeric_frags = c.get_num_frags()
@@ -73,14 +96,16 @@ def get_highest_coverage_isoforms(input_file, gene_file):
     tx_genome_map = build_gene_to_genome_map(open(gene_file))
     cluster_chimera_dict = collections.defaultdict(lambda: [])
     for c in Chimera.parse(open(input_file)):
-        # TODO: adjust this to score chimeras differently!
-        key = (c.name, c.get_num_frags())
+        key = (c.name,
+               c.get_num_unique_spanning_positions(),
+               c.get_weighted_cov(),
+               c.get_num_frags())
         # get cluster of overlapping genes
-        cluster5p = tx_cluster_map[c.tx_name_5p]
-        cluster3p = tx_cluster_map[c.tx_name_3p]
+        cluster5p = tx_cluster_map[c.partner5p.tx_name]
+        cluster3p = tx_cluster_map[c.partner3p.tx_name]
         # get genomic positions of breakpoints
-        coord5p = gene_to_genome_pos(c.tx_name_5p, c.tx_end_5p-1, tx_genome_map)
-        coord3p = gene_to_genome_pos(c.tx_name_3p, c.tx_start_3p, tx_genome_map)
+        coord5p = gene_to_genome_pos(c.partner5p.tx_name, c.partner5p.end-1, tx_genome_map)
+        coord3p = gene_to_genome_pos(c.partner3p.tx_name, c.partner3p.start, tx_genome_map)
         # add to dictionary
         cluster_chimera_dict[(cluster5p,cluster3p,coord5p,coord3p)].append(key)    
     # choose highest coverage chimeras within each pair of clusters
@@ -108,13 +133,15 @@ def read_false_pos_file(filename):
 
 def filter_chimeras(input_file, output_file,
                     index_dir, bam_file,
-                    unique_frags,
+                    weighted_unique_frags,
                     median_isize,
+                    max_isize,
                     isoform_fraction,
                     false_pos_file):
     logging.debug("Filtering Parameters")
-    logging.debug("\tunique fragments: %f" % (unique_frags))
+    logging.debug("\tweighted unique fragments: %f" % (weighted_unique_frags))
     logging.debug("\tmedian insert size: %d" % (median_isize))
+    logging.debug("\tmax insert size allowed: %d" % (max_isize))
     logging.debug("\tfraction of wild-type isoform: %f" % (isoform_fraction))
     logging.debug("\tfalse positive chimeras file: %s" % (false_pos_file))
     # get false positive chimera list
@@ -133,11 +160,14 @@ def filter_chimeras(input_file, output_file,
     f = open(tmp_file, "w")
     for c in Chimera.parse(open(input_file)):
         num_chimeras += 1
-        good = filter_unique_frags(c, unique_frags)
+        good = filter_weighted_frags(c, weighted_unique_frags)
         if not good:
-            continue          
-        false_pos_key = (c.tx_name_5p, c.tx_end_5p, 
-                         c.tx_name_3p, c.tx_start_3p)
+            continue
+        good = good and filter_inner_dist(c, max_isize)
+        if not good:
+            continue            
+        false_pos_key = (c.partner5p.tx_name, c.partner5p.end, 
+                         c.partner3p.tx_name, c.partner3p.start)
         good = good and (false_pos_key not in false_pos_pairs)
         if not good:
             continue
@@ -173,12 +203,17 @@ def main():
     parser = OptionParser("usage: %prog [options] <index_dir> "
                           "<sorted_aligned_reads.bam> <in.txt> <out.txt>")
     parser.add_option("--unique-frags", type="float", default=3.0,
-                      dest="unique_frags", metavar="N",
+                      dest="weighted_unique_frags", metavar="N",
                       help="Filter chimeras with less than N unique "
-                      "aligned fragments [default=%default]")
+                      "aligned fragments (multimapping fragments are "
+                      "assigned fractional weights) [default=%default]")
     parser.add_option("--median-isize", type="int", default=200,
                       dest="median_isize", metavar="N",
                       help="Median fragment size [default=%default]")
+    parser.add_option("--max-isize", type="int", default=1e6,
+                      dest="max_isize", metavar="N",
+                      help="Filter chimeras when inner distance "
+                      "is larger than N bases [default=%default]")
     parser.add_option("--isoform-fraction", type="float", 
                       default=0.10, metavar="X",
                       help="Filter chimeras with expression ratio "
@@ -194,8 +229,9 @@ def main():
     input_file = args[2]
     output_file = args[3]
     return filter_chimeras(input_file, output_file, index_dir, bam_file,
-                           unique_frags=options.unique_frags,
+                           weighted_unique_frags=options.weighted_unique_frags,
                            median_isize=options.median_isize,
+                           max_isize=options.max_isize,
                            isoform_fraction=options.isoform_fraction,
                            false_pos_file=options.false_pos_file)
 

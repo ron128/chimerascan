@@ -35,16 +35,18 @@ env = Environment(loader=PackageLoader("chimerascan", "tools"))
 GENECARDS_URL = "http://www.genecards.org/cgi-bin/carddisp.pl?gene="
 UCSC_POS_URL = "http://genome.ucsc.edu/cgi-bin/hgTracks?"
 
-def get_header_row():
-    return ["5' genomic region", "5' strand",
-            "3' genomic region", "3' strand",
+def get_header_row():    
+    return ["5' genomic region", 
+            "5' strand",
+            "3' genomic region",
+            "3' strand",
+            "Cluster ID",
             "5' transcripts", "3' transcripts",
             "5' genes", "3' genes",
             "Type", "5' -> 3' distance",
-            "Multimapping-adjusted Frags",
-            "Total Frags", "Spanning Frags",
+            "Total frags",
             "Unique alignment positions",
-            "Unique spanning alignment positions",
+            "Breakpoint spanning reads",
             "Chimera IDs"]
 
 def generate_row_data(line_iter, show_read_throughs, 
@@ -54,6 +56,7 @@ def generate_row_data(line_iter, show_read_throughs,
     txs3p_col_num = header_fields.index("transcript_ids_3p")
     genes5p_col_num = header_fields.index("genes5p")
     genes3p_col_num = header_fields.index("genes3p")
+    spanning_reads_col_num = header_fields.index("breakpoint_spanning_reads")
     chimera_ids_col_num = header_fields.index("chimera_ids")
     for line in line_iter:
         fields = line.strip().split('\t')
@@ -63,21 +66,30 @@ def generate_row_data(line_iter, show_read_throughs,
         newfields = []
         # 5' position (chr12:65432) and strand
         newfields.append(("ucsc_pos", ["%s:%s-%s" % (fields[0], fields[1], fields[2])]))
-        newfields.append(("string", fields[3]))
+        newfields.append(("string", fields[8]))
         # 3' position (chr12:76543) and strand
-        newfields.append(("ucsc_pos", ["%s:%s-%s" % (fields[4], fields[5], fields[6])]))
-        newfields.append(("string", fields[7]))
+        newfields.append(("ucsc_pos", ["%s:%s-%s" % (fields[3], fields[4], fields[5])]))
+        newfields.append(("string", fields[9]))
+        # cluster id
+        newfields.append(("string", fields[6]))        
         # transcripts
         newfields.append(("ucsc_pos", fields[txs5p_col_num].split(",")))
         newfields.append(("ucsc_pos", fields[txs3p_col_num].split(",")))
         # genes
         newfields.append(("genecards", fields[genes5p_col_num].split(",")))
         newfields.append(("genecards", fields[genes3p_col_num].split(",")))
-        # all but last column not modified
-        for i in xrange(genes3p_col_num+1, chimera_ids_col_num):
-            newfields.append(("string", fields[i]))
+        # chimera type
+        newfields.append(("string", fields[14]))
+        # distance
+        newfields.append(("string", fields[15]))
+        # total frags
+        newfields.append(("string", fields[16]))
+        # unique alignment positions
+        newfields.append(("string", fields[17]))
+        # breakpoint spanning reads
+        newfields.append(("list", fields[18].split(",")))        
         # chimera ids
-        newfields.append(("list", fields[-1].split(",")))
+        newfields.append(("list", fields[19].split(",")))        
         yield newfields
 
 def make_html_table(input_file, 

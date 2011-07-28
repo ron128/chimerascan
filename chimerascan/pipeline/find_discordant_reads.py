@@ -12,7 +12,7 @@ from chimerascan.bx.cluster import ClusterTree
 
 from chimerascan.lib import config
 from chimerascan.lib.base import LibraryTypes
-from chimerascan.lib.sam import parse_pe_reads, pair_reads, copy_read
+from chimerascan.lib.sam import parse_pe_reads, pair_reads, copy_read, select_best_mismatch_strata
 from chimerascan.lib.gene_to_genome import build_tid_to_genome_map, \
     build_tid_tx_cluster_map, gene_to_genome_pos
 from chimerascan.lib.chimera import DiscordantTags, DISCORDANT_TAG_NAME, \
@@ -20,15 +20,6 @@ from chimerascan.lib.chimera import DiscordantTags, DISCORDANT_TAG_NAME, \
 
 # globals
 imin2 = lambda a,b: a if a <= b else b
-
-def get_tid_lookup_table(bamfh):
-    tid_is_genomic_tbl = []
-    for tid,ref in enumerate(bamfh.references):
-        if ref.startswith(config.GENE_REF_PREFIX):
-            tid_is_genomic_tbl.append(False)
-        else:
-            tid_is_genomic_tbl.append(True)
-    return tid_is_genomic_tbl
 
 def annotate_multihits(bamfh, reads, tid_genome_map):
     hits = set()
@@ -306,10 +297,19 @@ def classify_read_pairs(pe_reads, max_isize,
         return gene_pairs, discordant_genome_pairs, []
     #
     # at this point, no read pairings were found so the read is 
-    # assumed to be discordant.  now we can create all valid 
-    # combinations of read1/read2 as putative discordant read
-    # pairs 
+    # assumed to be discordant.  
     #
+    # TODO: now that we know that the reads are discordant, no reason
+    # to keep all the mappings hanging around if there is a small subset
+    # with a small number of mismatches.  is this the right thing to do
+    # here?
+    # 
+    pe_reads = (select_best_mismatch_strata(pe_reads[0]),
+                select_best_mismatch_strata(pe_reads[1]))
+    #
+    # now we can create all valid combinations of read1/read2 as putative 
+    # discordant read pairs 
+    #    
     gene_pairs, genome_pairs, combo_pairs = \
         find_discordant_pairs(pe_reads, tid_genome_map, library_type)
     if len(gene_pairs) > 0 or len(genome_pairs) > 0:
@@ -325,6 +325,7 @@ def write_pe_reads(bamfh, pe_reads):
     for reads in pe_reads:
         for r in reads:
             bamfh.write(r)
+
 def write_pairs(bamfh, pairs):
     for r1,r2 in pairs:
         bamfh.write(r1)

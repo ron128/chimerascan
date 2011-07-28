@@ -35,7 +35,7 @@ setup_kwargs = {"name": "chimerascan",
                 "scripts": ["chimerascan/chimerascan_run.py",
                             "chimerascan/chimerascan_index.py",
                             "chimerascan/tools/run_cluster.py",
-                            "chimerascan/tools/make_html_table.py"]}
+                            "chimerascan/tools/chimerascan_html_table.py"]}
 
 # ---- Extension Modules ----------------------------------------------------
 

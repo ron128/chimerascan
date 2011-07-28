@@ -26,10 +26,10 @@ import sys
 import operator
 import collections
 
-from chimerascan.lib.chimera import Chimera
+from chimerascan.lib.chimera import Chimera, get_chimera_type
 from chimerascan.lib import config
 from chimerascan.lib.gene_to_genome import build_gene_to_genome_map, \
-    build_tx_cluster_map, gene_to_genome_pos
+    build_tx_cluster_map, build_genome_tx_trees, build_tx_name_gene_map, gene_to_genome_pos
 
 def get_chimera_groups(input_file, gene_file):
     # build a lookup table to get gene clusters from transcript name    
@@ -44,8 +44,8 @@ def get_chimera_groups(input_file, gene_file):
     cluster_chimera_dict = collections.defaultdict(lambda: [])
     for c in Chimera.parse(open(input_file)):
         # get cluster of overlapping genes
-        cluster5p = tx_cluster_map[c.partner5p.tx_name]
-        cluster3p = tx_cluster_map[c.partner3p.tx_name]
+        cluster5p = tx_cluster_map[c.tx_name_5p]
+        cluster3p = tx_cluster_map[c.tx_name_3p]
         # get genomic positions of breakpoints
         #coord5p = gene_to_genome_pos(c.partner5p.tx_name, c.partner5p.end-1, tx_genome_map)
         #coord3p = gene_to_genome_pos(c.partner3p.tx_name, c.partner3p.start, tx_genome_map)
@@ -59,18 +59,20 @@ def get_chimera_groups(input_file, gene_file):
 def get_best_coverage_chimera(chimeras):
     stats = []
     for c in chimeras:
-        stats.append((c.get_num_unique_spanning_positions(),
-                      c.get_weighted_cov(),
-                      c.get_num_frags(),
-                      c))
-    sorted_stats = sorted(stats, key=operator.itemgetter(0,1,2), reverse=True)
-    return sorted_stats[0][3]
+        # TODO: come up with a way to prioritize here (spanning included?)
+        stats.append((c,
+                      c.get_num_unique_positions(),
+                      c.get_num_frags()))
+    sorted_stats = sorted(stats, key=operator.itemgetter(1,2), reverse=True)
+    return sorted_stats[0][0]
 
 def write_output(input_file, output_file, index_dir):
     gene_file = os.path.join(index_dir, config.GENE_FEATURE_FILE)
     # build a lookup table to get genome coordinates from transcript 
     # coordinates
-    tx_genome_map = build_gene_to_genome_map(open(gene_file))
+    tx_genome_map = build_gene_to_genome_map(open(gene_file))    
+    tx_name_gene_map = build_tx_name_gene_map(gene_file)    
+    genome_tx_trees = build_genome_tx_trees(gene_file)
     # group chimera isoforms together
     # TODO: requires reading all chimeras into memory
     lines = []
@@ -84,19 +86,23 @@ def write_output(input_file, output_file, index_dir):
         genes3p = set()
         names = set()
         for c in chimeras:
-            txs5p.add("%s:%d-%d" % (c.partner5p.tx_name, c.partner5p.start, c.partner5p.end-1))
-            txs3p.add("%s:%d-%d" % (c.partner3p.tx_name, c.partner3p.start, c.partner3p.end-1))
-            genes5p.add(c.partner5p.gene_name)
-            genes3p.add(c.partner3p.gene_name)
+            txs5p.add("%s:%d-%d" % (c.tx_name_5p, c.tx_start_5p, c.tx_end_5p-1))
+            txs3p.add("%s:%d-%d" % (c.tx_name_3p, c.tx_start_3p, c.tx_end_3p-1))
+            genes5p.add(c.gene_name_5p)
+            genes3p.add(c.gene_name_3p)
             names.add(c.name)
         c = get_best_coverage_chimera(chimeras)
+        # get chimera type and distance between genes
+        chimera_type, distance = get_chimera_type(tx_name_gene_map[c.tx_name_5p],
+                                                  tx_name_gene_map[c.tx_name_3p],
+                                                  genome_tx_trees)
         # get genomic positions of chimera
-        chrom5p,strand5p,start5p = gene_to_genome_pos(c.partner5p.tx_name, c.partner5p.start, tx_genome_map)
-        chrom5p,strand5p,end5p = gene_to_genome_pos(c.partner5p.tx_name, c.partner5p.end-1, tx_genome_map)
+        chrom5p,strand5p,start5p = gene_to_genome_pos(c.tx_name_5p, c.tx_start_5p, tx_genome_map)
+        chrom5p,strand5p,end5p = gene_to_genome_pos(c.tx_name_5p, c.tx_end_5p-1, tx_genome_map)
         if strand5p == 1:
             start5p,end5p = end5p,start5p
-        chrom3p,strand3p,start3p = gene_to_genome_pos(c.partner3p.tx_name, c.partner3p.start, tx_genome_map)
-        chrom3p,strand3p,end3p = gene_to_genome_pos(c.partner3p.tx_name, c.partner3p.end-1, tx_genome_map)
+        chrom3p,strand3p,start3p = gene_to_genome_pos(c.tx_name_3p, c.tx_start_3p, tx_genome_map)
+        chrom3p,strand3p,end3p = gene_to_genome_pos(c.tx_name_3p, c.tx_end_3p-1, tx_genome_map)
         if strand3p == 1:
             start3p,end3p = end3p,start3p
         # get breakpoint spanning sequences
@@ -107,18 +113,20 @@ def write_output(input_file, output_file, index_dir):
                 continue
             spanning_pos_set.add(dr.pos)
             spanning_seq_lines.extend([">%s/%d" % (dr.qname, dr.readnum+1), dr.seq])
-        fields = [chrom5p, start5p, end5p, "+" if (strand5p == 0) else "-",
-                  chrom3p, start3p, end3p, "+" if (strand3p == 0) else "-",
+            
+        fields = [chrom5p, start5p, end5p,
+                  chrom3p, start3p, end3p,
+                  "CLUSTER%d" % (chimera_clusters),
+                  c.get_num_frags(),
+                  "+" if (strand5p == 0) else "-",
+                  "+" if (strand3p == 0) else "-",
                   ','.join(txs5p),
                   ','.join(txs3p),
                   ','.join(genes5p),
                   ','.join(genes3p),
-                  c.chimera_type, c.distance,
-                  c.get_weighted_cov(),
+                  chimera_type, distance,
                   c.get_num_frags(),
-                  c.get_num_spanning_frags(),
                   c.get_num_unique_positions(),
-                  c.get_num_unique_spanning_positions(),
                   ','.join(spanning_seq_lines),
                   ','.join(names)]
         lines.append(fields)
@@ -127,15 +135,15 @@ def write_output(input_file, output_file, index_dir):
     # sort
     lines = sorted(lines, key=operator.itemgetter(16, 12, 13), reverse=True)    
     f = open(output_file, "w")
-    print >>f, '\t'.join(['#chrom5p', 'start5p', 'end5p', 'strand5p',
-                          'chrom3p', 'start3p', 'end3p', 'strand3p',
+    print >>f, '\t'.join(['#chrom5p', 'start5p', 'end5p', 
+                          'chrom3p', 'start3p', 'end3p',
+                          'chimera_cluster_id', 'score', 
+                          'strand5p', 'strand3p',
                           'transcript_ids_5p', 'transcript_ids_3p',
                           'genes5p', 'genes3p',
                           'type', 'distance',
-                          'multimap_weighted_cov',
-                          'total_frags', 'spanning_frags',
+                          'total_frags', 
                           'unique_alignment_positions',
-                          'unique_spanning_alignment_positions',
                           'breakpoint_spanning_reads',
                           'chimera_ids'])
     for fields in lines:

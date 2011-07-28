@@ -68,9 +68,11 @@ from chimerascan.pipeline.write_output import write_output
 # defaults for bowtie
 DEFAULT_NUM_PROCESSORS = config.BASE_PROCESSORS
 DEFAULT_BOWTIE_PATH = ""
-DEFAULT_BOWTIE_ARGS = "--best"
+DEFAULT_BOWTIE_ARGS = "--best --strata"
+DEFAULT_DISCORD_BOWTIE_ARGS = "--best"
 DEFAULT_MULTIHITS = 100
 DEFAULT_MISMATCHES = 2
+DEFAULT_DISCORD_MISMATCHES = 3
 DEFAULT_SEGMENT_LENGTH = 25
 DEFAULT_TRIM5 = 0
 DEFAULT_TRIM3 = 0
@@ -191,8 +193,10 @@ class RunConfig(object):
              ("keep_tmp", parse_bool, DEFAULT_KEEP_TMP),
              ("bowtie_path", str, DEFAULT_BOWTIE_PATH),
              ("bowtie_args", str, DEFAULT_BOWTIE_ARGS),
+             ("discord_bowtie_args", str, DEFAULT_DISCORD_BOWTIE_ARGS),             
              ("multihits", int, DEFAULT_MULTIHITS),
              ("mismatches", int, DEFAULT_MISMATCHES),
+             ("discord_mismatches", int, DEFAULT_DISCORD_MISMATCHES),
              ("segment_length", int, DEFAULT_SEGMENT_LENGTH),
              ("trim5", int, DEFAULT_TRIM5),
              ("trim3", int, DEFAULT_TRIM3),
@@ -280,6 +284,10 @@ class RunConfig(object):
                           choices=FASTQ_QUAL_FORMATS, 
                           default=DEFAULT_FASTQ_QUAL_FORMAT, metavar="FMT",
                           help="FASTQ quality score format [default=%default]")
+        parser.add_option('--library-type', dest="library_type", 
+                          choices=LibraryTypes.choices(),
+                          default=DEFAULT_LIBRARY_TYPE,
+                          help="Library type [default=%default]")
         parser.add_option("--isize-mean", dest="isize_mean", type="int",
                           default=DEFAULT_ISIZE_MEAN, metavar="N",
                           help="Mean insert size to sample from when "
@@ -300,46 +308,51 @@ class RunConfig(object):
                                 help="Path to directory containing 'bowtie' "
                                 "[default: assumes bowtie is in the current "
                                 "PATH]")
+        bowtie_group.add_option("--trim5", type="int", dest="trim5", 
+                                default=DEFAULT_TRIM5, metavar="N",
+                                help="Trim N bases from 5' end of read")
+        bowtie_group.add_option("--trim3", type="int", dest="trim3", 
+                                default=DEFAULT_TRIM3, metavar="N",
+                                help="Trim N bases from 3' end of read")
+        bowtie_group.add_option("--min-fragment-length", type="int", 
+                                dest="min_fragment_length", 
+                                default=DEFAULT_MIN_FRAG_LENGTH,
+                                help="Smallest expected fragment length "
+                                "[default=%default]")
+        bowtie_group.add_option("--max-fragment-length", type="int", 
+                                dest="max_fragment_length", 
+                                default=DEFAULT_MAX_FRAG_LENGTH,
+                                help="Largest expected fragment length (reads less"
+                                " than this fragment length are assumed to be"
+                                " unspliced and contiguous) [default=%default]")
         bowtie_group.add_option("--multihits", type="int", dest="multihits", 
-                          default=DEFAULT_MULTIHITS, metavar="N",
-                          help="Ignore reads that map to more than N "
-                          "locations [default=%default]")
-        bowtie_group.add_option("--mismatches", type="int", dest="mismatches",
-                          default=DEFAULT_MISMATCHES, metavar="N",
-                          help="Aligned reads must have <= N mismatches "
-                          "[default=%default]")
+                                default=DEFAULT_MULTIHITS, metavar="N",
+                                help="Ignore reads that map to more than N "
+                                "locations [default=%default]")
+        bowtie_group.add_option("--initial-mismatches", type="int", dest="mismatches",
+                                default=DEFAULT_MISMATCHES, metavar="N",
+                                help="Aligned reads must have <= N mismatches "
+                                "[default=%default]")
+        bowtie_group.add_option("--initial-bowtie-args", dest="bowtie_args",
+                                default=DEFAULT_BOWTIE_ARGS,
+                                help="Additional arguments to pass to bowtie "
+                                "aligner (see Bowtie manual for options) "
+                                "[default='%default']")
+        bowtie_group.add_option("--discord-bowtie-args", dest="discord_bowtie_args",
+                                default=DEFAULT_DISCORD_BOWTIE_ARGS,
+                                help="Additional arguments to pass to bowtie "
+                                "aligner for discordant alignment phase (see "
+                                "Bowtie manual for options) [default='%default']")
+        bowtie_group.add_option("--discord-mismatches", type="int", dest="discord_mismatches",
+                                default=DEFAULT_DISCORD_MISMATCHES, metavar="N",
+                                help="Discordant aligned reads must have <= N mismatches "
+                                "[default=%default]")
         bowtie_group.add_option("--segment-length", type="int", 
                                 dest="segment_length", 
                                 default=DEFAULT_SEGMENT_LENGTH,
                                 metavar="N",
                                 help="Size of read segments during discordant " 
                                 "alignment phase [default=%default]")
-        bowtie_group.add_option("--bowtie-args", dest="bowtie_args",
-                                default=DEFAULT_BOWTIE_ARGS,
-                                help="Additional arguments to pass to bowtie "
-                                "aligner (see Bowtie manual for options) "
-                                "[default='%default']")               
-        bowtie_group.add_option("--trim5", type="int", dest="trim5", 
-                          default=DEFAULT_TRIM5, metavar="N",
-                          help="Trim N bases from 5' end of read")
-        bowtie_group.add_option("--trim3", type="int", dest="trim3", 
-                          default=DEFAULT_TRIM3, metavar="N",
-                          help="Trim N bases from 3' end of read")
-        bowtie_group.add_option("--min-fragment-length", type="int", 
-                          dest="min_fragment_length", 
-                          default=DEFAULT_MIN_FRAG_LENGTH,
-                          help="Smallest expected fragment length "
-                          "[default=%default]")
-        bowtie_group.add_option("--max-fragment-length", type="int", 
-                          dest="max_fragment_length", 
-                          default=DEFAULT_MAX_FRAG_LENGTH,
-                          help="Largest expected fragment length (reads less"
-                          " than this fragment length are assumed to be"
-                          " unspliced and contiguous) [default=%default]")
-        bowtie_group.add_option('--library-type', dest="library_type", 
-                                choices=LibraryTypes.choices(),
-                                default=DEFAULT_LIBRARY_TYPE,
-                                help="Library type [default=%default]")
         parser.add_option_group(bowtie_group)
         # filtering options
         filter_group = OptionGroup(parser, "Filtering options",
@@ -550,7 +563,6 @@ def run_chimerascan(runconfig):
             for fq in converted_fastq_files:
                 if os.path.isfile(fq):
                     os.remove(fq)
-            
     #
     # Initial Bowtie alignment step
     #
@@ -670,9 +682,9 @@ def run_chimerascan(runconfig):
                          num_processors=runconfig.num_processors,
                          quals=SANGER_FORMAT,
                          multihits=runconfig.multihits, 
-                         mismatches=runconfig.mismatches,
+                         mismatches=runconfig.discord_mismatches,
                          bowtie_bin=bowtie_bin,
-                         bowtie_args=runconfig.bowtie_args,
+                         bowtie_args=runconfig.discord_bowtie_args,
                          log_file=realigned_log_file,
                          segment_length=runconfig.segment_length,
                          keep_unmapped=True)
@@ -750,21 +762,23 @@ def run_chimerascan(runconfig):
                                     homology_mismatches=runconfig.homology_mismatches)
         if retcode != config.JOB_SUCCESS:
             logging.error("Failed with error code %d" % (retcode))
-            return config.JOB_ERROR  
-
+            return config.JOB_ERROR
     #
     # Make a breakpoint FASTA file and map of breakpoints to chimeras
     # for use in spanning read alignment
     #
+    breakpoint_chimera_file = os.path.join(tmp_dir, config.BREAKPOINT_CHIMERA_FILE)
     breakpoint_map_file = os.path.join(tmp_dir, config.BREAKPOINT_MAP_FILE)
     breakpoint_fasta_file = os.path.join(tmp_dir, config.BREAKPOINT_FASTA_FILE)
     msg = "Extracting breakpoint sequences from chimeras"
-    if (up_to_date(breakpoint_map_file, encompassing_chimera_file) and
+    if (up_to_date(breakpoint_chimera_file, encompassing_chimera_file) and
+        up_to_date(breakpoint_map_file, encompassing_chimera_file) and
         up_to_date(breakpoint_fasta_file, encompassing_chimera_file)):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)
-        chimeras_to_breakpoints(input_file=encompassing_chimera_file, 
+        chimeras_to_breakpoints(input_file=encompassing_chimera_file,
+                                breakpoint_sorted_chimera_file=breakpoint_chimera_file, 
                                 breakpoint_map_file=breakpoint_map_file, 
                                 breakpoint_fasta_file=breakpoint_fasta_file,
                                 tmp_dir=tmp_dir)
@@ -788,31 +802,42 @@ def run_chimerascan(runconfig):
             if os.path.exists(breakpoint_bowtie_index_file):
                 os.remove(breakpoint_bowtie_index_file)
             return config.JOB_ERROR
-        
-    return
-
     #
-    # Extract reads to realign against breakpoint sequences
+    # Extract reads that were encompassing when trimmed but may span
+    # breakpoints when extended.
     #
     encomp_spanning_fastq_file = os.path.join(tmp_dir, config.ENCOMP_SPANNING_FASTQ_FILE)
-    unaligned_spanning_fastq_file = os.path.join(tmp_dir, config.UNALIGNED_SPANNING_FASTQ_FILE)
-    msg = "Extracting putative breakpoint-spanning reads"
-    if (up_to_date(unaligned_spanning_fastq_file, realigned_unmapped_bam_file) and
-        up_to_date(encomp_spanning_fastq_file, breakpoint_chimera_file)):
+    msg = "Extracting encompassing reads that may extend past breakpoints"
+    if (up_to_date(encomp_spanning_fastq_file, encompassing_chimera_file)):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)    
-        retcode = nominate_encomp_spanning_reads(breakpoint_chimera_file, 
+        retcode = nominate_encomp_spanning_reads(encompassing_chimera_file, 
                                                  encomp_spanning_fastq_file)
         if retcode != config.JOB_SUCCESS:
             logging.error("Failed to extract breakpoint-spanning reads")
             if os.path.exists(encomp_spanning_fastq_file):
                 os.remove(encomp_spanning_fastq_file)
             return config.JOB_ERROR
-        retcode = nominate_unmapped_spanning_reads(realigned_unmapped_bam_file, 
-                                                   unaligned_spanning_fastq_file) 
+    #
+    # Extract unmapped reads to align against breakpoint sequences
+    #
+    msg = "Extracting unmapped reads that may span breakpoints"
+    singlemap_spanning_fastq_file = os.path.join(tmp_dir, config.SINGLEMAP_SPANNING_FASTQ_FILE)
+    unaligned_spanning_fastq_file = os.path.join(tmp_dir, config.UNALIGNED_SPANNING_FASTQ_FILE)
+    if (up_to_date(singlemap_spanning_fastq_file, encompassing_chimera_file, nzsize=False) and
+        up_to_date(unaligned_spanning_fastq_file, encompassing_chimera_file, nzsize=False)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        retcode = nominate_unmapped_spanning_reads(encompassing_chimera_file, 
+                                                   realigned_unmapped_bam_file,
+                                                   singlemap_spanning_fastq_file,
+                                                   unaligned_spanning_fastq_file,
+                                                   library_type=runconfig.library_type,
+                                                   tmp_dir=tmp_dir)
         if retcode != config.JOB_SUCCESS:
-            logging.error("Failed to extract breakpoint-spanning reads")
+            logging.error("Failed to extract unmapped reads")
             if os.path.exists(unaligned_spanning_fastq_file):
                 os.remove(unaligned_spanning_fastq_file)
             return config.JOB_ERROR
@@ -845,13 +870,67 @@ def run_chimerascan(runconfig):
                           keep_unmapped=False)
         if retcode != config.JOB_SUCCESS:
             logging.error("Bowtie failed with error code %d" % (retcode))    
-            return config.JOB_ERROR    
+            return config.JOB_ERROR
     #
-    # Align unmapped reads that may overlap breakpoint junctions
+    # Sort encomp/spanning reads by reference/position
+    #
+    msg = "Sorting/indexing encompassing/spanning alignments"
+    sorted_encomp_spanning_bam_file = os.path.join(tmp_dir, config.SORTED_ENCOMP_SPANNING_BAM_FILE)
+    if (up_to_date(sorted_encomp_spanning_bam_file, encomp_spanning_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        sorted_encomp_spanning_bam_prefix = os.path.splitext(sorted_encomp_spanning_bam_file)[0]
+        pysam.sort("-m", str(int(1e9)), encomp_spanning_bam_file, sorted_encomp_spanning_bam_prefix)
+        pysam.index(sorted_encomp_spanning_bam_file)
+    #
+    # Align single-mapping reads that may overlap breakpoint junctions
+    #
+    singlemap_spanning_bam_file = os.path.join(tmp_dir, config.SINGLEMAP_SPANNING_BAM_FILE)
+    singlemap_spanning_log_file = os.path.join(log_dir, "bowtie_singlemap_spanning.log")
+    msg = "Realigning single-mapping reads to breakpoints"
+    if (up_to_date(singlemap_spanning_bam_file, breakpoint_bowtie_index_file) and
+        up_to_date(singlemap_spanning_bam_file, singlemap_spanning_fastq_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:            
+        logging.info(msg)
+        retcode= align_sr(singlemap_spanning_fastq_file, 
+                          bowtie_index=breakpoint_bowtie_index,
+                          output_bam_file=singlemap_spanning_bam_file, 
+                          unaligned_fastq_param=None,
+                          maxmultimap_fastq_param=None,
+                          trim5=0,
+                          trim3=0,
+                          library_type=runconfig.library_type,
+                          num_processors=runconfig.num_processors, 
+                          quals=SANGER_FORMAT,
+                          multihits=runconfig.multihits,
+                          mismatches=runconfig.mismatches, 
+                          bowtie_bin=bowtie_bin,
+                          bowtie_args=runconfig.bowtie_args,
+                          log_file=singlemap_spanning_log_file,
+                          keep_unmapped=False)
+        if retcode != config.JOB_SUCCESS:
+            logging.error("Bowtie failed with error code %d" % (retcode))    
+            return config.JOB_ERROR
+    #
+    # Sort encomp/spanning reads by reference/position
+    #
+    msg = "Sorting/indexing single-mapping/spanning alignments"
+    sorted_singlemap_spanning_bam_file = os.path.join(tmp_dir, config.SORTED_SINGLEMAP_SPANNING_BAM_FILE)
+    if (up_to_date(sorted_singlemap_spanning_bam_file, singlemap_spanning_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        sorted_singlemap_spanning_bam_prefix = os.path.splitext(sorted_singlemap_spanning_bam_file)[0]
+        pysam.sort("-m", str(int(1e9)), singlemap_spanning_bam_file, sorted_singlemap_spanning_bam_prefix)
+        pysam.index(sorted_singlemap_spanning_bam_file)
+    #
+    # Align unmapped mapping reads that may overlap breakpoint junctions
     #
     unaligned_spanning_bam_file = os.path.join(tmp_dir, config.UNALIGNED_SPANNING_BAM_FILE)
     unaligned_spanning_log_file = os.path.join(log_dir, "bowtie_unaligned_spanning.log")
-    msg = "Aligning unmapped reads to breakpoints"
+    msg = "Realigning unmapped reads to breakpoints"
     if (up_to_date(unaligned_spanning_bam_file, breakpoint_bowtie_index_file) and
         up_to_date(unaligned_spanning_bam_file, unaligned_spanning_fastq_file)):
         logging.info("[SKIPPED] %s" % (msg))
@@ -877,6 +956,18 @@ def run_chimerascan(runconfig):
             logging.error("Bowtie failed with error code %d" % (retcode))    
             return config.JOB_ERROR
     #
+    # Sort encomp/spanning reads by reference/position
+    #
+    msg = "Sorting/indexing unaligned/spanning alignments"
+    sorted_unaligned_spanning_bam_file = os.path.join(tmp_dir, config.SORTED_UNALIGNED_SPANNING_BAM_FILE)
+    if (up_to_date(sorted_unaligned_spanning_bam_file, unaligned_spanning_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        sorted_unaligned_spanning_bam_prefix = os.path.splitext(sorted_unaligned_spanning_bam_file)[0]
+        pysam.sort("-m", str(int(1e9)), unaligned_spanning_bam_file, sorted_unaligned_spanning_bam_prefix)
+        pysam.index(sorted_unaligned_spanning_bam_file)
+    #
     # Merge spanning read alignment information
     #
     spanning_chimera_file = os.path.join(tmp_dir, config.SPANNING_CHIMERA_FILE)
@@ -887,16 +978,22 @@ def run_chimerascan(runconfig):
         up_to_date(spanning_chimera_file, realigned_unmapped_bam_file)):
         logging.info("[SKIPPED] %s" % (msg))
     else:
-        logging.info(msg)
-        merge_spanning_alignments(input_chimera_file=breakpoint_chimera_file,
-                                  encomp_spanning_bam_file=encomp_spanning_bam_file,
-                                  unaligned_bam_file=realigned_unmapped_bam_file,
-                                  spanning_bam_file=unaligned_spanning_bam_file,
-                                  breakpoint_map_file=breakpoint_map_file,
+        logging.info(msg)        
+        merge_spanning_alignments(breakpoint_chimera_file=breakpoint_chimera_file,
+                                  encomp_bam_file=sorted_encomp_spanning_bam_file,
+                                  singlemap_bam_file=sorted_singlemap_spanning_bam_file,
+                                  unaligned_bam_file=sorted_unaligned_spanning_bam_file,
                                   output_chimera_file=spanning_chimera_file,
                                   anchor_min=runconfig.anchor_min,
                                   anchor_length=runconfig.anchor_length,
-                                  anchor_mismatches=runconfig.anchor_mismatches)
+                                  anchor_mismatches=runconfig.anchor_mismatches,
+                                  library_type=runconfig.library_type,
+                                  tmp_dir=tmp_dir)
+    #
+    # Resolve reads mapping to multiple chimeras
+    # TODO: work in progress
+    #
+    pass
     #
     # Filter chimeras
     # 
@@ -909,20 +1006,14 @@ def run_chimerascan(runconfig):
         # get insert size at prob    
         max_isize = isize_dist.isize_at_percentile(runconfig.filter_isize_percentile)
         median_isize = isize_dist.isize_at_percentile(50.0)
-        filter_chimeras(spanning_chimera_file, 
-                        filtered_chimera_file,
+        filter_chimeras(input_file=spanning_chimera_file, 
+                        output_file=filtered_chimera_file,
                         index_dir=runconfig.index_dir,
                         bam_file=sorted_aligned_bam_file,
-                        weighted_unique_frags=runconfig.filter_unique_frags,
+                        unique_frags=runconfig.filter_unique_frags,
                         median_isize=median_isize,
-                        max_isize=max_isize,
                         isoform_fraction=runconfig.filter_isoform_fraction,
                         false_pos_file=runconfig.filter_false_pos_file)
-    #
-    # Resolve reads mapping to multiple chimeras
-    # TODO: output looks good without this, so keep as a work in progress
-    #
-    pass
     #
     # Write user-friendly output file
     # 
@@ -937,9 +1028,9 @@ def run_chimerascan(runconfig):
     #
     # Cleanup
     # 
-    #if not runconfig.keep_tmp:
-    #    logging.info("Cleaning up temporary files")
-    #    shutil.rmtree(tmp_dir)
+    if not runconfig.keep_tmp:
+        logging.info("Cleaning up temporary files")
+        shutil.rmtree(tmp_dir)
     #
     # Done
     # 

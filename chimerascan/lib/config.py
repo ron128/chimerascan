@@ -86,7 +86,7 @@ EXON_JUNCTION_TRIM_BP = 10
 # number of homology mismatches in breakpoint sequences 
 # to tolerate when computing homology distance
 BREAKPOINT_HOMOLOGY_MISMATCHES = 2
-BREAKPOINT_CHIMERA_FILE = "encompassing_chimeras.breakpoints.txt"
+BREAKPOINT_CHIMERA_FILE = "encompassing_chimeras.breakpoint_sorted.txt"
 BREAKPOINT_MAP_FILE = "breakpoints.txt"
 BREAKPOINT_FASTA_FILE = "breakpoints.fa"
 BREAKPOINT_BOWTIE_INDEX = "breakpoints"
@@ -94,14 +94,20 @@ BREAKPOINT_BOWTIE_INDEX_FILE = "breakpoints.1.ebwt"
 
 # reads to remap to breakpoint junction index
 ENCOMP_SPANNING_FASTQ_FILE = "encomp_spanning_reads.fq"
+SINGLEMAP_SPANNING_FASTQ_FILE = "singlemap_spanning_reads.fq"
 UNALIGNED_SPANNING_FASTQ_FILE = "unaligned_spanning_reads.fq"
 # results of aligning reads to breakpoint index
 ENCOMP_SPANNING_BAM_FILE = "encomp_spanning_reads.bam"
+SORTED_ENCOMP_SPANNING_BAM_FILE = "encomp_spanning_reads.srt.bam"
+SINGLEMAP_SPANNING_BAM_FILE = "singlemap_spanning_reads.bam"
+SORTED_SINGLEMAP_SPANNING_BAM_FILE = "singlemap_spanning_reads.srt.bam"
 UNALIGNED_SPANNING_BAM_FILE = "unaligned_spanning_reads.bam"
+SORTED_UNALIGNED_SPANNING_BAM_FILE = "unaligned_spanning_reads.srt.bam"
+
 # results of merging spanning reads into chimera nominations
 SPANNING_CHIMERA_FILE = "spanning_chimeras.txt"
 # results of filtering chimeras
 FILTERED_CHIMERA_FILE = "spanning_chimeras.filtered.txt"
 # output file
-CHIMERA_OUTPUT_FILE = "chimeras.txt"
+CHIMERA_OUTPUT_FILE = "chimeras.bedpe"
 

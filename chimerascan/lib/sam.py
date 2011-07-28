@@ -20,6 +20,8 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
+import operator
+
 from chimerascan import pysam
 from seq import DNA_reverse_complement
 
@@ -104,6 +106,31 @@ def parse_unpaired_pe_reads(bamfh):
         num_reads += 1
     if num_reads > 0:
         yield pe_reads
+
+def select_best_mismatch_strata(reads, mismatch_tolerance=0):
+    if len(reads) == 0:
+        return []
+    # sort reads by number of mismatches
+    mapped_reads = []
+    unmapped_reads = []
+    for r in reads:
+        if r.is_unmapped:
+            unmapped_reads.append(r)
+        else:
+            mapped_reads.append((r.opt('NM'), r))
+    if len(mapped_reads) == 0:
+        return unmapped_reads
+    sorted_reads = sorted(mapped_reads, key=operator.itemgetter(0))
+    best_nm = sorted_reads[0][0]
+    worst_nm = sorted_reads[-1][0]
+    sorted_reads.extend((worst_nm+1, r) for r in unmapped_reads)
+    # choose reads within a certain mismatch tolerance
+    best_reads = []
+    for mismatches, r in sorted_reads:
+        if mismatches > (best_nm + mismatch_tolerance):
+            break
+        best_reads.append(r)
+    return best_reads
 
 def copy_read(r):
     a = pysam.AlignedRead()

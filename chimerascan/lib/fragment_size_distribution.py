@@ -73,7 +73,8 @@ class InsertSizeDistribution(object):
         return self.min_isize + (count / float(n))
     
     def std(self):
-        mean = self.mean()
+        # first get mean (not shifted)
+        mean = self.mean() - self.min_isize
         if mean is None:
             return None
         n = 0

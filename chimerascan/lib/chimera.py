@@ -214,9 +214,34 @@ class Chimera(object):
     FIELD_DELIM = "|"
     PAIR_DELIM = "||" 
     READ_DELIM = ";"
+    BREAKPOINT_NAME_FIELD = 14
+    TX_NAME_3P_FIELD = 3
+
+    def __init__(self):
+        self.tx_name_5p = None
+        self.tx_start_5p = 0
+        self.tx_end_5p = 0
+        self.tx_name_3p = None
+        self.tx_start_3p = 0
+        self.tx_end_3p = 0
+        self.name = None
+        self.score = 0.0
+        self.tx_strand_5p = "."
+        self.tx_strand_3p = "."
+        self.gene_name_5p = None
+        self.gene_name_3p = None
+        self.exons_5p = None
+        self.exons_3p = None
+        self.breakpoint_name = None
+        self.breakpoint_seq_5p = None
+        self.breakpoint_seq_3p = None
+        self.homology_left = None
+        self.homology_right = None
+        self.encomp_frags = []
+        self.spanning_reads = []
 
     @staticmethod
-    def from_bedpe(fields):
+    def from_list(fields):
         c = Chimera()
         c.tx_name_5p = fields[0]
         c.tx_start_5p = int(fields[1])
@@ -232,18 +257,26 @@ class Chimera(object):
         c.gene_name_3p = fields[11]
         c.exons_5p = map(int, fields[12].split("-"))
         c.exons_3p = map(int, fields[13].split("-"))
-        c.breakpoint_seq_5p = fields[14]
-        c.breakpoint_seq_3p = fields[15]
-        c.homology_left = int(fields[16])
-        c.homology_right = int(fields[17])
+        c.breakpoint_name = fields[14]
+        c.breakpoint_seq_5p = fields[15]
+        c.breakpoint_seq_3p = fields[16]
+        c.homology_left = int(fields[17])
+        c.homology_right = int(fields[18])
         c.encomp_frags = []
+        c.spanning_reads = []
         # raw encompassing read information
-        encomp_reads_field = parse_string_none(fields[18])
-        for read_pair_fields in encomp_reads_field.split(c.READ_DELIM):
-            dreads = []
-            for read_fields in read_pair_fields.split(c.PAIR_DELIM):
-                dreads.append(DiscordantRead.from_list(read_fields.split(c.FIELD_DELIM)))
-            c.encomp_frags.append(dreads)
+        encomp_reads_field = parse_string_none(fields[19])
+        if encomp_reads_field is not None:
+            for read_pair_fields in encomp_reads_field.split(c.READ_DELIM):
+                dreads = []
+                for read_fields in read_pair_fields.split(c.PAIR_DELIM):
+                    dreads.append(DiscordantRead.from_list(read_fields.split(c.FIELD_DELIM)))
+                c.encomp_frags.append(dreads)
+        # raw spanning read information
+        spanning_reads_field = parse_string_none(fields[20])
+        if spanning_reads_field is not None:
+            for read_fields in spanning_reads_field.split(c.READ_DELIM):
+                c.spanning_reads.append(DiscordantRead.from_list(read_fields.split(c.FIELD_DELIM)))        
         return c
 
     @staticmethod
@@ -252,9 +285,16 @@ class Chimera(object):
             if line.startswith("#"):
                 continue            
             fields = line.strip().split('\t')
-            yield Chimera.from_bedpe(fields)
+            yield Chimera.from_list(fields)
 
-    def to_bedpe(self):
+    def to_list(self):
+        # reads
+        #print [Chimera.FIELD_DELIM.join(map(str,r.to_list())) for r in self.spanning_reads]
+        if len(self.spanning_reads) == 0:
+            span_string = None
+        else:
+            span_string = Chimera.READ_DELIM.join(Chimera.FIELD_DELIM.join(map(str,r.to_list())) 
+                                                  for r in self.spanning_reads)            
         return [self.tx_name_5p, self.tx_start_5p, self.tx_end_5p,
                 self.tx_name_3p, self.tx_start_3p, self.tx_end_3p,
                 self.name, self.score, 
@@ -262,16 +302,42 @@ class Chimera(object):
                 self.gene_name_5p, self.gene_name_3p,
                 "%d-%d" % (self.exons_5p[0], self.exons_5p[1]),
                 "%d-%d" % (self.exons_3p[0], self.exons_3p[1]),
+                self.breakpoint_name,
                 self.breakpoint_seq_5p,
                 self.breakpoint_seq_3p,
                 self.homology_left,
                 self.homology_right,
-                frags_to_encomp_string(self.encomp_frags)]      
+                frags_to_encomp_string(self.encomp_frags),
+                span_string]
 
+    def get_num_unique_positions(self):
+        """
+        calculates total number of unique read alignment
+        positions supporting chimera
+        """
+        # find all unique alignment positions and read names
+        encomp_pos = set()
+        qnames = set()
+        for pair in self.encomp_frags:
+            encomp_pos.add((pair[0].pos, pair[1].pos))
+            qnames.add(pair[0].qname)
+        # add spanning reads
+        spanning_pos = set()
+        for dr in self.spanning_reads:
+            if dr.qname not in qnames:
+                spanning_pos.add(dr.pos)
+        return len(encomp_pos) + len(spanning_pos)
 
-
-
-
+    def get_num_frags(self):
+        """
+        number of unique fragments supporting the chimera (by read name)
+        """
+        qnames = set()
+        for pair in self.encomp_frags:
+            qnames.add(pair[0].qname)
+        for dr in self.spanning_reads:
+            qnames.add(dr.qname)
+        return len(qnames)
 
 #
 #class ChimeraPartner(object):
