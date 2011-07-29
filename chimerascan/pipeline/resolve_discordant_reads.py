@@ -24,7 +24,6 @@ import logging
 import collections
 import os
 
-from chimerascan.lib.base import make_temp
 from chimerascan.lib.chimera import Chimera
 from chimerascan.pipeline.profile_insert_size import InsertSizeDistribution
 from chimerascan.lib.batch_sort import batch_sort
@@ -44,13 +43,6 @@ def choose_most_likely_alignments(dreads, chimeras):
     # - number of mismatches
     # - implied insert size of alignment
     pass
-
-def merge_mmap_hists(hist1, hist2):
-    newhist = []
-    for count1,count2 in zip(hist1, hist2):
-        newhist.append(count1 + count2)
-    return newhist
-
 
 def calc_isize_prob(isize, isize_dist):
     # find percentile of observing this insert size in the reads

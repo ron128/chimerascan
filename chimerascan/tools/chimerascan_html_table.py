@@ -45,6 +45,7 @@ def get_header_row():
             "5' genes", "3' genes",
             "Type", "5' -> 3' distance",
             "Total frags",
+            "Spanning frags",
             "Unique alignment positions",
             "Breakpoint spanning reads",
             "Chimera IDs"]
@@ -84,12 +85,14 @@ def generate_row_data(line_iter, show_read_throughs,
         newfields.append(("string", fields[15]))
         # total frags
         newfields.append(("string", fields[16]))
-        # unique alignment positions
+        # spanning frags
         newfields.append(("string", fields[17]))
+        # unique alignment positions
+        newfields.append(("string", fields[18]))
         # breakpoint spanning reads
-        newfields.append(("list", fields[18].split(",")))        
-        # chimera ids
         newfields.append(("list", fields[19].split(",")))        
+        # chimera ids
+        newfields.append(("list", fields[20].split(",")))        
         yield newfields
 
 def make_html_table(input_file, 

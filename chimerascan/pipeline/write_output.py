@@ -108,7 +108,7 @@ def write_output(input_file, output_file, index_dir):
         # get breakpoint spanning sequences
         spanning_seqs = set()
         spanning_fasta_lines = []
-        for dr in c.spanning_reads:
+        for dr in c.get_spanning_reads():
             if dr.seq in spanning_seqs:
                 continue
             spanning_seqs.add(dr.seq)
@@ -128,6 +128,7 @@ def write_output(input_file, output_file, index_dir):
                   ','.join(genes3p),
                   chimera_type, distance,
                   c.get_num_frags(),
+                  c.get_num_spanning_frags(),
                   c.get_num_unique_positions(),
                   ','.join(spanning_fasta_lines),
                   ','.join(names)]
@@ -145,6 +146,7 @@ def write_output(input_file, output_file, index_dir):
                           'genes5p', 'genes3p',
                           'type', 'distance',
                           'total_frags', 
+                          'spanning_frags',
                           'unique_alignment_positions',
                           'breakpoint_spanning_reads',
                           'chimera_ids'])

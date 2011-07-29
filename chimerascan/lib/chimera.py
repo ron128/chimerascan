@@ -292,12 +292,11 @@ class Chimera(object):
 
     def to_list(self):
         # reads
-        #print [Chimera.FIELD_DELIM.join(map(str,r.to_list())) for r in self.spanning_reads]
         if len(self.spanning_reads) == 0:
             span_string = None
         else:
             span_string = Chimera.READ_DELIM.join(Chimera.FIELD_DELIM.join(map(str,r.to_list())) 
-                                                  for r in self.spanning_reads)            
+                                                  for r in self.spanning_reads)
         return [self.tx_name_5p, self.tx_start_5p, self.tx_end_5p,
                 self.tx_name_3p, self.tx_start_3p, self.tx_end_3p,
                 self.name, self.score, 
@@ -353,12 +352,25 @@ class Chimera(object):
         chimera (by read name)
         """
         qnames = set()
+        for dpair in self.encomp_frags:
+            if (maxnumhits > 0) and (min(dpair[0].numhits, dpair[1].numhits) > maxnumhits):
+                continue
+            if any(dr.is_spanning for dr in dpair):
+                qnames.add(dpair[0].qname)            
         for dr in self.spanning_reads:
             if (maxnumhits > 0) and (dr.numhits > maxnumhits):
                 continue
             qnames.add(dr.qname)
         return len(qnames)  
 
+    def get_spanning_reads(self):
+        for dpair in self.encomp_frags:
+            if dpair[0].is_spanning:
+                yield dpair[0]
+            if dpair[1].is_spanning:
+                yield dpair[1]
+        for dr in self.spanning_reads:
+            yield dr
 
 #
 #class ChimeraPartner(object):

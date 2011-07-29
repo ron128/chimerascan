@@ -192,7 +192,7 @@ def filter_spanning_reads(chimeras, reads,
 def merge_spanning_alignments(breakpoint_chimera_file,
                               encomp_bam_file,
                               singlemap_bam_file,
-                              unaligned_bam_file,
+                              #unaligned_bam_file,
                               output_chimera_file,
                               anchor_min, 
                               anchor_length,
@@ -207,21 +207,27 @@ def merge_spanning_alignments(breakpoint_chimera_file,
     f = open(tmp_encomp_chimera_file, "w")
     filtered_hits = 0
     for chimeras, reads in parse_sync_by_breakpoint(breakpoint_chimera_file, encomp_bam_file):
-        # build dictionary of qnames
-        chimera_qname_dict = {}
+        # build dictionary of chimera name -> qname -> discordant pairs
+        chimera_qname_dict = collections.defaultdict(lambda: {})
         for c in chimeras:
-            chimera_qname_dict[c.name] = set(dpair[0].qname for dpair in c.encomp_frags)
+            for dpair in c.encomp_frags:
+                chimera_qname_dict[c.name][dpair[0].qname] = dpair        
         # find valid spanning reads
         for c, dr in filter_spanning_reads(chimeras, reads, 
                                            anchor_min, anchor_length, 
                                            anchor_mismatches, library_type):
-            # ensure read is also encompassing
-            # TODO: more checking necessary? (read1 vs. read2? check which 
-            # of two reads overlaps breakpoint?)
+            # ensure encompassing read is present
             if dr.qname not in chimera_qname_dict[c.name]:
                 continue
-            # add read as a spanning read
-            c.spanning_reads.append(dr)
+            # get discordant pair
+            dpair = chimera_qname_dict[c.name][dr.qname]
+            # mark correct read (read1/read2) as a spanning read
+            if dr.readnum == dpair[0].readnum:
+                dpair[0].is_spanning = True
+            elif dr.readnum == dpair[1].readnum:
+                dpair[1].is_spanning = True
+            else:
+                assert False
             filtered_hits += 1
         # write chimeras back to file
         for c in chimeras:
@@ -255,36 +261,38 @@ def merge_spanning_alignments(breakpoint_chimera_file,
     #
     # Process reads that are unmapped and spanning
     #
-    logging.debug("Processing unmapped/spanning reads")
-    tmp_unmapped_chimera_file = os.path.join(tmp_dir, ".unmapped_chimeras.bedpe")    
-    f = open(tmp_unmapped_chimera_file, "w")
-    filtered_hits = 0
-    for chimeras, reads in parse_sync_by_breakpoint(tmp_singlemap_chimera_file, unaligned_bam_file):
-        # both reads in the pair must map across junction
-        chimera_read_map = collections.defaultdict(lambda: collections.defaultdict(lambda: [None, None]))
-        for c, dr in filter_spanning_reads(chimeras, reads, 
-                                           anchor_min, anchor_length, 
-                                           anchor_mismatches, library_type):
-            chimera_read_map[c.name][dr.qname][dr.readnum] = dr
-        for chimera_name, qname_pe_reads in chimera_read_map.iteritems():
-            for qname, readpair in qname_pe_reads.iteritems():
-                if any(r is None for r in readpair):
-                    continue
-                # add both reads as spanning reads
-                c.spanning_reads.append(readpair[0])
-                c.spanning_reads.append(readpair[1])
-                filtered_hits += 1
-        # write chimeras back to file
-        for c in chimeras:
-            fields = c.to_list()
-            print >>f, '\t'.join(map(str, fields))         
-    f.close()
-    logging.debug("\tFound %d hits" % (filtered_hits))
+#    logging.debug("Processing unmapped/spanning reads")
+#    tmp_unmapped_chimera_file = os.path.join(tmp_dir, ".unmapped_chimeras.bedpe")    
+#    f = open(tmp_unmapped_chimera_file, "w")
+#    filtered_hits = 0
+#    for chimeras, reads in parse_sync_by_breakpoint(tmp_singlemap_chimera_file, unaligned_bam_file):
+#        # both reads in the pair must map across junction
+#        chimera_read_map = collections.defaultdict(lambda: collections.defaultdict(lambda: [None, None]))
+#        for c, dr in filter_spanning_reads(chimeras, reads, 
+#                                           anchor_min, anchor_length, 
+#                                           anchor_mismatches, library_type):
+#            chimera_read_map[c.name][dr.qname][dr.readnum] = dr
+#        for chimera_name, qname_pe_reads in chimera_read_map.iteritems():
+#            for qname, readpair in qname_pe_reads.iteritems():
+#                if any(r is None for r in readpair):
+#                    continue
+#                # add both reads as spanning reads
+#                c.spanning_reads.append(readpair[0])
+#                c.spanning_reads.append(readpair[1])
+#                filtered_hits += 1
+#        # write chimeras back to file
+#        for c in chimeras:
+#            fields = c.to_list()
+#            print >>f, '\t'.join(map(str, fields))         
+#    f.close()
+#    logging.debug("\tFound %d hits" % (filtered_hits))
     # output_chimera_file    
-    shutil.copyfile(tmp_unmapped_chimera_file, output_chimera_file)
+    shutil.copyfile(tmp_singlemap_chimera_file, output_chimera_file)
     # remove temporary files
-    #os.remove(tmp_encomp_chimera_file)
-    #os.remove(tmp_singlemap_chimera_file)
+    if os.path.exists(tmp_encomp_chimera_file):
+        os.remove(tmp_encomp_chimera_file)
+    if os.path.exists(tmp_singlemap_chimera_file):
+        os.remove(tmp_singlemap_chimera_file)
     #os.remove(tmp_unmapped_chimera_file)
     
 
