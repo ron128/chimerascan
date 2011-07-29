@@ -28,6 +28,26 @@ from chimerascan.bx.intersection import Interval, IntervalTree
 # local imports
 from feature import GeneFeature
 
+def get_rname_tid_map(bamfh):
+    rname_tid_map = {}
+    for tid,ref in enumerate(bamfh.references):
+        rname_tid_map[ref] = tid
+    return rname_tid_map
+
+def build_tid_gene_map(bamfh, genefile, rname_prefix=None):
+    rname_tid_map = get_rname_tid_map(bamfh)
+    rname_prefix = '' if rname_prefix is None else rname_prefix
+    tid_tx_map = {}
+    # build gene and genome data structures for fast lookup
+    for g in GeneFeature.parse(open(genefile)):
+        # only use genes that are references in the sam file
+        rname = rname_prefix + g.tx_name
+        if rname not in rname_tid_map:
+            continue
+        tid = rname_tid_map[rname]
+        tid_tx_map[tid] = g
+    return tid_tx_map
+
 def build_tx_name_gene_map(genefile, rname_prefix=None):
     rname_prefix = '' if rname_prefix is None else rname_prefix
     tx_map = {}
@@ -44,44 +64,6 @@ def build_genome_tx_trees(genefile):
         interval = Interval(g.tx_start, g.tx_end, strand=g.strand, value=g)
         genome_tx_trees[g.chrom].insert_interval(interval)
     return genome_tx_trees
-
-def get_rname_tid_map(bamfh):
-    rname_tid_map = {}
-    for tid,ref in enumerate(bamfh.references):
-        rname_tid_map[ref] = tid
-    return rname_tid_map
-
-def build_tid_tx_map(bamfh, genefile, rname_prefix=None):
-    rname_tid_map = get_rname_tid_map(bamfh)
-    rname_prefix = '' if rname_prefix is None else rname_prefix
-    tid_tx_map = {}
-    # build gene and genome data structures for fast lookup
-    for g in GeneFeature.parse(open(genefile)):
-        # only use genes that are references in the sam file
-        rname = rname_prefix + g.tx_name
-        if rname not in rname_tid_map:
-            continue
-        tid = rname_tid_map[rname]
-        tid_tx_map[tid] = g
-    return tid_tx_map
-
-def build_tid_tx_maps(bamfh, genefile, rname_prefix=None):
-    rname_tid_map = get_rname_tid_map(bamfh)
-    rname_prefix = '' if rname_prefix is None else rname_prefix
-    tid_tx_map = {}
-    genome_tx_trees = collections.defaultdict(lambda: IntervalTree())    
-    # build gene and genome data structures for fast lookup
-    for g in GeneFeature.parse(open(genefile)):
-        # only use genes that are references in the sam file
-        rname = rname_prefix + g.tx_name
-        if rname not in rname_tid_map:
-            continue
-        tid = rname_tid_map[rname]
-        tid_tx_map[tid] = g
-        # add gene to interval tree
-        interval = Interval(g.tx_start, g.tx_end, strand=g.strand, value=tid)
-        genome_tx_trees[g.chrom].insert_interval(interval)
-    return tid_tx_map, genome_tx_trees
 
 def build_tid_tx_cluster_map(bamfh, line_iter, rname_prefix=None):
     rname_tid_map = get_rname_tid_map(bamfh)
@@ -146,31 +128,6 @@ def build_tx_cluster_map(line_iter, rname_prefix=None):
                 current_cluster_id += 1
                 #print strand, [bamfh.getrname(tid) for tid in tids]
     return tx_cluster_map
-
-def build_cluster_gene_map(line_iter):
-    cluster_trees = collections.defaultdict(lambda: ClusterTree(0,1))
-    genes = []    
-    for g in GeneFeature.parse(line_iter):
-        # insert into cluster tree        
-        cluster_trees[g.chrom].insert(g.tx_start, g.tx_end, len(genes)) 
-        genes.append(g)
-    # extract gene clusters
-    cluster_gene_map = {}
-    current_cluster_id = 0
-    for chrom, tree in cluster_trees.iteritems():
-        for start, end, indexes in tree.getregions():
-            # group overlapping transcripts on same strand together            
-            strand_gene_dict = collections.defaultdict(lambda: set())
-            for index in indexes:
-                strand_gene_dict[g.strand].add(genes[index])
-            # build a map between transcript tids and all the overlapping
-            # transcripts on the same strand
-            for strand, strand_genes in strand_gene_dict.iteritems():
-                for g in strand_genes:
-                    cluster_gene_map[current_cluster_id].append(g)
-                current_cluster_id += 1
-                #print strand, [bamfh.getrname(tid) for tid in tids]
-    return cluster_gene_map
 
 def build_tid_to_genome_map(bamfh, line_iter, rname_prefix=None):
     rname_tid_map = get_rname_tid_map(bamfh)

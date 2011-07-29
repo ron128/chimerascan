@@ -129,6 +129,8 @@ class DiscordantRead(object):
 
 
 def frags_to_encomp_string(frags):
+    if len(frags) == 0:
+        return "None"
     # encompassing read pairs
     encomp_frags = []
     for frag in frags:
@@ -214,8 +216,9 @@ class Chimera(object):
     FIELD_DELIM = "|"
     PAIR_DELIM = "||" 
     READ_DELIM = ";"
-    BREAKPOINT_NAME_FIELD = 14
     TX_NAME_3P_FIELD = 3
+    NAME_FIELD = 6
+    BREAKPOINT_NAME_FIELD = 14
 
     def __init__(self):
         self.tx_name_5p = None
@@ -328,16 +331,34 @@ class Chimera(object):
                 spanning_pos.add(dr.pos)
         return len(encomp_pos) + len(spanning_pos)
 
-    def get_num_frags(self):
+    def get_num_frags(self, maxnumhits=0):
         """
-        number of unique fragments supporting the chimera (by read name)
+        number of unique fragments supporting the 
+        chimera (by read name)
         """
         qnames = set()
         for pair in self.encomp_frags:
+            if (maxnumhits > 0) and (min(pair[0].numhits, pair[1].numhits) > maxnumhits):
+                continue
             qnames.add(pair[0].qname)
         for dr in self.spanning_reads:
+            if (maxnumhits > 0) and (dr.numhits > maxnumhits):
+                continue
             qnames.add(dr.qname)
         return len(qnames)
+
+    def get_num_spanning_frags(self, maxnumhits=0):
+        """
+        number of unique spanning fragments supporting the 
+        chimera (by read name)
+        """
+        qnames = set()
+        for dr in self.spanning_reads:
+            if (maxnumhits > 0) and (dr.numhits > maxnumhits):
+                continue
+            qnames.add(dr.qname)
+        return len(qnames)  
+
 
 #
 #class ChimeraPartner(object):

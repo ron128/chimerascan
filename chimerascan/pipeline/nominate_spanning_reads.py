@@ -30,10 +30,13 @@ from chimerascan.lib.base import LibraryTypes
 from chimerascan.lib.sam import parse_pe_reads
 from chimerascan.lib.chimera import Chimera, OrientationTags, ORIENTATION_TAG_NAME
 from chimerascan.lib.batch_sort import batch_sort
-
+from chimerascan.lib.seq import DNA_reverse_complement
 from chimerascan.pipeline.find_discordant_reads import get_gene_orientation
 
-def to_fastq(qname, readnum, seq, qual):
+def to_fastq(qname, readnum, seq, qual, is_reverse=False):
+    if is_reverse:
+        seq = DNA_reverse_complement(seq)
+        qual = qual[::-1]
     return "@%s/%d\n%s\n+\n%s" % (qname, readnum+1, seq, qual)
 
 def nominate_encomp_spanning_reads(chimera_file, output_fastq_file):
@@ -54,14 +57,16 @@ def nominate_encomp_spanning_reads(chimera_file, output_fastq_file):
                 if key5p not in remap_qnames:
                     remap_qnames.add((r5p.qname, r5p.readnum))
                     print >>fqfh, to_fastq(r5p.qname, r5p.readnum, 
-                                           r5p.seq, "I" * len(r5p.seq))
+                                           r5p.seq, "I" * len(r5p.seq),
+                                           is_reverse=r5p.is_reverse)
             # if 3' read overlaps breakpoint then it should be remapped
             if r3p.clipstart < start3p < r3p.clipend:
                 key3p = (r3p.qname, r3p.readnum)
                 if key3p not in remap_qnames:
                     remap_qnames.add((r3p.qname, r3p.readnum))
                     print >>fqfh, to_fastq(r3p.qname, r3p.readnum, 
-                                           r3p.seq, "I" * len(r3p.seq))
+                                           r3p.seq, "I" * len(r3p.seq),
+                                           is_reverse=r3p.is_reverse)
     fqfh.close()
     return config.JOB_SUCCESS
 

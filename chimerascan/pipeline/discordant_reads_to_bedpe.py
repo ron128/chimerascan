@@ -11,7 +11,7 @@ from chimerascan import pysam
 from chimerascan.lib import config
 from chimerascan.lib.chimera import DiscordantTags, DISCORDANT_TAG_NAME, \
     OrientationTags, ORIENTATION_TAG_NAME, DiscordantRead
-from chimerascan.lib.gene_to_genome import build_tid_tx_map
+from chimerascan.lib.gene_to_genome import build_tid_gene_map
 from chimerascan.lib.batch_sort import batch_sort
 
 def parse_pairs(bamfh):
@@ -54,8 +54,8 @@ def discordant_reads_to_bedpe(index_dir, input_bam_file, output_file):
     # build a lookup table to get genomic intervals from transcripts
     logging.debug("Reading gene information")
     gene_file = os.path.join(index_dir, config.GENE_FEATURE_FILE)
-    tid_tx_map = build_tid_tx_map(bamfh, gene_file,
-                                  rname_prefix=config.GENE_REF_PREFIX)
+    tid_gene_map = build_tid_gene_map(bamfh, gene_file,
+                                      rname_prefix=config.GENE_REF_PREFIX)
     outfh = open(output_file, "w")    
     logging.debug("Converting BAM to BEDPE format")
     for r5p,r3p in parse_gene_discordant_reads(bamfh):
@@ -65,8 +65,8 @@ def discordant_reads_to_bedpe(index_dir, input_bam_file, output_file):
         dr5p = DiscordantRead.from_read(r5p)
         dr3p = DiscordantRead.from_read(r3p)
         # get gene information
-        tx5p = tid_tx_map[r5p.rname]
-        tx3p = tid_tx_map[r3p.rname]
+        tx5p = tid_gene_map[r5p.rname]
+        tx3p = tid_gene_map[r3p.rname]
         # write bedpe format
         fields = [tx5p.tx_name, r5p.pos, r5p.aend,
                   tx3p.tx_name, r3p.pos, r3p.aend,

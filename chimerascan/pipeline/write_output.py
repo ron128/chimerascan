@@ -106,14 +106,16 @@ def write_output(input_file, output_file, index_dir):
         if strand3p == 1:
             start3p,end3p = end3p,start3p
         # get breakpoint spanning sequences
-        spanning_seq_lines = []
-        spanning_pos_set = set()
+        spanning_seqs = set()
+        spanning_fasta_lines = []
         for dr in c.spanning_reads:
-            if dr.pos in spanning_pos_set:
+            if dr.seq in spanning_seqs:
                 continue
-            spanning_pos_set.add(dr.pos)
-            spanning_seq_lines.extend([">%s/%d" % (dr.qname, dr.readnum+1), dr.seq])
-            
+            spanning_seqs.add(dr.seq)
+            spanning_fasta_lines.extend([">%s/%d pos=%d strand=%s" % 
+                                         (dr.qname, dr.readnum+1, dr.pos, 
+                                          "-" if dr.is_reverse else "+"), 
+                                         dr.seq])           
         fields = [chrom5p, start5p, end5p,
                   chrom3p, start3p, end3p,
                   "CLUSTER%d" % (chimera_clusters),
@@ -127,7 +129,7 @@ def write_output(input_file, output_file, index_dir):
                   chimera_type, distance,
                   c.get_num_frags(),
                   c.get_num_unique_positions(),
-                  ','.join(spanning_seq_lines),
+                  ','.join(spanning_fasta_lines),
                   ','.join(names)]
         lines.append(fields)
         chimera_clusters += 1

@@ -31,7 +31,6 @@ from chimerascan.lib.chimera import Chimera, DiscordantRead, \
     DiscordantTags, DISCORDANT_TAG_NAME, \
     OrientationTags, ORIENTATION_TAG_NAME
 from chimerascan.lib.base import LibraryTypes
-from chimerascan.lib.base import make_temp
 
 from chimerascan.pipeline.find_discordant_reads import get_gene_orientation
 
@@ -92,6 +91,7 @@ def parse_sync_by_breakpoint(chimera_file, bam_file):
         bamfh.close()
         read_iter_valid = False
         reads = []
+        read_breakpoint_name = "ZZZZZZZZZZZZZZ"
     # group chimeras by breakpoint name
     for chimera_breakpoint_name, chimeras in \
         parse_group_by_attr(Chimera.parse(open(chimera_file)), 
@@ -203,8 +203,8 @@ def merge_spanning_alignments(breakpoint_chimera_file,
     # Process reads that are both encompassing and spanning
     #
     logging.debug("Processing encompassing/spanning reads")
-    tmp_chimera_file = make_temp(tmp_dir, ".encomp_chimeras.bedpe")    
-    f = open(tmp_chimera_file, "w")
+    tmp_encomp_chimera_file = os.path.join(tmp_dir, "tmp_encomp_chimeras.bedpe")
+    f = open(tmp_encomp_chimera_file, "w")
     filtered_hits = 0
     for chimeras, reads in parse_sync_by_breakpoint(breakpoint_chimera_file, encomp_bam_file):
         # build dictionary of qnames
@@ -233,10 +233,10 @@ def merge_spanning_alignments(breakpoint_chimera_file,
     # Process reads that are single-mapped and spanning
     #
     logging.debug("Processing single-mapping/spanning reads")
-    tmp_chimera_file2 = make_temp(tmp_dir, ".singlemap_chimeras.bedpe")    
-    f = open(tmp_chimera_file2, "w")
+    tmp_singlemap_chimera_file = os.path.join(tmp_dir, "tmp_singlemap_chimeras.bedpe")
+    f = open(tmp_singlemap_chimera_file, "w")
     filtered_hits = 0
-    for chimeras, reads in parse_sync_by_breakpoint(tmp_chimera_file, singlemap_bam_file):
+    for chimeras, reads in parse_sync_by_breakpoint(tmp_encomp_chimera_file, singlemap_bam_file):
         # find valid spanning reads
         for c, dr in filter_spanning_reads(chimeras, reads, 
                                            anchor_min, anchor_length, 
@@ -245,21 +245,21 @@ def merge_spanning_alignments(breakpoint_chimera_file,
             # TODO: implement this using sorted/indexed BAM file?
             # add read as a spanning read
             c.spanning_reads.append(dr)
-            filtered_hits += 1
+            filtered_hits += 1            
         # write chimeras back to file
         for c in chimeras:
             fields = c.to_list()
-            print >>f, '\t'.join(map(str, fields))         
+            print >>f, '\t'.join(map(str, fields))                     
     f.close()
     logging.debug("\tFound %d hits" % (filtered_hits))
     #
     # Process reads that are unmapped and spanning
     #
     logging.debug("Processing unmapped/spanning reads")
-    tmp_chimera_file3 = make_temp(tmp_dir, ".unmapped_chimeras.bedpe")    
-    f = open(tmp_chimera_file3, "w")
+    tmp_unmapped_chimera_file = os.path.join(tmp_dir, ".unmapped_chimeras.bedpe")    
+    f = open(tmp_unmapped_chimera_file, "w")
     filtered_hits = 0
-    for chimeras, reads in parse_sync_by_breakpoint(tmp_chimera_file2, unaligned_bam_file):
+    for chimeras, reads in parse_sync_by_breakpoint(tmp_singlemap_chimera_file, unaligned_bam_file):
         # both reads in the pair must map across junction
         chimera_read_map = collections.defaultdict(lambda: collections.defaultdict(lambda: [None, None]))
         for c, dr in filter_spanning_reads(chimeras, reads, 
@@ -281,11 +281,11 @@ def merge_spanning_alignments(breakpoint_chimera_file,
     f.close()
     logging.debug("\tFound %d hits" % (filtered_hits))
     # output_chimera_file    
-    shutil.copyfile(tmp_chimera_file3, output_chimera_file)
+    shutil.copyfile(tmp_unmapped_chimera_file, output_chimera_file)
     # remove temporary files
-    os.remove(tmp_chimera_file)
-    os.remove(tmp_chimera_file2)
-    os.remove(tmp_chimera_file3)
+    #os.remove(tmp_encomp_chimera_file)
+    #os.remove(tmp_singlemap_chimera_file)
+    #os.remove(tmp_unmapped_chimera_file)
     
 
 def main():

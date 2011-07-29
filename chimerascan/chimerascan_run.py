@@ -59,9 +59,9 @@ from chimerascan.pipeline.find_discordant_reads import find_discordant_fragments
 from chimerascan.pipeline.discordant_reads_to_bedpe import discordant_reads_to_bedpe, sort_bedpe
 from chimerascan.pipeline.nominate_chimeras import nominate_chimeras
 from chimerascan.pipeline.chimeras_to_breakpoints import chimeras_to_breakpoints
-
 from chimerascan.pipeline.nominate_spanning_reads import nominate_encomp_spanning_reads, nominate_unmapped_spanning_reads
 from chimerascan.pipeline.merge_spanning_alignments import merge_spanning_alignments
+from chimerascan.pipeline.resolve_discordant_reads import resolve_discordant_reads
 from chimerascan.pipeline.filter_chimeras import filter_chimeras
 from chimerascan.pipeline.write_output import write_output
 
@@ -87,7 +87,7 @@ DEFAULT_HOMOLOGY_MISMATCHES = config.BREAKPOINT_HOMOLOGY_MISMATCHES
 DEFAULT_ANCHOR_MIN = 4
 DEFAULT_ANCHOR_LENGTH = 8
 DEFAULT_ANCHOR_MISMATCHES = 0
-DEFAULT_FILTER_ISIZE_PERCENTILE = 99.0
+DEFAULT_FILTER_ISIZE_PROB = 0.01
 DEFAULT_FILTER_UNIQUE_FRAGS = 2.0
 DEFAULT_FILTER_ISOFORM_FRACTION = 0.05
 NUM_POSITIONAL_ARGS = 4
@@ -210,7 +210,7 @@ class RunConfig(object):
              ("anchor_length", int, DEFAULT_ANCHOR_LENGTH),
              ("anchor_mismatches", int, DEFAULT_ANCHOR_MISMATCHES),
              ("filter_unique_frags", float, DEFAULT_FILTER_UNIQUE_FRAGS),
-             ("filter_isize_percentile", float, DEFAULT_FILTER_ISIZE_PERCENTILE),
+             ("filter_isize_prob", float, DEFAULT_FILTER_ISIZE_PROB),
              ("filter_isoform_fraction", float, DEFAULT_FILTER_ISOFORM_FRACTION),
              ("filter_false_pos_file", float, ""))
 
@@ -383,12 +383,12 @@ class RunConfig(object):
                                 help="Filter chimeras with less than N unique "
                                 "aligned fragments (multimapping fragments are "
                                 "assigned fractional weights) [default=%default]")
-        filter_group.add_option("--filter-isize-percentile", type="float",
-                                default=DEFAULT_FILTER_ISIZE_PERCENTILE,
-                                dest="filter_isize_percentile", metavar="N",
-                                help="Filter chimeras when putative insert "
-                                "size is larger than the Nth percentile "
-                                "of the distribution [default=%default]")
+        filter_group.add_option("--filter-isize-prob", type="float",
+                                default=DEFAULT_FILTER_ISIZE_PROB,
+                                dest="filter_isize_prob", metavar="X",
+                                help="Filter chimeras when probability of "
+                                "observing the putative insert size is less "
+                                "than X (0.0-1.0) [default=%default]")
         filter_group.add_option("--filter-isoform-fraction", type="float", 
                                 default=DEFAULT_FILTER_ISOFORM_FRACTION, metavar="X",
                                 help="Filter chimeras with expression ratio "
@@ -993,20 +993,29 @@ def run_chimerascan(runconfig):
     # Resolve reads mapping to multiple chimeras
     # TODO: work in progress
     #
-    pass
+    resolved_spanning_chimera_file = os.path.join(tmp_dir, config.RESOLVED_SPANNING_CHIMERA_FILE)
+    msg = "Resolving ambiguous read mappings"
+    if (up_to_date(resolved_spanning_chimera_file, spanning_chimera_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)        
+        resolve_discordant_reads(input_file=spanning_chimera_file,
+                                 output_file=resolved_spanning_chimera_file,
+                                 isize_dist=isize_dist,
+                                 min_isize_prob=runconfig.filter_isize_prob,
+                                 tmp_dir=tmp_dir)
     #
     # Filter chimeras
     # 
     filtered_chimera_file = os.path.join(tmp_dir, config.FILTERED_CHIMERA_FILE)
     msg = "Filtering chimeras"
-    if up_to_date(filtered_chimera_file, spanning_chimera_file):
+    if up_to_date(filtered_chimera_file, resolved_spanning_chimera_file):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)
         # get insert size at prob    
-        max_isize = isize_dist.isize_at_percentile(runconfig.filter_isize_percentile)
         median_isize = isize_dist.isize_at_percentile(50.0)
-        filter_chimeras(input_file=spanning_chimera_file, 
+        filter_chimeras(input_file=resolved_spanning_chimera_file, 
                         output_file=filtered_chimera_file,
                         index_dir=runconfig.index_dir,
                         bam_file=sorted_aligned_bam_file,
