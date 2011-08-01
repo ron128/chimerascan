@@ -59,7 +59,7 @@ from chimerascan.pipeline.find_discordant_reads import find_discordant_fragments
 from chimerascan.pipeline.discordant_reads_to_bedpe import discordant_reads_to_bedpe, sort_bedpe
 from chimerascan.pipeline.nominate_chimeras import nominate_chimeras
 from chimerascan.pipeline.chimeras_to_breakpoints import chimeras_to_breakpoints
-from chimerascan.pipeline.nominate_spanning_reads import nominate_encomp_spanning_reads, nominate_unmapped_spanning_reads
+from chimerascan.pipeline.nominate_spanning_reads import nominate_encomp_spanning_reads, extract_single_mapped_reads, nominate_single_mapped_spanning_reads
 from chimerascan.pipeline.merge_spanning_alignments import merge_spanning_alignments
 from chimerascan.pipeline.resolve_discordant_reads import resolve_discordant_reads
 from chimerascan.pipeline.filter_chimeras import filter_chimeras
@@ -820,26 +820,50 @@ def run_chimerascan(runconfig):
                 os.remove(encomp_spanning_fastq_file)
             return config.JOB_ERROR
     #
-    # Extract unmapped reads to align against breakpoint sequences
+    # Process unmapped reads to predict spanning reads where one read
+    # maps to a chimera and the other is unmapped
     #
-    msg = "Extracting unmapped reads that may span breakpoints"
-    singlemap_spanning_fastq_file = os.path.join(tmp_dir, config.SINGLEMAP_SPANNING_FASTQ_FILE)
+    # First, annotate the single-mapped reads in the BAM file
+    #
+    single_mapped_bam_file = os.path.join(tmp_dir, config.SINGLE_MAPPED_BAM_FILE)
     unaligned_spanning_fastq_file = os.path.join(tmp_dir, config.UNALIGNED_SPANNING_FASTQ_FILE)
-    if (up_to_date(singlemap_spanning_fastq_file, encompassing_chimera_file, nzsize=False) and
+    msg = "Separating unmapped and single-mapping reads that may span breakpoints"
+    if (up_to_date(single_mapped_bam_file, realigned_unmapped_bam_file) and
+        up_to_date(single_mapped_bam_file, encompassing_chimera_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        retcode = extract_single_mapped_reads(chimera_file=encompassing_chimera_file, 
+                                              unmapped_bam_file=realigned_unmapped_bam_file,
+                                              single_mapped_bam_file=single_mapped_bam_file,
+                                              unmapped_fastq_file=unaligned_spanning_fastq_file,
+                                              library_type=runconfig.library_type,
+                                              tmp_dir=tmp_dir)
+        if retcode != config.JOB_SUCCESS:
+            logging.error("\tFailed")
+            if os.path.exists(unaligned_spanning_fastq_file):
+                os.remove(unaligned_spanning_fastq_file)
+            if os.path.exists(single_mapped_bam_file):
+                os.remove(single_mapped_bam_file)
+            return config.JOB_ERROR
+    #
+    # Parse the single-mapped reads and choose putative spanning reads
+    #
+    msg = "Extracting single-mapped reads that may span breakpoints"
+    single_mapped_spanning_fastq_file = os.path.join(tmp_dir, config.SINGLEMAP_SPANNING_FASTQ_FILE)
+    if (up_to_date(single_mapped_spanning_fastq_file, encompassing_chimera_file, nzsize=False) and
         up_to_date(unaligned_spanning_fastq_file, encompassing_chimera_file, nzsize=False)):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)
-        retcode = nominate_unmapped_spanning_reads(encompassing_chimera_file, 
-                                                   realigned_unmapped_bam_file,
-                                                   singlemap_spanning_fastq_file,
-                                                   unaligned_spanning_fastq_file,
-                                                   library_type=runconfig.library_type,
-                                                   tmp_dir=tmp_dir)
+        retcode = nominate_single_mapped_spanning_reads(chimera_file=encompassing_chimera_file, 
+                                                        single_mapped_bam_file=single_mapped_bam_file,
+                                                        single_mapped_fastq_file=single_mapped_spanning_fastq_file,
+                                                        tmp_dir=tmp_dir)
         if retcode != config.JOB_SUCCESS:
             logging.error("Failed to extract unmapped reads")
-            if os.path.exists(unaligned_spanning_fastq_file):
-                os.remove(unaligned_spanning_fastq_file)
+            if os.path.exists(single_mapped_spanning_fastq_file):
+                os.remove(single_mapped_spanning_fastq_file)
             return config.JOB_ERROR
     #
     # Re-align encompassing reads that overlap breakpoint junctions
@@ -852,22 +876,22 @@ def run_chimerascan(runconfig):
         logging.info("[SKIPPED] %s" % (msg))
     else:            
         logging.info(msg)
-        retcode= align_sr(encomp_spanning_fastq_file, 
-                          bowtie_index=breakpoint_bowtie_index,
-                          output_bam_file=encomp_spanning_bam_file, 
-                          unaligned_fastq_param=None,
-                          maxmultimap_fastq_param=None,
-                          trim5=0,
-                          trim3=0,
-                          library_type=runconfig.library_type,
-                          num_processors=runconfig.num_processors, 
-                          quals=SANGER_FORMAT,
-                          multihits=runconfig.multihits,
-                          mismatches=runconfig.mismatches, 
-                          bowtie_bin=bowtie_bin,
-                          bowtie_args=runconfig.bowtie_args,
-                          log_file=encomp_spanning_log_file,
-                          keep_unmapped=False)
+        retcode = align_sr(encomp_spanning_fastq_file, 
+                           bowtie_index=breakpoint_bowtie_index,
+                           output_bam_file=encomp_spanning_bam_file, 
+                           unaligned_fastq_param=None,
+                           maxmultimap_fastq_param=None,
+                           trim5=0,
+                           trim3=0,
+                           library_type=runconfig.library_type,
+                           num_processors=runconfig.num_processors, 
+                           quals=SANGER_FORMAT,
+                           multihits=runconfig.multihits,
+                           mismatches=runconfig.mismatches, 
+                           bowtie_bin=bowtie_bin,
+                           bowtie_args=runconfig.bowtie_args,
+                           log_file=encomp_spanning_log_file,
+                           keep_unmapped=False)
         if retcode != config.JOB_SUCCESS:
             logging.error("Bowtie failed with error code %d" % (retcode))    
             return config.JOB_ERROR
@@ -890,11 +914,11 @@ def run_chimerascan(runconfig):
     singlemap_spanning_log_file = os.path.join(log_dir, "bowtie_singlemap_spanning.log")
     msg = "Realigning single-mapping reads to breakpoints"
     if (up_to_date(singlemap_spanning_bam_file, breakpoint_bowtie_index_file) and
-        up_to_date(singlemap_spanning_bam_file, singlemap_spanning_fastq_file)):
+        up_to_date(singlemap_spanning_bam_file, single_mapped_spanning_fastq_file)):
         logging.info("[SKIPPED] %s" % (msg))
     else:            
         logging.info(msg)
-        retcode= align_sr(singlemap_spanning_fastq_file, 
+        retcode= align_sr(single_mapped_spanning_fastq_file, 
                           bowtie_index=breakpoint_bowtie_index,
                           output_bam_file=singlemap_spanning_bam_file, 
                           unaligned_fastq_param=None,

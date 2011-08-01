@@ -27,7 +27,7 @@ import subprocess
 
 from chimerascan.lib.base import get_read_length, LibraryTypes
 from chimerascan.lib.seq import SANGER_FORMAT, SOLEXA_FORMAT, ILLUMINA_FORMAT
-from chimerascan.lib.config import MIN_SEGMENT_LENGTH, JOB_SUCCESS
+from chimerascan.lib import config
 
 translate_quals = {SOLEXA_FORMAT: 'solexa-quals',
                    ILLUMINA_FORMAT: 'solexa1.3-quals',
@@ -104,9 +104,20 @@ def align_pe(fastq_files,
     if logfh is not None:
         logfh.close()
     if retcode != 0:
+        logging.error("SAM to BAM conversion script failed")
         aln_p.terminate()
-        return retcode
-    return aln_p.wait()
+        # cleanup output file
+        if os.path.exists(output_bam_file):
+            os.remove(output_bam_file)
+        return config.JOB_ERROR    
+    retcode = aln_p.wait()
+    if retcode != 0:
+        logging.error("Alignment process failed")
+        # cleanup output file
+        if os.path.exists(output_bam_file):
+            os.remove(output_bam_file)
+        return config.JOB_ERROR
+    return config.JOB_SUCCESS
 
 def align_sr(fastq_file, 
              bowtie_index,
@@ -166,11 +177,28 @@ def align_sr(fastq_file,
     fix_p = subprocess.Popen(args, stdin=aln_p.stdout, stderr=logfh)
     # wait for processes to complete
     retcode1 = fix_p.wait()
+    if retcode1 != 0:
+        logging.error("SAM to BAM conversion script failed")
+        # kill alignment process
+        aln_p.kill()
+        # cleanup output file
+        if os.path.exists(output_bam_file):
+            os.remove(output_bam_file)
+        # end logging
+        if logfh is not None:
+            logfh.close()
+        return config.JOB_ERROR
     retcode2 = aln_p.wait()
     # end logging
     if logfh is not None:
         logfh.close()
-    return retcode1 or retcode2
+    if retcode2 != 0:
+        logging.error("Alignment process failed")
+        # cleanup output file
+        if os.path.exists(output_bam_file):
+            os.remove(output_bam_file)
+        return config.JOB_ERROR
+    return config.JOB_SUCCESS
 
 
 def trim_align_pe_sr(fastq_files,

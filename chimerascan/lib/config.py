@@ -94,8 +94,10 @@ BREAKPOINT_BOWTIE_INDEX_FILE = "breakpoints.1.ebwt"
 
 # reads to remap to breakpoint junction index
 ENCOMP_SPANNING_FASTQ_FILE = "encomp_spanning_reads.fq"
+SINGLE_MAPPED_BAM_FILE = "singlemap_reads.srt.bam"
 SINGLEMAP_SPANNING_FASTQ_FILE = "singlemap_spanning_reads.fq"
 UNALIGNED_SPANNING_FASTQ_FILE = "unaligned_spanning_reads.fq"
+
 # results of aligning reads to breakpoint index
 ENCOMP_SPANNING_BAM_FILE = "encomp_spanning_reads.bam"
 SORTED_ENCOMP_SPANNING_BAM_FILE = "encomp_spanning_reads.srt.bam"

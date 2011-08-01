@@ -293,7 +293,6 @@ def merge_spanning_alignments(breakpoint_chimera_file,
         os.remove(tmp_encomp_chimera_file)
     if os.path.exists(tmp_singlemap_chimera_file):
         os.remove(tmp_singlemap_chimera_file)
-    #os.remove(tmp_unmapped_chimera_file)
     
 
 def main():

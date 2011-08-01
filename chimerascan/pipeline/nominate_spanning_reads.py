@@ -127,20 +127,19 @@ def parse_sync_chimera_with_bam(chimera_file, bam_file, orientation):
         pass
     bamfh.close()
 
-def nominate_unmapped_spanning_reads(chimera_file, unmapped_bam_file,
-                                     onemap_fastq_file,
-                                     unmapped_fastq_file,
-                                     library_type,
-                                     tmp_dir):
+def extract_single_mapped_reads(chimera_file, 
+                                unmapped_bam_file,
+                                single_mapped_bam_file,
+                                unmapped_fastq_file,
+                                library_type,
+                                tmp_dir):
     # find all reads that need to be remapped to see if they span the 
     # breakpoint junction
     fqfh = open(unmapped_fastq_file, "w")
     # annotate mapped reads with sequence/quality of unmapped mate
-    logging.debug("Annotating unmapped reads")
-    bamfh = pysam.Samfile(unmapped_bam_file, "rb")    
-    annot_single_mapped_bam_file = os.path.join(os.path.dirname(unmapped_bam_file), 
-                                                "annotated_onemapper_reads.bam") 
-    annot_bamfh = pysam.Samfile(annot_single_mapped_bam_file, "wb", template=bamfh)    
+    bamfh = pysam.Samfile(unmapped_bam_file, "rb")
+    unsorted_single_mapped_bam_file = os.path.join(tmp_dir, "unsorted_single_mapped_reads.bam") 
+    singlemap_bamfh = pysam.Samfile(unsorted_single_mapped_bam_file, "wb", template=bamfh)    
     # get list of 'gene' references in bam file to compare with
     gene_tids = set([tid for tid,refname in enumerate(bamfh.references)
                      if refname.startswith(config.GENE_REF_PREFIX)])
@@ -167,51 +166,94 @@ def nominate_unmapped_spanning_reads(chimera_file, unmapped_bam_file,
                     continue
                 orientation = get_gene_orientation(r, library_type)
                 # TODO: may need to REVERSE read here to get original
-                r.tags = r.tags + [("R2", unmapped_seq), ("Q2", unmapped_qual),
+                r.tags = r.tags + [("R2", unmapped_seq), 
+                                   ("Q2", unmapped_qual),
                                    (ORIENTATION_TAG_NAME, orientation)]
-                annot_bamfh.write(r)
-    annot_bamfh.close()
+                singlemap_bamfh.write(r)
+    singlemap_bamfh.close()
     fqfh.close()
-    # sort/index the annotated one-mapper unmapped reads by reference/position
+    # sort/index the annotated single-mapper unmapped reads by reference/position
     logging.debug("Sorting single-mapped mates by reference")
-    sorted_annot_bam_file = os.path.splitext(annot_single_mapped_bam_file)[0] + ".srt.bam"
-    sorted_annot_bam_prefix = os.path.splitext(sorted_annot_bam_file)[0]
-    pysam.sort("-m", str(int(1e9)), annot_single_mapped_bam_file, sorted_annot_bam_prefix)
-    pysam.index(sorted_annot_bam_file)
-    fqfh = open(onemap_fastq_file, "w")
+    single_mapped_bam_prefix = os.path.splitext(single_mapped_bam_file)[0]
+    pysam.sort("-m", str(int(1e9)), unsorted_single_mapped_bam_file, single_mapped_bam_prefix)
+    pysam.index(single_mapped_bam_file)
+    # remove unsorted file
+    if os.path.exists(unsorted_single_mapped_bam_file):
+        os.remove(unsorted_single_mapped_bam_file)
+    return config.JOB_SUCCESS
+
+
+def nominate_single_mapped_spanning_reads(chimera_file, 
+                                          single_mapped_bam_file,
+                                          single_mapped_fastq_file,
+                                          tmp_dir):
+    # find sequences that could cross a breakpoint
+    tmp_seqs_to_remap = os.path.join(tmp_dir, "tmp_singlemap_seqs.txt")
+    f = open(tmp_seqs_to_remap, "w")
     # search for matches to 5' chimeras
     logging.debug("Matching single-mapped frags to 5' chimeras")
     for clist, reads in parse_sync_chimera_with_bam(chimera_file, 
-                                                    sorted_annot_bam_file, 
+                                                    single_mapped_bam_file,
                                                     OrientationTags.FIVEPRIME):
         # TODO: test more specifically that read has a chance to cross breakpoint
         for r in reads:
             # reverse read number
             readnum = 1 if r.is_read1 else 0
-            print >>fqfh, to_fastq(r.qname, readnum, r.opt("R2"), r.opt("Q2"))
+            print >>f, '\t'.join(map(str, [r.qname, readnum, r.opt("R2"), r.opt("Q2")]))
     # sort chimeras by 3' partner
     logging.debug("Sorting chimeras by 3' transcript")
-    def sortfunc(line):
+    def sort_by_3p_partner(line):
         fields = line.strip().split('\t', Chimera.TX_NAME_3P_FIELD+1)
         return fields[Chimera.TX_NAME_3P_FIELD]
-    chimera_file_sorted_3p = os.path.join(tmp_dir, "tmp_chimeras.sorted3p.bedpe")
+    tmp_chimera_file_sorted_3p = os.path.join(tmp_dir, "tmp_chimeras.sorted3p.bedpe")
     batch_sort(input=chimera_file,
-               output=chimera_file_sorted_3p,
-               key=sortfunc,
+               output=tmp_chimera_file_sorted_3p,
+               key=sort_by_3p_partner,
                buffer_size=32000,
                tempdirs=[tmp_dir])
     # search for matches to 3' chimeras
     logging.debug("Matching single-mapped frags to 3' chimeras")
-    for clist, reads in parse_sync_chimera_with_bam(chimera_file_sorted_3p, 
-                                                    sorted_annot_bam_file, 
+    for clist, reads in parse_sync_chimera_with_bam(tmp_chimera_file_sorted_3p, 
+                                                    single_mapped_bam_file,
                                                     OrientationTags.THREEPRIME):
         # TODO: test more specifically that read has a chance to cross breakpoint
         for r in reads:
-            # reverse read number for mate
+            # reverse read number
             readnum = 1 if r.is_read1 else 0
-            print >>fqfh, to_fastq(r.qname, readnum, r.opt("R2"), r.opt("Q2"))
+            print >>f, '\t'.join(map(str, [r.qname, readnum, r.opt("R2"), r.opt("Q2")]))
+    f.close()
+    #
+    # now sort the file of sequences by read name/number to 
+    # eliminate duplicates
+    # 
+    def sort_by_qname(line):
+        fields = line.strip().split('\t')
+        return (fields[0], int(fields[1]))
+    tmp_sorted_seqs_to_remap = os.path.join(tmp_dir, "tmp_singlemap_seqs.sorted.txt")
+    batch_sort(input=tmp_seqs_to_remap,
+               output=tmp_sorted_seqs_to_remap,
+               key=sort_by_qname,
+               buffer_size=32000,
+               tempdirs=[tmp_dir])
+    #
+    # read file and write fastq, ignoring duplicates
+    # 
+    fqfh = open(single_mapped_fastq_file, "w")
+    prev = None
+    for line in open(tmp_sorted_seqs_to_remap):
+        fields = line.strip().split('\t')
+        cur = (fields[0], int(fields[1]))
+        if prev != cur:
+            if prev is not None: 
+                print >>fqfh, to_fastq(*fields)
+            prev = cur
+    if prev is not None:
+        print >>fqfh, to_fastq(*fields)
     fqfh.close()
-    os.remove(chimera_file_sorted_3p)
+    # remove temporary file
+    os.remove(tmp_chimera_file_sorted_3p)
+    os.remove(tmp_seqs_to_remap)
+    os.remove(tmp_sorted_seqs_to_remap)
     return config.JOB_SUCCESS
 
 
@@ -221,7 +263,7 @@ def main():
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = OptionParser("usage: %prog [options] <chimeras.txt> "
                           "<unmapped_reads.bam> <encomp_remap.fq> "
-                          "<onemap_remap.fq> "
+                          "<singlemap_remap.fq> "
                           "<unmapped_remap.fq> ")
     parser.add_option('--library', dest="library_type", 
                       default=LibraryTypes.FR_UNSTRANDED)
@@ -229,11 +271,11 @@ def main():
     chimera_file = args[0]
     bam_file = args[1]
     encomp_remap_fastq_file = args[2]
-    onemap_remap_fastq_file = args[3]
+    singlemap_remap_fastq_file = args[3]
     unmapped_remap_fastq_file = args[4]
     nominate_encomp_spanning_reads(chimera_file, encomp_remap_fastq_file)
     nominate_unmapped_spanning_reads(chimera_file, bam_file, 
-                                     onemap_remap_fastq_file, 
+                                     singlemap_remap_fastq_file, 
                                      unmapped_remap_fastq_file,
                                      options.library_type,
                                      "/tmp")
