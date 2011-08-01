@@ -192,7 +192,6 @@ def filter_spanning_reads(chimeras, reads,
 def merge_spanning_alignments(breakpoint_chimera_file,
                               encomp_bam_file,
                               singlemap_bam_file,
-                              #unaligned_bam_file,
                               output_chimera_file,
                               anchor_min, 
                               anchor_length,
@@ -258,34 +257,6 @@ def merge_spanning_alignments(breakpoint_chimera_file,
             print >>f, '\t'.join(map(str, fields))                     
     f.close()
     logging.debug("\tFound %d hits" % (filtered_hits))
-    #
-    # Process reads that are unmapped and spanning
-    #
-#    logging.debug("Processing unmapped/spanning reads")
-#    tmp_unmapped_chimera_file = os.path.join(tmp_dir, ".unmapped_chimeras.bedpe")    
-#    f = open(tmp_unmapped_chimera_file, "w")
-#    filtered_hits = 0
-#    for chimeras, reads in parse_sync_by_breakpoint(tmp_singlemap_chimera_file, unaligned_bam_file):
-#        # both reads in the pair must map across junction
-#        chimera_read_map = collections.defaultdict(lambda: collections.defaultdict(lambda: [None, None]))
-#        for c, dr in filter_spanning_reads(chimeras, reads, 
-#                                           anchor_min, anchor_length, 
-#                                           anchor_mismatches, library_type):
-#            chimera_read_map[c.name][dr.qname][dr.readnum] = dr
-#        for chimera_name, qname_pe_reads in chimera_read_map.iteritems():
-#            for qname, readpair in qname_pe_reads.iteritems():
-#                if any(r is None for r in readpair):
-#                    continue
-#                # add both reads as spanning reads
-#                c.spanning_reads.append(readpair[0])
-#                c.spanning_reads.append(readpair[1])
-#                filtered_hits += 1
-#        # write chimeras back to file
-#        for c in chimeras:
-#            fields = c.to_list()
-#            print >>f, '\t'.join(map(str, fields))         
-#    f.close()
-#    logging.debug("\tFound %d hits" % (filtered_hits))
     # output_chimera_file    
     shutil.copyfile(tmp_singlemap_chimera_file, output_chimera_file)
     # remove temporary files
@@ -300,8 +271,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")    
     parser = OptionParser("usage: %prog [options] <chimeras.breakpoint_sorted.txt> "
-                          "<encomp.bam> <onemap.bam> <unaligned.bam> "
-                          "<chimeras.out.txt>")
+                          "<encomp.bam> <onemap.bam> <chimeras.out.txt>")
     parser.add_option("--anchor-min", type="int", dest="anchor_min", default=4)
     parser.add_option("--anchor-length", type="int", dest="anchor_length", default=8)
     parser.add_option("--anchor-mismatches", type="int", dest="anchor_mismatches", default=0)
@@ -310,13 +280,11 @@ def main():
     options, args = parser.parse_args()
     breakpoint_chimera_file = args[0]
     encomp_bam_file = args[1]
-    onemap_bam_file = args[2]
-    unaligned_bam_file = args[3]
+    singlemap_bam_file = args[2]
     output_chimera_file = args[4]
     merge_spanning_alignments(breakpoint_chimera_file,
                               encomp_bam_file,
-                              onemap_bam_file,
-                              unaligned_bam_file,
+                              singlemap_bam_file,
                               output_chimera_file,
                               options.anchor_min, 
                               options.anchor_length,

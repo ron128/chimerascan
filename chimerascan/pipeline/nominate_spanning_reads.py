@@ -242,18 +242,19 @@ def nominate_single_mapped_spanning_reads(chimera_file,
     prev = None
     for line in open(tmp_sorted_seqs_to_remap):
         fields = line.strip().split('\t')
+        qname, readnum, seq, qual = fields[0], int(fields[1]), fields[2], fields[3]
         cur = (fields[0], int(fields[1]))
         if prev != cur:
             if prev is not None: 
-                print >>fqfh, to_fastq(*fields)
+                print >>fqfh, to_fastq(qname, readnum, seq, qual)
             prev = cur
     if prev is not None:
-        print >>fqfh, to_fastq(*fields)
+        print >>fqfh, to_fastq(qname, readnum, seq, qual)
     fqfh.close()
-    # remove temporary file
-    os.remove(tmp_chimera_file_sorted_3p)
-    os.remove(tmp_seqs_to_remap)
-    os.remove(tmp_sorted_seqs_to_remap)
+    # TODO: remove temporary files
+    #os.remove(tmp_chimera_file_sorted_3p)
+    #os.remove(tmp_seqs_to_remap)
+    #os.remove(tmp_sorted_seqs_to_remap)
     return config.JOB_SUCCESS
 
 
@@ -274,11 +275,16 @@ def main():
     singlemap_remap_fastq_file = args[3]
     unmapped_remap_fastq_file = args[4]
     nominate_encomp_spanning_reads(chimera_file, encomp_remap_fastq_file)
-    nominate_unmapped_spanning_reads(chimera_file, bam_file, 
-                                     singlemap_remap_fastq_file, 
-                                     unmapped_remap_fastq_file,
-                                     options.library_type,
-                                     "/tmp")
+    extract_single_mapped_reads(chimera_file, 
+                                bam_file,
+                                "single_mapped_reads.srt.bam",
+                                unmapped_remap_fastq_file,
+                                options.library_type,
+                                "/tmp")        
+    nominate_single_mapped_spanning_reads(chimera_file, 
+                                          "single_mapped_reads.srt.bam",
+                                          singlemap_remap_fastq_file, 
+                                          "/tmp")
 
 if __name__ == '__main__':
     main()
