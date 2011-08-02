@@ -49,11 +49,11 @@ from chimerascan import pysam
 import chimerascan.lib.config as config
 from chimerascan.lib.config import JOB_SUCCESS, JOB_ERROR, MIN_SEGMENT_LENGTH
 from chimerascan.lib.base import LibraryTypes, check_executable, \
-    get_read_length, parse_bool, indent_xml, up_to_date
+    parse_bool, indent_xml, up_to_date
 from chimerascan.lib.seq import FASTQ_QUAL_FORMATS, SANGER_FORMAT
 from chimerascan.lib.fragment_size_distribution import InsertSizeDistribution
 
-from chimerascan.pipeline.fastq_inspect_reads import inspect_reads
+from chimerascan.pipeline.fastq_inspect_reads import inspect_reads, detect_read_lengths
 from chimerascan.pipeline.align_bowtie import align_pe, align_sr, trim_align_pe_sr
 from chimerascan.pipeline.find_discordant_reads import find_discordant_fragments
 from chimerascan.pipeline.discordant_reads_to_bedpe import discordant_reads_to_bedpe, sort_bedpe
@@ -93,99 +93,6 @@ DEFAULT_FILTER_UNIQUE_FRAGS = 2.0
 DEFAULT_FILTER_ISOFORM_FRACTION = 0.01
 NUM_POSITIONAL_ARGS = 4
 DEFAULT_KEEP_TMP = True
-
-def check_fastq_files(parser, fastq_files, segment_length, trim5, trim3):
-    """
-    Assures FASTQ files exist and have long enough reads to be
-    trimmed by 'trim5' and 'trim3' bases on 5' and 3' ends, respectively,
-    to produce reads of 'segment_length'
-    """
-    # check that input fastq files exist
-    read_lengths = []
-    for mate,fastq_file in enumerate(fastq_files):
-        if not os.path.isfile(fastq_file):
-            parser.error("mate '%d' fastq file '%s' is not valid" % 
-                         (mate, fastq_file))
-        logging.debug("Checking read length for file %s" % (fastq_file))
-        read_lengths.append(get_read_length(fastq_file))
-        logging.debug("Read length for file %s: %d" % 
-                      (fastq_file, read_lengths[-1]))
-    # check that mate read lengths are equal
-    if len(set(read_lengths)) > 1:
-        logging.error("read lengths mate1=%d and mate2=%d are unequal" % 
-                      (read_lengths[0], read_lengths[1]))
-        return False
-    rlen = read_lengths[0]
-    trimmed_rlen = rlen - trim5 - trim3
-    # check that segment length >= MIN_SEGMENT_LENGTH 
-    if segment_length < MIN_SEGMENT_LENGTH:
-        parser.error("segment length (%d) too small (min is %d)" % 
-                     (segment_length, MIN_SEGMENT_LENGTH))
-    # check that segment length < trimmed read length
-    if segment_length > trimmed_rlen:
-        parser.error("segment length (%d) longer than trimmed read length (%d)" % 
-                     (segment_length, trimmed_rlen))
-    logging.debug("Segmented alignment will use effective read length of %d" % 
-                  (segment_length))        
-    return read_lengths[0]
-
-def check_command_line_args(options, args, parser):
-    # check command line arguments
-    if len(args) < NUM_POSITIONAL_ARGS:
-        parser.error("Incorrect number of command line arguments")
-    index_dir = args[0]
-    fastq_files = args[1:3]
-    output_dir = args[3]
-    # check that input fastq files exist
-    read_lengths = []
-    for mate,fastq_file in enumerate(fastq_files):
-        if not os.path.isfile(args[0]):
-            parser.error("mate '%d' fastq file '%s' is not valid" % 
-                         (mate, fastq_file))
-        logging.debug("Checking read length for file %s" % 
-                      (fastq_file))
-        read_lengths.append(get_read_length(fastq_file))
-        logging.debug("Read length for file %s: %d" % 
-                      (fastq_file, read_lengths[-1]))
-    # check that mate read lengths are equal
-    if len(set(read_lengths)) > 1:
-        parser.error("read lengths mate1=%d and mate2=%d are unequal" % 
-                     (read_lengths[0], read_lengths[1]))
-    # check that seed length < read length
-    if any(options.segment_length > rlen for rlen in read_lengths):
-        parser.error("seed length %d cannot be longer than read length" % 
-                     (options.segment_length))
-    # perform additional checks to ensure fastq files can be segmented
-    check_fastq_files(parser, fastq_files, options.segment_length, 
-                      options.trim5, options.trim3)
-    # check that output dir is not a regular file
-    if os.path.exists(output_dir) and (not os.path.isdir(output_dir)):
-        parser.error("Output directory name '%s' exists and is not a valid directory" % 
-                     (output_dir))
-    if check_executable(os.path.join(options.bowtie_path, "bowtie-build")):
-        logging.debug("Checking for 'bowtie-build' binary... found")
-    else:
-        parser.error("bowtie-build binary not found or not executable")
-    # check that bowtie program exists
-    if check_executable(os.path.join(options.bowtie_path, "bowtie")):
-        logging.debug("Checking for 'bowtie' binary... found")
-    else:
-        parser.error("bowtie binary not found or not executable")
-    # check that alignment index exists
-    if os.path.isdir(index_dir):
-        logging.debug("Checking for chimerascan index directory... found")
-    else:
-        parser.error("chimerascan alignment index directory '%s' not valid" % 
-                     (index_dir))
-    # check that alignment index file exists
-    align_index_file = os.path.join(index_dir, config.BOWTIE_INDEX_FILE)
-    if os.path.isfile(align_index_file):
-        logging.debug("Checking for bowtie index file... found")
-    else:
-        parser.error("chimerascan bowtie index file '%s' invalid" % (align_index_file))
-    # check for sufficient processors
-    if options.num_processors < config.BASE_PROCESSORS:
-        logging.warning("Please specify >=2 processes using '-p' to allow program to run efficiently")
 
 class RunConfig(object):
     
@@ -384,8 +291,7 @@ class RunConfig(object):
                                 default=DEFAULT_FILTER_UNIQUE_FRAGS,
                                 dest="filter_unique_frags", metavar="N",
                                 help="Filter chimeras with less than N unique "
-                                "aligned fragments (multimapping fragments are "
-                                "assigned fractional weights) [default=%default]")
+                                "aligned fragments [default=%default]")
         filter_group.add_option("--filter-isize-prob", type="float",
                                 default=DEFAULT_FILTER_ISIZE_PROB,
                                 dest="filter_isize_prob", metavar="X",
@@ -436,15 +342,22 @@ class RunConfig(object):
     def check_config(self):
         # check that input fastq files exist
         config_passed = True
-        read_lengths = []
         for mate,fastq_file in enumerate(self.fastq_files):
             if not os.path.isfile(fastq_file):
                 logging.error("mate '%d' fastq file '%s' is not valid" % 
                               (mate, fastq_file))
                 config_passed = False
-            read_lengths.append(get_read_length(fastq_file))
-            logging.debug("Checking file %s" % (fastq_file))
-            logging.debug("File %s read length=%d" % (fastq_file, read_lengths[-1]))
+        # check read lengths
+        logging.debug("Checking read lengths")
+        read_lengths = detect_read_lengths(self.fastq_files)
+        for i,rlen in enumerate(read_lengths):
+            logging.debug("File %s read length: %d" % 
+                          (self.fastq_files[i], rlen))
+        # check that mate read lengths are equal
+        if len(set(read_lengths)) > 1:
+            logging.error("Unequal read lengths mate1=%d and mate2=%d" % 
+                          (read_lengths[0], read_lengths[1]))
+            config_passed = False
         # check that mate read lengths are equal
         if len(set(read_lengths)) > 1:
             logging.error("Unequal read lengths mate1=%d and mate2=%d" % 
@@ -528,7 +441,7 @@ def run_chimerascan(runconfig):
     bowtie_index = os.path.join(runconfig.index_dir, config.ALIGN_INDEX)
     bowtie_bin = os.path.join(runconfig.bowtie_path, "bowtie")
     bowtie_build_bin = os.path.join(runconfig.bowtie_path, "bowtie-build")
-    original_read_length = get_read_length(runconfig.fastq_files[0])
+    original_read_length = detect_read_lengths(runconfig.fastq_files)[0]
     # minimum fragment length cannot be smaller than the trimmed read length
     trimmed_read_length = original_read_length - runconfig.trim5 - runconfig.trim3
     min_fragment_length = max(runconfig.min_fragment_length, 

@@ -25,9 +25,12 @@ import os
 import logging
 import subprocess
 
-from chimerascan.lib.base import get_read_length, LibraryTypes
+from chimerascan.lib.base import LibraryTypes
 from chimerascan.lib.seq import SANGER_FORMAT, SOLEXA_FORMAT, ILLUMINA_FORMAT
 from chimerascan.lib import config
+
+# TODO: move this somewhere else
+from chimerascan.pipeline.fastq_inspect_reads import detect_read_lengths
 
 translate_quals = {SOLEXA_FORMAT: 'solexa-quals',
                    ILLUMINA_FORMAT: 'solexa1.3-quals',
@@ -61,7 +64,7 @@ def align_pe(fastq_files,
              bowtie_args=None,
              log_file=None,
              keep_unmapped=False):
-    read_length = get_read_length(fastq_files[0])
+    read_length = detect_read_lengths(fastq_files)[0]
     args = [bowtie_bin, "-q", "-S", 
             "-p", str(num_processors),
             "--%s" % translate_quals[quals],

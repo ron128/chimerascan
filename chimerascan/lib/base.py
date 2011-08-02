@@ -99,28 +99,6 @@ def indent_xml(elem, level=0):
         if level and (not elem.tail or not elem.tail.strip()):
             elem.tail = i
 
-def get_read_length(fastq_file):
-    f = open(fastq_file)
-    f.next()
-    seq = f.next().strip()
-    f.close()
-    return len(seq)
-
-def get_read_length_compressed(input_file):
-    import gzip
-    import bz2    
-    suffix = os.path.splitext(input_file)[-1]
-    if suffix == '.gz':
-        f = gzip.GzipFile(input_file, 'r')
-    elif suffix == '.bz2':
-        f = bz2.BZ2File(input_file, 'r')
-    else:
-        f = open(input_file, 'r')
-    f.next()
-    seq = f.next().strip()
-    f.close()
-    return len(seq)
-
 # custom read tags
 class SamTags:
     RTAG_NUM_PARTITIONS = "XP"

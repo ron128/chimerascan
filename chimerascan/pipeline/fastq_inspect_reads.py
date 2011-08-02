@@ -24,6 +24,7 @@ import logging
 import gzip
 import bz2
 import zipfile
+import os
 
 from chimerascan.lib.seq import get_qual_conversion_func
 from chimerascan.lib.base import parse_lines
@@ -39,11 +40,7 @@ def detect_format(fastq_files):
     else:
         return "txt"
 
-def inspect_reads(fastq_files, output_prefix, quals):
-    """
-    uncompresses reads, renames reads, and converts quality scores 
-    to 'sanger' format
-    """
+def open_compressed(fastq_files):
     compression_format = detect_format(fastq_files)
     if compression_format == "gz":
         filehandles = [gzip.open(f, "r") for f in fastq_files]
@@ -53,10 +50,25 @@ def inspect_reads(fastq_files, output_prefix, quals):
         filehandles = [zipfile.ZipFile(f, "r") for f in fastq_files]
     else:
         filehandles = [open(f, "r") for f in fastq_files]
+    return filehandles
+
+def detect_read_lengths(fastq_files):
+    filehandles = open_compressed(fastq_files)
+    tags = [f.next() for f in filehandles]
+    seqs = [f.next() for f in filehandles]
+    return [len(s) for s in seqs]
+
+def inspect_reads(fastq_files, output_prefix, quals):
+    """
+    uncompresses reads, renames reads, and converts quality scores 
+    to 'sanger' format
+    """
     # setup file iterators
+    filehandles = open_compressed(fastq_files)
     fqiters = [parse_lines(f, numlines=4) for f in filehandles]
-    outfhs = [open(output_prefix + "_%d.fq" % (x+1), "w") 
-              for x in xrange(len(fastq_files))]
+    output_files = [(output_prefix + "_%d.fq" % (x+1)) 
+                    for x in xrange(len(fastq_files))]
+    outfhs = [open(f, "w") for f in output_files]
     qual_func = get_qual_conversion_func(quals)
     linenum = 0    
     try:
@@ -73,6 +85,12 @@ def inspect_reads(fastq_files, output_prefix, quals):
             linenum += 1
     except StopIteration:
         pass
+    except:
+        logging.error("Unexpected error during FASTQ file processing")
+        for f in output_files:
+            if os.path.exists(f):
+                os.remove(f)
+        return config.JOB_ERROR
     for fh in filehandles:
         fh.close()
     logging.debug("Inspected %d fragments" % (linenum))
