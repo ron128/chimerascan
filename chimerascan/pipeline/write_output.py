@@ -26,6 +26,7 @@ import sys
 import operator
 import collections
 
+from chimerascan import pysam
 from chimerascan.lib.chimera import Chimera, get_chimera_type
 from chimerascan.lib import config
 from chimerascan.lib.gene_to_genome import build_gene_to_genome_map, \
