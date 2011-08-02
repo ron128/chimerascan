@@ -23,26 +23,6 @@ def get_mapped_read_intervals(c, min_isize, max_isize, homolog_segment_length):
     if start3p > end3p:
         end3p = start3p + homolog_segment_length
     return start5p, end5p, start3p, end3p
-#    # find intervals containing mapped reads
-#    start5p = c.tx_end_5p
-#    end5p = c.tx_start_5p
-#    start3p = c.tx_end_3p
-#    end3p = c.tx_start_3p
-#    for dpair in c.encomp_frags:
-#        if dpair[0].pos < start5p:
-#            start5p = dpair[0].pos
-#        if dpair[0].pos > end5p:
-#            end5p = dpair[0].pos
-#        if dpair[1].aend < start3p:
-#            start3p = dpair[1].aend
-#        if dpair[1].aend > end3p:
-#            end3p = dpair[1].aend
-#    # now modulate start/end by insert size and segment length
-#    start5p = start5p + min_isize - homolog_segment_length
-#    end5p = max(start5p + homolog_segment_length, end5p + max_isize)
-#    start3p = max(0, start3p - max_isize)
-#    end3p = max(start3p + homolog_segment_length, end3p - min_isize + homolog_segment_length)
-#    return start5p, end5p, start3p, end3p
     
 def filter_homologous_genes(input_file, output_file, index_dir,
                             homolog_segment_length,
@@ -53,7 +33,9 @@ def filter_homologous_genes(input_file, output_file, index_dir,
                             tmp_dir):
     logging.debug("Parameters")
     logging.debug("\thomolog segment length: %d" % (homolog_segment_length))
-    logging.debug("Filtering homologous genes")
+    logging.debug("\tmin fragment size: %d" % (min_isize))
+    logging.debug("\tmax fragment size: %d" % (max_isize))
+
     # open the reference sequence fasta file
     ref_fasta_file = os.path.join(index_dir, config.ALIGN_INDEX + ".fa")
     ref_fa = pysam.Fastafile(ref_fasta_file)
@@ -112,11 +94,17 @@ def filter_homologous_genes(input_file, output_file, index_dir,
     f = open(output_file, "w")
     for c in Chimera.parse(open(input_file)):
         if c.name in homologous_chimeras:
-            logging.debug("Detected homologous chimera %s between %s and %s" % 
+            logging.debug("Removing homologous chimera %s between %s and %s" % 
                           (c.name, c.gene_name_5p, c.gene_name_3p))
             continue
         print >>f, '\t'.join(map(str, c.to_list()))        
-    f.close()    
+    f.close()
+    
+    # cleanup
+    if os.path.exists(fasta5p):
+        os.remove(fasta5p)
+    if os.path.exists(sam5p):
+        os.remove(sam5p)    
     return config.JOB_SUCCESS
     
 
@@ -140,7 +128,7 @@ def main():
     parser.add_option("-p", type="int", dest="num_processors", default=1,
                       help="Number of processors to use [default: %default]")
     parser.add_option("--tmp-dir", dest="tmp_dir",
-                      default="/tmp", 
+                      default=".", 
                       help="Temporary directory [default=%default]")
     options, args = parser.parse_args()
     index_dir = args[0]
