@@ -25,7 +25,7 @@ import collections
 import os
 
 from chimerascan.lib.chimera import Chimera
-from chimerascan.pipeline.profile_insert_size import InsertSizeDistribution
+from chimerascan.lib.fragment_size_distribution import InsertSizeDistribution
 from chimerascan.lib.batch_sort import batch_sort
 
 QNAME_COL = 0
@@ -138,15 +138,9 @@ def parse_sync_chimeras_read_stats(chimera_file, read_stats_file):
         else:
             yield c, stats
 
-def resolve_discordant_reads(input_file, output_file, isize_dist, min_isize_prob,
-                             tmp_dir):
-    #
-    # parse chimeras and output reads to a file
-    #
-    logging.debug("Getting discordant read information")
-    read_stats_file = os.path.join(tmp_dir, "read_stats.txt")
-    f = open(read_stats_file, "w")
-    for c in Chimera.parse(open(input_file)):
+def make_discordant_read_stats_file(chimera_file, output_file, isize_dist):
+    f = open(output_file, "w")
+    for c in Chimera.parse(open(chimera_file)):
         # get number of unique alignment positions
         num_uniquely_aligning_frags = c.get_num_unique_positions()
         # get number of unambiguous reads
@@ -175,18 +169,31 @@ def resolve_discordant_reads(input_file, output_file, isize_dist, min_isize_prob
             # output to file
             print >>f, '\t'.join(map(str, s.to_list()))
     f.close()
+    
+def sort_read_stats_by_read_name(input_file, output_file, tmp_dir):
+    def sort_read_name(line):
+        return line.strip().split('\t', QNAME_COL+1)[QNAME_COL]
+    batch_sort(input=input_file,
+               output=output_file,
+               key=sort_read_name,
+               buffer_size=32000,
+               tempdirs=[tmp_dir])
+    
+
+def resolve_discordant_reads(input_file, output_file, isize_dist, min_isize_prob,
+                             tmp_dir):
+    #
+    # parse chimeras and output reads to a file
+    #
+    logging.debug("Getting discordant read information")
+    read_stats_file = os.path.join(tmp_dir, "read_stats.txt")
+    make_discordant_read_stats_file(input_file, read_stats_file, isize_dist)
     #
     # now sort the read/chimera stats list
     #
     logging.debug("Sorting reads by read name")
-    def sort_read_name(line):
-        return line.strip().split('\t', QNAME_COL+1)[QNAME_COL]
     sorted_read_stats_file = os.path.join(tmp_dir, "read_stats.rname_sorted.txt")
-    batch_sort(input=read_stats_file,
-               output=sorted_read_stats_file,
-               key=sort_read_name,
-               buffer_size=32000,
-               tempdirs=[tmp_dir])
+    sort_read_stats_by_read_name(read_stats_file, sorted_read_stats_file, tmp_dir)
     #
     # parse reads by read name
     #

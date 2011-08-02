@@ -47,6 +47,8 @@ def get_header_row():
             "Total frags",
             "Spanning frags",
             "Unique alignment positions",
+            "Isoform fraction 5'",
+            "Isoform fraction 3'",
             "Breakpoint spanning reads",
             "Chimera IDs"]
 
@@ -89,10 +91,14 @@ def generate_row_data(line_iter, show_read_throughs,
         newfields.append(("string", fields[17]))
         # unique alignment positions
         newfields.append(("string", fields[18]))
+        # isoform fraction 5p
+        newfields.append(("string", fields[19]))
+        # isoform fraction 3p
+        newfields.append(("string", fields[20]))        
         # breakpoint spanning reads
-        newfields.append(("list", fields[19].split(",")))        
+        newfields.append(("list", fields[21].split(",")))        
         # chimera ids
-        newfields.append(("list", fields[20].split(",")))        
+        newfields.append(("list", fields[22].split(",")))        
         yield newfields
 
 def make_html_table(input_file, 

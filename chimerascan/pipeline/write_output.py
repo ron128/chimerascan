@@ -31,6 +31,9 @@ from chimerascan.lib import config
 from chimerascan.lib.gene_to_genome import build_gene_to_genome_map, \
     build_tx_cluster_map, build_genome_tx_trees, build_tx_name_gene_map, gene_to_genome_pos
 
+from chimerascan.pipeline.filter_chimeras import get_wildtype_frags
+
+
 def get_chimera_groups(input_file, gene_file):
     # build a lookup table to get gene clusters from transcript name    
     tx_cluster_map = build_tx_cluster_map(open(gene_file))
@@ -66,20 +69,19 @@ def get_best_coverage_chimera(chimeras):
     sorted_stats = sorted(stats, key=operator.itemgetter(1,2), reverse=True)
     return sorted_stats[0][0]
 
-def write_output(input_file, output_file, index_dir):
+def write_output(input_file, bam_file, output_file, index_dir):
     gene_file = os.path.join(index_dir, config.GENE_FEATURE_FILE)
     # build a lookup table to get genome coordinates from transcript 
     # coordinates
     tx_genome_map = build_gene_to_genome_map(open(gene_file))    
     tx_name_gene_map = build_tx_name_gene_map(gene_file)    
     genome_tx_trees = build_genome_tx_trees(gene_file)
+    # open BAM file for checking wild-type isoform
+    bamfh = pysam.Samfile(bam_file, "rb")   
     # group chimera isoforms together
-    # TODO: requires reading all chimeras into memory
     lines = []
     chimera_clusters = 0
     for key,chimeras in get_chimera_groups(input_file, gene_file):
-        #cluster5p,cluster3p,coord5p,coord3p = key
-        #cluster5p,cluster3p = key
         txs5p = set()
         txs3p = set()
         genes5p = set()
@@ -115,7 +117,13 @@ def write_output(input_file, output_file, index_dir):
             spanning_fasta_lines.extend([">%s/%d;pos=%d;strand=%s" % 
                                          (dr.qname, dr.readnum+1, dr.pos, 
                                           "-" if dr.is_reverse else "+"), 
-                                         dr.seq])           
+                                         dr.seq])
+        # get isoform fraction
+        num_wt_frags_5p, num_wt_frags_3p = get_wildtype_frags(c, bamfh)
+        num_chimeric_frags = c.get_num_frags()
+        frac5p = float(num_chimeric_frags) / (num_chimeric_frags + num_wt_frags_5p)
+        frac3p = float(num_chimeric_frags) / (num_chimeric_frags + num_wt_frags_3p)
+        # setup fields of BEDPE file
         fields = [chrom5p, start5p, end5p,
                   chrom3p, start3p, end3p,
                   "CLUSTER%d" % (chimera_clusters),
@@ -130,13 +138,15 @@ def write_output(input_file, output_file, index_dir):
                   c.get_num_frags(),
                   c.get_num_spanning_frags(),
                   c.get_num_unique_positions(),
+                  frac5p, frac3p,
                   ','.join(spanning_fasta_lines),
                   ','.join(names)]
         lines.append(fields)
         chimera_clusters += 1
+    bamfh.close()
     logging.debug("Clustered chimeras: %d" % (chimera_clusters))
     # sort
-    lines = sorted(lines, key=operator.itemgetter(16, 12, 13), reverse=True)    
+    lines = sorted(lines, key=operator.itemgetter(18, 17, 16), reverse=True)    
     f = open(output_file, "w")
     print >>f, '\t'.join(['#chrom5p', 'start5p', 'end5p', 
                           'chrom3p', 'start3p', 'end3p',
@@ -148,6 +158,8 @@ def write_output(input_file, output_file, index_dir):
                           'total_frags', 
                           'spanning_frags',
                           'unique_alignment_positions',
+                          'isoform_fraction_5p',
+                          'isoform_fraction_3p',
                           'breakpoint_spanning_reads',
                           'chimera_ids'])
     for fields in lines:
@@ -159,12 +171,13 @@ def main():
     from optparse import OptionParser
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    parser = OptionParser("usage: %prog [options] <index_dir> <in.txt> <out.txt>")
+    parser = OptionParser("usage: %prog [options] <index_dir> <in.txt> <bam_file> <out.txt>")
     options, args = parser.parse_args()
     index_dir = args[0]
     input_file = args[1]
-    output_file = args[2]
-    return write_output(input_file, output_file, index_dir)
+    bam_file = args[2]
+    output_file = args[3]
+    return write_output(input_file, bam_file, output_file, index_dir)
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -111,10 +111,6 @@ def choose_best_breakpoints(r5p, r3p, tx5p, tx3p, trim_bp, isize_dist):
         elif (local_best_isize_prob == best_isize_prob):
             # for ties we keep all possible breakpoints
             best_breakpoints.update(local_best_breakpoints)
-    # TODO: remove debugging output
-    #ends5p = [x[1] for x in best_breakpoints]
-    #starts3p = [x[3] for x in best_breakpoints]
-    #print ends5p, starts3p, "r1:%d-%d" % (r5p.pos, r5p.aend), "r2:%d-%d" % (r3p.pos, r3p.aend), best_isize_prob
     return best_isize_prob, best_breakpoints
 
 def extract_breakpoint_sequence(tx_name_5p, tx_end_5p, 
@@ -164,8 +160,7 @@ def extract_breakpoint_sequence(tx_name_5p, tx_end_5p,
     return seq5p, seq3p, homology_left, homology_right
 
 def nominate_chimeras(index_dir, isize_dist_file, input_file, output_file, 
-                      trim_bp, min_frags, max_read_length, 
-                      homology_mismatches):
+                      trim_bp, max_read_length, homology_mismatches):
     # read insert size distribution
     isize_dist = InsertSizeDistribution.from_file(open(isize_dist_file))
     # build a lookup table to get genomic intervals from transcripts
@@ -187,9 +182,6 @@ def nominate_chimeras(index_dir, isize_dist_file, input_file, output_file,
     chimera_num = 1
     outfh = open(output_file, "w")    
     for tx_name_5p, tx_name_3p, frags in parse_discordant_bedpe_by_transcript_pair(open(input_file)):
-        # ignore chimera if not enough fragments
-        if len(frags) < min_frags:
-            continue        
         # get gene information
         tx5p = tx_name_gene_map[tx_name_5p]
         tx3p = tx_name_gene_map[tx_name_3p]
@@ -204,10 +196,7 @@ def nominate_chimeras(index_dir, isize_dist_file, input_file, output_file,
             for breakpoint in breakpoints:
                 breakpoint_dict[breakpoint].append((dr5p, dr3p))        
         # iterate through breakpoints and build chimera candidates
-        for breakpoint,frags in breakpoint_dict.iteritems():
-            # ignore breakpoints with few reads
-            if len(frags) < min_frags:
-                continue            
+        for breakpoint,frags in breakpoint_dict.iteritems():          
             exon_num_5p, tx_end_5p, exon_num_3p, tx_start_3p = breakpoint
             breakpoint_seq_5p, breakpoint_seq_3p, homology_left, homology_right = \
                 extract_breakpoint_sequence(config.GENE_REF_PREFIX + tx5p.tx_name, tx_end_5p,
@@ -229,8 +218,8 @@ def nominate_chimeras(index_dir, isize_dist_file, input_file, output_file,
             gene_name_3p = '_'.join(tx3p.gene_name.split())
             fields = [tx5p.tx_name, 0, tx_end_5p,  # chrom1, start1, end1
                       tx3p.tx_name, tx_start_3p, tx3p_length, # chrom2, start2, end2
-                      "C%07d" % (chimera_num), # name                      
-                      len(frags), # score
+                      "C%07d" % (chimera_num), # name
+                      1.0, # pvalue
                       tx5p.strand, tx3p.strand, # strand1, strand2
                       gene_name_5p, gene_name_3p, # gene names
                       # exon interval information
@@ -249,6 +238,7 @@ def nominate_chimeras(index_dir, isize_dist_file, input_file, output_file,
     outfh.close()
     ref_fa.close()
     return config.JOB_SUCCESS
+    
 
 def main():
     from optparse import OptionParser
@@ -260,8 +250,6 @@ def main():
                       default=config.EXON_JUNCTION_TRIM_BP,
                       help="apply trimming when choosing exon boundaries to "
                            "to consider possible breakpoints")
-    parser.add_option("--min-frags", dest="min_frags", type="int", default=2,
-                      help="minimum fragments required to call a chimera")
     parser.add_option("--max-read-length", dest="max_read_length", type="int",
                       default=100, metavar="N",
                       help="Reads in the BAM file are guaranteed to have "
@@ -280,7 +268,6 @@ def main():
     return nominate_chimeras(index_dir, isize_dist_file, 
                              input_file, output_file, 
                              options.trim,
-                             options.min_frags,
                              options.max_read_length,
                              options.homology_mismatches)
 

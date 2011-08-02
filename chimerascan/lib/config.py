@@ -78,6 +78,7 @@ SORTED_DISCORDANT_BEDPE_FILE = "discordant_reads.srt.bedpe"
 
 # chimera candidates with encompassing read support
 ENCOMPASSING_CHIMERA_FILE = "encompassing_chimeras.txt"
+FILTERED_ENCOMPASSING_CHIMERA_FILE = "encompassing_chimeras.filtered.txt"
 
 # amount of trimming to use to stop reads from overlapping 
 # exon boundaries and going into intronic space
@@ -112,7 +113,8 @@ SPANNING_CHIMERA_FILE = "spanning_chimeras.txt"
 RESOLVED_SPANNING_CHIMERA_FILE = "spanning_chimeras.resolved.txt"
 # results of filtering chimeras
 FILTERED_CHIMERA_FILE = "spanning_chimeras.resolved.filtered.txt"
-HOMOLOG_FILTERED_CHIMERA_FILE = "spanning_chimeras.resolved.homolog_filtered.txt"
+HOMOLOG_FILTERED_CHIMERA_FILE = "spanning_chimeras.resolved.filtered.homolog.txt"
+BEST_FILTERED_CHIMERA_FILE = "spanning_chimeras.resolved.filtered.homolog.best_isoform.txt"
 # output file
 CHIMERA_OUTPUT_FILE = "chimeras.bedpe"
 

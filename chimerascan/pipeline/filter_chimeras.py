@@ -23,14 +23,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import logging
 import collections
 import os
-import subprocess
 
 from chimerascan import pysam
 from chimerascan.lib.gene_to_genome import build_gene_to_genome_map, \
     gene_to_genome_pos, build_tx_cluster_map
 from chimerascan.lib.chimera import Chimera
 from chimerascan.lib import config
-from chimerascan.lib.base import make_temp
 
 def filter_unique_frags(c, threshold):
     """
@@ -39,31 +37,103 @@ def filter_unique_frags(c, threshold):
     """
     return c.get_num_unique_positions() >= threshold
 
-def filter_chimeric_isoform_fraction(c, frac, median_isize, bamfh):
+def get_wildtype_frags_5p(rname, start, end, bamfh):
+    num_wildtype_frags = len(set(r.qname for r in bamfh.fetch(rname, start, end)
+                                 if (not r.mate_is_unmapped) and (r.mpos >= end)))
+    return num_wildtype_frags
+
+def get_wildtype_frags_3p(rname, start, end, bamfh):
+    num_wildtype_frags = len(set(r.qname for r in bamfh.fetch(rname, start, end)
+                                 if (not r.mate_is_unmapped) and (r.mpos < start)))
+    return num_wildtype_frags
+
+def get_wildtype_frags(c, bamfh):
+    rname5p = config.GENE_REF_PREFIX + c.tx_name_5p
+    rname3p = config.GENE_REF_PREFIX + c.tx_name_3p
+    num_wt_frags_5p = get_wildtype_frags_5p(rname5p, c.tx_start_5p, c.tx_end_5p, bamfh)
+    num_wt_frags_3p = get_wildtype_frags_3p(rname3p, c.tx_start_3p, c.tx_end_3p, bamfh)
+    return num_wt_frags_5p, num_wt_frags_3p
+
+def filter_chimeric_isoform_fraction(c, frac, bamfh):
     """
     filters chimeras with fewer than 'threshold' total
     unique read alignments
     """
-    # get number of wild-type reads    
-    rname = config.GENE_REF_PREFIX + c.tx_name_5p
-    tid = bamfh.references.index(rname)
-    rlen = bamfh.lengths[tid]
-    start = max(0, c.tx_end_5p - median_isize)
-    end = min(rlen, c.tx_end_5p + median_isize)
-    # collect reads that cross breakpoint
-    frag_dict = collections.defaultdict(lambda: set())   
-    for r in bamfh.fetch(rname, start, end):
-        frag_dict[r.qname].add((r.pos, r.aend))
-    # prune list of frags to include only paired reads that cross break
-    wildtype_frags = set()
-    for qname,intervals in frag_dict.iteritems():
-        sorted_intervals = sorted(intervals)
-        if sorted_intervals[0][0] < c.tx_end_5p < sorted_intervals[-1][1]:
-            wildtype_frags.add(qname)
-    num_wildtype_frags = len(wildtype_frags)
+    num_wt_frags_5p, num_wt_frags_3p = get_wildtype_frags(c, bamfh)
     num_chimeric_frags = c.get_num_frags()
-    ratio = float(num_chimeric_frags) / max(num_wildtype_frags, 1)
-    return (ratio >= frac)
+    ratio5p = float(num_chimeric_frags) / (num_chimeric_frags + num_wt_frags_5p)
+    ratio3p = float(num_chimeric_frags) / (num_chimeric_frags + num_wt_frags_3p)
+    #print c.gene_name_5p, c.gene_name_3p, "chimeras", num_chimeric_frags, "wt5p", num_wt_frags_5p, "wt3p", num_wt_frags_3p, "r5p", ratio5p, "r3p", ratio3p
+    return min(ratio5p, ratio3p) >= frac
+
+def read_false_pos_file(filename):
+    false_pos_chimeras = set()
+    for line in open(filename):
+        fields = line.strip().split("\t")
+        tx_name_5p, end5p, tx_name_3p, start3p = fields
+        end5p = int(end5p)
+        start3p = int(start3p)
+        false_pos_chimeras.add((tx_name_5p, end5p, tx_name_3p, start3p))
+    return false_pos_chimeras
+
+def filter_encompassing_chimeras(input_file, output_file, min_frags):
+    num_chimeras = 0
+    num_filtered_chimeras = 0
+    f = open(output_file, "w") 
+    for c in Chimera.parse(open(input_file)):
+        num_chimeras += 1
+        if c.get_num_frags() < min_frags:
+            continue
+        num_filtered_chimeras += 1
+        print >>f, '\t'.join(map(str, c.to_list()))
+    f.close()
+    logging.debug("\tchimeras: %d" % (num_chimeras))
+    logging.debug("\tfiltered chimeras: %d" % (num_filtered_chimeras))
+    return config.JOB_SUCCESS
+
+def filter_chimeras(input_file, output_file,
+                    index_dir, bam_file,
+                    unique_frags,
+                    isoform_fraction,
+                    false_pos_file):
+    logging.debug("Parameters")
+    logging.debug("\tunique fragments: %f" % (unique_frags))
+    logging.debug("\tfraction of wild-type isoform: %f" % (isoform_fraction))
+    logging.debug("\tfalse positive chimeras file: %s" % (false_pos_file))
+    # get false positive chimera list
+    if (false_pos_file is not None) and (false_pos_file is not ""):
+        logging.debug("Loading false positive chimeras")
+        false_pos_pairs = read_false_pos_file(false_pos_file)
+    else:
+        false_pos_pairs = set()
+    # open BAM file for checking wild-type isoform
+    bamfh = pysam.Samfile(bam_file, "rb")
+    # filter chimeras
+    logging.debug("Filtering chimeras")
+    num_chimeras = 0
+    num_filtered_chimeras = 0    
+    f = open(output_file, "w")   
+    for c in Chimera.parse(open(input_file)):
+        num_chimeras += 1
+        good = filter_unique_frags(c, unique_frags)
+        if not good:
+            continue          
+        false_pos_key = (c.tx_name_5p, c.tx_end_5p, 
+                         c.tx_name_3p, c.tx_start_3p)
+        good = good and (false_pos_key not in false_pos_pairs)
+        if not good:
+            continue
+        good = good and filter_chimeric_isoform_fraction(c, isoform_fraction, bamfh)        
+        if good:
+            print >>f, '\t'.join(map(str, c.to_list()))
+            num_filtered_chimeras += 1
+    f.close()
+    logging.debug("Total chimeras: %d" % num_chimeras)
+    logging.debug("Filtered chimeras: %d" % num_filtered_chimeras)
+    # cleanup memory for false positive chimeras
+    del false_pos_pairs
+    bamfh.close()
+    return config.JOB_SUCCESS
 
 def get_highest_coverage_isoforms(input_file, gene_file):
     # place overlapping chimeras into clusters
@@ -97,75 +167,22 @@ def get_highest_coverage_isoforms(input_file, gene_file):
         kept_chimeras.update(stats_dict[sorted_keys[0]])
     return kept_chimeras
 
-def read_false_pos_file(filename):
-    false_pos_chimeras = set()
-    for line in open(filename):
-        fields = line.strip().split("\t")
-        tx_name_5p, end5p, tx_name_3p, start3p = fields
-        end5p = int(end5p)
-        start3p = int(start3p)
-        false_pos_chimeras.add((tx_name_5p, end5p, tx_name_3p, start3p))
-    return false_pos_chimeras
-
-def filter_chimeras(input_file, output_file,
-                    index_dir, bam_file,
-                    unique_frags,
-                    median_isize,
-                    isoform_fraction,
-                    false_pos_file):
-    logging.debug("Parameters")
-    logging.debug("\tunique fragments: %f" % (unique_frags))
-    logging.debug("\tmedian insert size: %d" % (median_isize))
-    logging.debug("\tfraction of wild-type isoform: %f" % (isoform_fraction))
-    logging.debug("\tfalse positive chimeras file: %s" % (false_pos_file))
-    # get false positive chimera list
-    if (false_pos_file is not None) and (false_pos_file is not ""):
-        logging.debug("Loading false positive chimeras")
-        false_pos_pairs = read_false_pos_file(false_pos_file)
-    else:
-        false_pos_pairs = set()
-    # open BAM file for checking wild-type isoform
-    bamfh = pysam.Samfile(bam_file, "rb")
-    # filter chimeras
-    logging.debug("Filtering chimeras")
-    num_chimeras = 0
-    num_filtered_chimeras = 0
-    tmp_file = make_temp(os.path.dirname(output_file), suffix=".txt")
-    f = open(tmp_file, "w")
-    for c in Chimera.parse(open(input_file)):
-        num_chimeras += 1
-        good = filter_unique_frags(c, unique_frags)
-        if not good:
-            continue          
-        false_pos_key = (c.tx_name_5p, c.tx_end_5p, 
-                         c.tx_name_3p, c.tx_start_3p)
-        good = good and (false_pos_key not in false_pos_pairs)
-        if not good:
-            continue
-        good = good and filter_chimeric_isoform_fraction(c, isoform_fraction, median_isize, bamfh)        
-        if good:
-            print >>f, '\t'.join(map(str, c.to_list()))
-            num_filtered_chimeras += 1
-    f.close()
-    logging.debug("Total chimeras: %d" % num_chimeras)
-    logging.debug("Filtered chimeras: %d" % num_filtered_chimeras)
-    # cleanup memory for false positive chimeras
-    del false_pos_pairs
-    bamfh.close()
+def filter_highest_coverage_isoforms(index_dir, input_file, output_file):
     # find highest coverage chimeras among isoforms
     gene_file = os.path.join(index_dir, config.GENE_FEATURE_FILE)
-    kept_chimeras = get_highest_coverage_isoforms(tmp_file, gene_file)
+    kept_chimeras = get_highest_coverage_isoforms(input_file, gene_file)
     num_filtered_chimeras = 0
     f = open(output_file, "w")
-    for c in Chimera.parse(open(tmp_file)):
+    for c in Chimera.parse(open(input_file)):
         if c.name in kept_chimeras:
             num_filtered_chimeras += 1
             print >>f, '\t'.join(map(str, c.to_list()))
     f.close()
     logging.debug("\tAfter choosing best isoform: %d" % 
                   num_filtered_chimeras)
-    os.remove(tmp_file)
     return config.JOB_SUCCESS
+
+
 
 def main():
     from optparse import OptionParser
@@ -177,9 +194,6 @@ def main():
                       dest="unique_frags", metavar="N",
                       help="Filter chimeras with less than N unique "
                       "aligned fragments [default=%default]")
-    parser.add_option("--median-isize", type="int", default=200,
-                      dest="median_isize", metavar="N",
-                      help="Median fragment size [default=%default]")
     parser.add_option("--isoform-fraction", type="float", 
                       default=0.10, metavar="X",
                       help="Filter chimeras with expression ratio "
@@ -196,7 +210,6 @@ def main():
     output_file = args[3]
     return filter_chimeras(input_file, output_file, index_dir, bam_file,
                            unique_frags=options.unique_frags,
-                           median_isize=options.median_isize,
                            isoform_fraction=options.isoform_fraction,
                            false_pos_file=options.false_pos_file)
 
