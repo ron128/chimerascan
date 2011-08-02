@@ -63,6 +63,7 @@ from chimerascan.pipeline.nominate_spanning_reads import nominate_encomp_spannin
 from chimerascan.pipeline.merge_spanning_alignments import merge_spanning_alignments
 from chimerascan.pipeline.resolve_discordant_reads import resolve_discordant_reads
 from chimerascan.pipeline.filter_chimeras import filter_chimeras
+from chimerascan.pipeline.filter_homologous_genes import filter_homologous_genes
 from chimerascan.pipeline.write_output import write_output
 
 # defaults for bowtie
@@ -950,64 +951,19 @@ def run_chimerascan(runconfig):
         pysam.sort("-m", str(int(1e9)), singlemap_spanning_bam_file, sorted_singlemap_spanning_bam_prefix)
         pysam.index(sorted_singlemap_spanning_bam_file)
     #
-    # Align unmapped mapping reads that may overlap breakpoint junctions
-    #
-    # TODO: skipping this for now
-#    unaligned_spanning_bam_file = os.path.join(tmp_dir, config.UNALIGNED_SPANNING_BAM_FILE)
-#    unaligned_spanning_log_file = os.path.join(log_dir, "bowtie_unaligned_spanning.log")
-#    msg = "Realigning unmapped reads to breakpoints"
-#    if (up_to_date(unaligned_spanning_bam_file, breakpoint_bowtie_index_file) and
-#        up_to_date(unaligned_spanning_bam_file, unaligned_spanning_fastq_file)):
-#        logging.info("[SKIPPED] %s" % (msg))
-#    else:            
-#        logging.info(msg)
-#        retcode= align_sr(unaligned_spanning_fastq_file, 
-#                          bowtie_index=breakpoint_bowtie_index,
-#                          output_bam_file=unaligned_spanning_bam_file, 
-#                          unaligned_fastq_param=None,
-#                          maxmultimap_fastq_param=None,
-#                          trim5=0,
-#                          trim3=0,
-#                          library_type=runconfig.library_type,
-#                          num_processors=runconfig.num_processors, 
-#                          quals=SANGER_FORMAT,
-#                          multihits=runconfig.multihits,
-#                          mismatches=runconfig.mismatches, 
-#                          bowtie_bin=bowtie_bin,
-#                          bowtie_args=runconfig.bowtie_args,
-#                          log_file=unaligned_spanning_log_file,
-#                          keep_unmapped=False)
-#        if retcode != config.JOB_SUCCESS:
-#            logging.error("Bowtie failed with error code %d" % (retcode))    
-#            return config.JOB_ERROR
-#    #
-#    # Sort encomp/spanning reads by reference/position
-#    #
-#    msg = "Sorting/indexing unaligned/spanning alignments"
-#    sorted_unaligned_spanning_bam_file = os.path.join(tmp_dir, config.SORTED_UNALIGNED_SPANNING_BAM_FILE)
-#    if (up_to_date(sorted_unaligned_spanning_bam_file, unaligned_spanning_bam_file)):
-#        logging.info("[SKIPPED] %s" % (msg))
-#    else:
-#        logging.info(msg)
-#        sorted_unaligned_spanning_bam_prefix = os.path.splitext(sorted_unaligned_spanning_bam_file)[0]
-#        pysam.sort("-m", str(int(1e9)), unaligned_spanning_bam_file, sorted_unaligned_spanning_bam_prefix)
-#        pysam.index(sorted_unaligned_spanning_bam_file)
-    #
     # Merge spanning read alignment information
     #
     spanning_chimera_file = os.path.join(tmp_dir, config.SPANNING_CHIMERA_FILE)
     msg = "Merging spanning read information"
     if (up_to_date(spanning_chimera_file, breakpoint_chimera_file) and
-        #up_to_date(spanning_chimera_file, unaligned_spanning_bam_file) and
         up_to_date(spanning_chimera_file, encomp_spanning_bam_file) and
-        up_to_date(spanning_chimera_file, realigned_unmapped_bam_file)):
+        up_to_date(spanning_chimera_file, sorted_singlemap_spanning_bam_file)):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)        
         merge_spanning_alignments(breakpoint_chimera_file=breakpoint_chimera_file,
                                   encomp_bam_file=sorted_encomp_spanning_bam_file,
                                   singlemap_bam_file=sorted_singlemap_spanning_bam_file,
-                                  #unaligned_bam_file=sorted_unaligned_spanning_bam_file,
                                   output_chimera_file=spanning_chimera_file,
                                   anchor_min=runconfig.anchor_min,
                                   anchor_length=runconfig.anchor_length,
@@ -1049,15 +1005,35 @@ def run_chimerascan(runconfig):
                         isoform_fraction=runconfig.filter_isoform_fraction,
                         false_pos_file=runconfig.filter_false_pos_file)
     #
+    # Filter homologous genes
+    # 
+    homolog_filtered_chimera_file = os.path.join(tmp_dir, config.HOMOLOG_FILTERED_CHIMERA_FILE)
+    msg = "Filtering homologous chimeras"
+    if up_to_date(homolog_filtered_chimera_file, filtered_chimera_file):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        min_isize = isize_dist.isize_at_percentile(1.0)
+        max_isize = isize_dist.isize_at_percentile(99.0)
+        filter_homologous_genes(input_file=filtered_chimera_file, 
+                                output_file=homolog_filtered_chimera_file,
+                                index_dir=runconfig.index_dir,
+                                homolog_segment_length=runconfig.segment_length-1,
+                                min_isize=min_isize,
+                                max_isize=max_isize,
+                                bowtie_bin=bowtie_bin,
+                                num_processors=runconfig.num_processors,
+                                tmp_dir=tmp_dir)
+    #
     # Write user-friendly output file
     # 
     chimera_output_file = os.path.join(runconfig.output_dir, config.CHIMERA_OUTPUT_FILE)
     msg = "Writing chimeras to file %s" % (chimera_output_file)
-    if up_to_date(chimera_output_file, filtered_chimera_file):
+    if up_to_date(chimera_output_file, homolog_filtered_chimera_file):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)
-        write_output(filtered_chimera_file, chimera_output_file,
+        write_output(homolog_filtered_chimera_file, chimera_output_file,
                      index_dir=runconfig.index_dir)
     #
     # Cleanup

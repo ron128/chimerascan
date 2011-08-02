@@ -23,6 +23,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import logging
 import collections
 import os
+import subprocess
 
 from chimerascan import pysam
 from chimerascan.lib.gene_to_genome import build_gene_to_genome_map, \
@@ -112,21 +113,21 @@ def filter_chimeras(input_file, output_file,
                     median_isize,
                     isoform_fraction,
                     false_pos_file):
-    logging.debug("Filtering Parameters")
+    logging.debug("Parameters")
     logging.debug("\tunique fragments: %f" % (unique_frags))
     logging.debug("\tmedian insert size: %d" % (median_isize))
     logging.debug("\tfraction of wild-type isoform: %f" % (isoform_fraction))
     logging.debug("\tfalse positive chimeras file: %s" % (false_pos_file))
     # get false positive chimera list
     if (false_pos_file is not None) and (false_pos_file is not ""):
-        logging.debug("Parsing false positive chimeras")
+        logging.debug("Loading false positive chimeras")
         false_pos_pairs = read_false_pos_file(false_pos_file)
     else:
         false_pos_pairs = set()
     # open BAM file for checking wild-type isoform
     bamfh = pysam.Samfile(bam_file, "rb")
     # filter chimeras
-    logging.debug("Checking chimeras")
+    logging.debug("Filtering chimeras")
     num_chimeras = 0
     num_filtered_chimeras = 0
     tmp_file = make_temp(os.path.dirname(output_file), suffix=".txt")
@@ -172,7 +173,7 @@ def main():
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = OptionParser("usage: %prog [options] <index_dir> "
                           "<sorted_aligned_reads.bam> <in.txt> <out.txt>")
-    parser.add_option("--unique-frags", type="float", default=3.0,
+    parser.add_option("--unique-frags", type="float", default=2.0,
                       dest="unique_frags", metavar="N",
                       help="Filter chimeras with less than N unique "
                       "aligned fragments [default=%default]")

@@ -34,35 +34,6 @@ from chimerascan.lib.base import LibraryTypes
 
 from chimerascan.pipeline.find_discordant_reads import get_gene_orientation
 
-#def filter_spanning_reads(reads,
-#                          tid_breakpoint_dict,
-#                          homology_dict,
-#                          anchor_min,
-#                          anchor_length,
-#                          anchor_mismatches):
-#    for i,r in enumerate(reads):
-#        if r.is_unmapped:
-#            continue
-#        # get breakpoint information
-#        b = tid_breakpoint_dict[r.rname]
-#        # add tags to read
-#        r.tags = r.tags + [("HI",i),
-#                           ("IH",len(reads)),
-#                           ("NH", len(reads)),
-#                           (DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_GENE),
-#                           (ORIENTATION_TAG_NAME, OrientationTags.NONE)]
-#        # determine whether this is breakpoint
-#        # alignment meets filtering criteria
-#        for chimera_name in b.chimera_names:
-#            homology5p, homology3p = homology_dict[chimera_name]
-#            if check_breakpoint_alignment(r, b,
-#                                          homology5p,
-#                                          homology3p,
-#                                          anchor_min,
-#                                          anchor_length,
-#                                          anchor_mismatches):
-#                yield r,b,chimera_name
-
 def parse_group_by_attr(myiter, attr):
     mylist = []
     prev = None

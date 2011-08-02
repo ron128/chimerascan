@@ -29,20 +29,55 @@ from chimerascan.pipeline.profile_insert_size import InsertSizeDistribution
 from chimerascan.lib.batch_sort import batch_sort
 
 QNAME_COL = 0
-CHIMERA_NAME_COL = 1
-SPANNING_FRAGS_COL = 2
-NUM_UNAMBIGUOUS_FRAGS_COL = 3
-NUM_UNIQUELY_ALIGNING_FRAGS_COL = 4
-NUM_MISMATCHES_COL = 5
-ISIZE_PROB_COL = 6
-            
-def choose_most_likely_alignments(dreads, chimeras):
-    # criteria for selection the best alignment includes:
-    # - total reads supporting chimera
-    # - chimera with best spanning reads
-    # - number of mismatches
-    # - implied insert size of alignment
-    pass
+CHIMERA_NAME_COL = 5
+SCORE_FIELDS = (6,7,8,9,10)
+
+class ChimeraStats(object):
+    __slots__ = ('qname', 'tid5p', 'pos5p', 'tid3p', 'pos3p', 
+                 'chimera_name', 'num_spanning_frags', 'num_unambiguous_frags',
+                 'num_uniquely_aligning_frags', 'neg_mismatches',
+                 'isize_prob')
+
+    @property
+    def score_tuple(self):
+        return (self.num_spanning_frags,
+                self.num_unambiguous_frags,
+                self.num_uniquely_aligning_frags,
+                self.neg_mismatches,
+                self.isize_prob)
+
+    def to_list(self):
+        return [self.qname,
+                self.tid5p, self.pos5p,
+                self.tid3p, self.pos3p, 
+                self.chimera_name,
+                self.num_spanning_frags,
+                self.num_unambiguous_frags,
+                self.num_uniquely_aligning_frags,
+                self.neg_mismatches,
+                self.isize_prob]
+
+    @staticmethod
+    def from_list(fields):
+        s = ChimeraStats()
+        s.qname = fields[0]
+        s.tid5p = int(fields[1])
+        s.pos5p = int(fields[2])
+        s.tid3p = int(fields[3])
+        s.pos3p = int(fields[4])
+        s.chimera_name = fields[5]
+        s.num_spanning_frags = int(fields[6])
+        s.num_unambiguous_frags = int(fields[7])
+        s.num_uniquely_aligning_frags = int(fields[8])
+        s.neg_mismatches = int(fields[9])
+        s.isize_prob = float(fields[10])
+        return s
+
+    @staticmethod
+    def parse(line_iter):
+        for line in line_iter:
+            fields = line.strip().split('\t')
+            yield ChimeraStats.from_list(fields)
 
 def calc_isize_prob(isize, isize_dist):
     # find percentile of observing this insert size in the reads
@@ -51,31 +86,39 @@ def calc_isize_prob(isize, isize_dist):
     isize_prob = 1.0 - (2.0 * abs(50.0 - isize_per))/100.0    
     return isize_prob
 
-def parse_read_stats(line_iter):
-    for line in line_iter:
-        fields = line.strip().split('\t')
-        fields[2:6] = map(int, fields[2:6])
-        fields[6] = float(fields[6])
-        yield fields
-        
-def group_by_field(item_iter, colnum):
+def group_by_attr(item_iter, attr):
     mylist = []
     prev = None
-    for fields in item_iter:
-        # parse read stats information
-        cur = fields[colnum]
+    for itm in item_iter:
+        cur = getattr(itm, attr)
         if prev != cur:
             if len(mylist) > 0:
                 yield prev, mylist
                 mylist = []
             prev = cur
-        mylist.append(fields)
+        mylist.append(itm)
     if len(mylist) > 0:
         yield prev, mylist
 
+#def group_by_field(item_iter, colnum):
+#    mylist = []
+#    prev = None
+#    for fields in item_iter:
+#        # parse read stats information
+#        cur = fields[colnum]
+#        if prev != cur:
+#            if len(mylist) > 0:
+#                yield prev, mylist
+#                mylist = []
+#            prev = cur
+#        mylist.append(fields)
+#    if len(mylist) > 0:
+#        yield prev, mylist
+
 def parse_sync_chimeras_read_stats(chimera_file, read_stats_file):
     # group reads by chimera name
-    read_stats_iter = group_by_field(parse_read_stats(open(read_stats_file)), 1)
+    read_stats_iter = group_by_attr(ChimeraStats.parse(open(read_stats_file)), 
+                                    'chimera_name')
     iter_valid = True
     try:
         read_chimera_name, stats = read_stats_iter.next()
@@ -83,7 +126,7 @@ def parse_sync_chimeras_read_stats(chimera_file, read_stats_file):
         iter_valid = False
         stats = []
     # group chimeras by name    
-    for c in Chimera.parse(open(chimera_file)):        
+    for c in Chimera.parse(open(chimera_file)):
         while (iter_valid) and (c.name > read_chimera_name):
             try:
                 read_chimera_name, stats = read_stats_iter.next()
@@ -110,29 +153,34 @@ def resolve_discordant_reads(input_file, output_file, isize_dist, min_isize_prob
         num_unambiguous_frags = c.get_num_frags(maxnumhits=1)
         # number of spanning frags
         num_spanning_frags = c.get_num_spanning_frags()             
-        # TODO: some statistics about spanning?
         for dpair in c.encomp_frags:
             # get putative insert size
             isize5p = c.tx_end_5p - dpair[0].pos
             isize3p = dpair[1].pos - c.tx_start_3p
             isize = isize5p + isize3p
             isize_prob = calc_isize_prob(isize, isize_dist)
+            # make ChimeraStats object
+            s = ChimeraStats()
+            s.qname = dpair[0].qname
+            s.tid5p = dpair[0].tid
+            s.pos5p = dpair[0].pos
+            s.tid3p = dpair[1].tid
+            s.pos3p = dpair[1].pos
+            s.chimera_name = c.name
+            s.num_spanning_frags = num_spanning_frags
+            s.num_unambiguous_frags = num_unambiguous_frags
+            s.num_uniquely_aligning_frags = num_uniquely_aligning_frags
+            s.neg_mismatches = -(dpair[0].mismatches + dpair[1].mismatches)
+            s.isize_prob = isize_prob
             # output to file
-            print >>f, '\t'.join(map(str, [dpair[0].qname, # read name 
-                                           c.name, # chimera name
-                                           num_spanning_frags,
-                                           num_unambiguous_frags,
-                                           num_uniquely_aligning_frags,
-                                           -(dpair[0].mismatches + dpair[1].mismatches), # total mismatches
-                                           isize_prob # insert size probability
-                                           ]))
+            print >>f, '\t'.join(map(str, s.to_list()))
     f.close()
     #
     # now sort the read/chimera stats list
     #
     logging.debug("Sorting reads by read name")
     def sort_read_name(line):
-        return line.strip().split('\t', 1)[QNAME_COL]
+        return line.strip().split('\t', QNAME_COL+1)[QNAME_COL]
     sorted_read_stats_file = os.path.join(tmp_dir, "read_stats.rname_sorted.txt")
     batch_sort(input=read_stats_file,
                output=sorted_read_stats_file,
@@ -145,29 +193,26 @@ def resolve_discordant_reads(input_file, output_file, isize_dist, min_isize_prob
     logging.debug("Choosing best read groups")
     resolved_read_stats_file = os.path.join(tmp_dir, "read_stats.rname_sorted.resolved.txt")
     f = open(resolved_read_stats_file, "w")
-    for rname,readstats in group_by_field(parse_read_stats(open(sorted_read_stats_file)), QNAME_COL):
+    for rname,readstats in group_by_attr(ChimeraStats.parse(open(sorted_read_stats_file)), 
+                                         'qname'):
         # build a dictionary of stats -> read/chimeras
         stats_dict = collections.defaultdict(lambda: [])
-        for fields in readstats:
-            # make a key to sort on
-            key = tuple(fields[2:7])
-            # value is chimera name
-            stats_dict[key].append(fields[CHIMERA_NAME_COL])
+        for s in readstats:
+            # add key/value pairs
+            stats_dict[s.score_tuple].append(s)
         # sort based on stats
         sorted_stats_keys = sorted(stats_dict.keys(), reverse=True)
-        best_key = sorted_stats_keys[0]
         # use only the best key
-        chimera_names = stats_dict[best_key]
-        # output read -> chimera relationships
-        for chimera_name in chimera_names:
-            print >>f, '\t'.join([rname, chimera_name] + map(str,best_key)) 
+        for s in stats_dict[sorted_stats_keys[0]]:
+            # output read -> chimera relationships
+            print >>f, '\t'.join(map(str, s.to_list()))
     f.close()
     #
     # re-sort by chimera name
     #
     logging.debug("Resorting reads by chimera name")
     def sort_reads_by_chimera_name(line):
-        return line.strip().split('\t', 2)[CHIMERA_NAME_COL]
+        return line.strip().split('\t',CHIMERA_NAME_COL+1)[CHIMERA_NAME_COL]
     sorted_resolved_read_stats_file = os.path.join(tmp_dir, "read_stats.chimera_name_sorted.resolved.txt")
     batch_sort(input=resolved_read_stats_file,
                output=sorted_resolved_read_stats_file,
@@ -176,7 +221,7 @@ def resolve_discordant_reads(input_file, output_file, isize_dist, min_isize_prob
                tempdirs=[tmp_dir])
     logging.debug("Resorting chimeras by name")
     def sort_chimeras_by_name(line):
-        return line.strip().split('\t', 7)[Chimera.NAME_FIELD]
+        return line.strip().split('\t',Chimera.NAME_FIELD+1)[Chimera.NAME_FIELD]
     sorted_chimera_file = os.path.join(tmp_dir, "spanning_chimeras.name_sorted.txt")
     batch_sort(input=input_file,
                output=sorted_chimera_file,
@@ -190,12 +235,21 @@ def resolve_discordant_reads(input_file, output_file, isize_dist, min_isize_prob
     f = open(output_file, "w")
     # need to sync chimeras with stats
     for c,stats in parse_sync_chimeras_read_stats(sorted_chimera_file, sorted_resolved_read_stats_file):
-        # replace encompassing frags with reads in stats
-        good_qnames = set(x[QNAME_COL] for x in stats
-                          if x[ISIZE_PROB_COL] >= min_isize_prob)
-        new_encomp_frags = [dpair for dpair in c.encomp_frags
-                            if dpair[0].qname in good_qnames]
+        # parse and make lookup set of the resolved alignments
+        good_alignments = set()
+        for s in stats:
+            if s.isize_prob < min_isize_prob:
+                continue
+            good_alignments.add((s.qname, s.tid5p, s.pos5p, s.tid3p, s.pos3p))
+        # replace encompassing frags with resolved alignments
+        new_encomp_frags = []
+        for dpair in c.encomp_frags:
+            # get alignment tuple
+            aln = (dpair[0].qname, dpair[0].tid, dpair[0].pos, dpair[1].tid, dpair[1].pos)
+            if aln in good_alignments:
+                new_encomp_frags.append(dpair)
         c.encomp_frags = new_encomp_frags
+        c.score = c.get_num_frags()
         print >>f, '\t'.join(map(str, c.to_list()))
     f.close()
     # remove temporary files
@@ -217,12 +271,10 @@ def main():
     output_file = args[1]
     isize_dist_file = args[2]
     # read insert size distribution
-    isize_dist = InsertSizeDistribution()
-    isize_dist.from_file(open(isize_dist_file, "r"))
+    isize_dist = InsertSizeDistribution.from_file(open(isize_dist_file))
     resolve_discordant_reads(input_file, output_file, isize_dist, 
                              options.min_isize_prob,
-                             tmp_dir="/tmp")
-
+                             tmp_dir=".")
 
 if __name__ == '__main__':
     main()

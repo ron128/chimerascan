@@ -109,9 +109,10 @@ SORTED_UNALIGNED_SPANNING_BAM_FILE = "unaligned_spanning_reads.srt.bam"
 # results of merging spanning reads into chimera nominations
 SPANNING_CHIMERA_FILE = "spanning_chimeras.txt"
 # results of resolving ambiguous reads
-RESOLVED_SPANNING_CHIMERA_FILE = "resolved_spanning_chimeras.txt"
+RESOLVED_SPANNING_CHIMERA_FILE = "spanning_chimeras.resolved.txt"
 # results of filtering chimeras
-FILTERED_CHIMERA_FILE = "spanning_chimeras.filtered.txt"
+FILTERED_CHIMERA_FILE = "spanning_chimeras.resolved.filtered.txt"
+HOMOLOG_FILTERED_CHIMERA_FILE = "spanning_chimeras.resolved.homolog_filtered.txt"
 # output file
 CHIMERA_OUTPUT_FILE = "chimeras.bedpe"
 

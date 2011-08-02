@@ -321,12 +321,14 @@ class Chimera(object):
         encomp_pos = set()
         qnames = set()
         for pair in self.encomp_frags:
-            encomp_pos.add((pair[0].pos, pair[1].pos))
-            qnames.add(pair[0].qname)
+            if pair[0].qname not in qnames:
+                qnames.add(pair[0].qname)
+                encomp_pos.add((pair[0].pos, pair[1].pos))
         # add spanning reads
         spanning_pos = set()
         for dr in self.spanning_reads:
             if dr.qname not in qnames:
+                qnames.add(dr.qname)
                 spanning_pos.add(dr.pos)
         return len(encomp_pos) + len(spanning_pos)
 

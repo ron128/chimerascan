@@ -112,7 +112,7 @@ def write_output(input_file, output_file, index_dir):
             if dr.seq in spanning_seqs:
                 continue
             spanning_seqs.add(dr.seq)
-            spanning_fasta_lines.extend([">%s/%d pos=%d strand=%s" % 
+            spanning_fasta_lines.extend([">%s/%d;pos=%d;strand=%s" % 
                                          (dr.qname, dr.readnum+1, dr.pos, 
                                           "-" if dr.is_reverse else "+"), 
                                          dr.seq])           
