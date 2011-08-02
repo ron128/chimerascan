@@ -21,13 +21,40 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 import logging
+import gzip
+import bz2
+import zipfile
 
 from chimerascan.lib.seq import get_qual_conversion_func
 from chimerascan.lib.base import parse_lines
 import chimerascan.lib.config as config
 
+def detect_format(fastq_files):
+    if all(f.endswith(".gz") for f in fastq_files):
+        return "gz"
+    elif all(f.endswith(".bz2") for f in fastq_files):
+        return "bz2"
+    elif all(f.endswith(".zip") for f in fastq_files):
+        return "zip"
+    else:
+        return "txt"
+
 def inspect_reads(fastq_files, output_prefix, quals):
-    fqiters = [parse_lines(open(f), numlines=4) for f in fastq_files]
+    """
+    uncompresses reads, renames reads, and converts quality scores 
+    to 'sanger' format
+    """
+    compression_format = detect_format(fastq_files)
+    if compression_format == "gz":
+        filehandles = [gzip.open(f, "r") for f in fastq_files]
+    elif compression_format == "bz2":
+        filehandles = [bz2.BZ2File(f, "r") for f in fastq_files]
+    elif compression_format == "zip":
+        filehandles = [zipfile.ZipFile(f, "r") for f in fastq_files]
+    else:
+        filehandles = [open(f, "r") for f in fastq_files]
+    # setup file iterators
+    fqiters = [parse_lines(f, numlines=4) for f in filehandles]
     outfhs = [open(output_prefix + "_%d.fq" % (x+1), "w") 
               for x in xrange(len(fastq_files))]
     qual_func = get_qual_conversion_func(quals)
@@ -46,6 +73,8 @@ def inspect_reads(fastq_files, output_prefix, quals):
             linenum += 1
     except StopIteration:
         pass
+    for fh in filehandles:
+        fh.close()
     logging.debug("Inspected %d fragments" % (linenum))
     return config.JOB_SUCCESS
 

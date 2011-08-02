@@ -278,9 +278,11 @@ class RunConfig(object):
                           "chimerascan [default=%default]")
         parser.add_option("--keep-tmp", dest="keep_tmp", action="store_true",
                           default=DEFAULT_KEEP_TMP,
-                          help="DO NOT delete intermediate files after run")
+                          help="DO NOT delete intermediate files after run "
+                          "[default=%default]")
         parser.add_option("--rm-tmp", dest="keep_tmp", action="store_false", 
-                          help="Delete intermediate files after run")
+                          help="Delete intermediate files after run "
+                          "[default=%default]")
         parser.add_option("--quals", dest="quals",
                           choices=FASTQ_QUAL_FORMATS, 
                           default=DEFAULT_FASTQ_QUAL_FORMAT, metavar="FMT",
@@ -393,8 +395,8 @@ class RunConfig(object):
         filter_group.add_option("--filter-isoform-fraction", type="float", 
                                 default=DEFAULT_FILTER_ISOFORM_FRACTION, metavar="X",
                                 help="Filter chimeras with expression ratio "
-                                " less than X (0.0-1.0) relative to the wild-type "
-                                "5' transcript level [default=%default]")
+                                "less than X (0.0-1.0) relative to the wild-type "
+                                "transcript levels [default=%default]")
         filter_group.add_option("--filter-false-pos", default="",
                                 dest="filter_false_pos_file",
                                 help="File containing known false positive "
