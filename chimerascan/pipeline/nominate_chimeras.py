@@ -29,7 +29,6 @@ from chimerascan import pysam
 
 from chimerascan.lib import config
 from chimerascan.lib.chimera import DiscordantRead, Chimera, frags_to_encomp_string
-from chimerascan.lib.breakpoint import Breakpoint
 from chimerascan.lib.gene_to_genome import build_tx_name_gene_map, build_genome_tx_trees
 from chimerascan.lib.fragment_size_distribution import InsertSizeDistribution
 from chimerascan.lib.seq import calc_homology
