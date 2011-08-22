@@ -7,8 +7,6 @@ Code from the Galaxy project (http://galaxy.psu.edu)
 Contains methods to transform sequence strings
 '''
 import string
-import re
-import collections
 from math import log10
 from string import maketrans
 

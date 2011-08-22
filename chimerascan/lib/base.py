@@ -49,7 +49,7 @@ def parse_lines(line_iter, numlines=1):
     """
     try:
         while True:
-            yield [line_iter.next().rstrip() for x in xrange(4)]
+            yield [line_iter.next().rstrip() for x in xrange(numlines)]
     except StopIteration:
         pass
 
