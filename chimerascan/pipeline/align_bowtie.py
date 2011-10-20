@@ -138,12 +138,19 @@ def align_sr(fastq_file,
              bowtie_args=None,
              log_file=None,
              keep_unmapped=False):
+    """
+    10/20/2011: changed to use bowtie '-v' instead of '-n' after
+    discovering multitudes of errant spanning reads whenever long
+    reads were being used.  bowtie was assuming a default seed 
+    length of 28bp which was inappropriate for long reads
+    """
     args = [bowtie_bin, "-q", "-S", 
             "-p", str(num_processors),
             "--%s" % translate_quals[quals],
             "-k", str(multihits),
             "-m", str(multihits),
-            "-n", str(mismatches),
+            "-v", str(mismatches),
+            #"-n", str(mismatches),
             "--trim5", trim5,
             "--trim3", trim3,
             "--%s" % translate_library_type(library_type)]
