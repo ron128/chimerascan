@@ -25,8 +25,8 @@ import collections
 import os
 
 from chimerascan import pysam
-from chimerascan.lib.gene_to_genome import build_gene_to_genome_map, \
-    gene_to_genome_pos, build_tx_cluster_map
+from chimerascan.lib.gene_to_genome import build_rname_genome_map, \
+    gene_to_genome_pos, build_rname_cluster_map
 from chimerascan.lib.chimera import Chimera
 from chimerascan.lib import config
 
@@ -38,26 +38,54 @@ def filter_unique_frags(c, threshold):
     return c.get_num_unique_positions() >= threshold
 
 def get_wildtype_frags_5p(rname, start, end, bamfh):
-    num_wildtype_frags = len(set(r.qname for r in bamfh.fetch(rname, start, end)
-                                 if (not r.mate_is_unmapped) and (r.mpos >= end)))
-    return num_wildtype_frags
+    qnames = set()
+    for r in bamfh.fetch(rname, start, end):
+        if r.is_unmapped or r.mate_is_unmapped:
+            continue
+        if r.mpos >= end:
+            qnames.add(r.qname)
+    return len(qnames)
+    #num_wildtype_frags = len(set(r.qname for r in bamfh.fetch(rname, start, end)
+    #                             if (not r.mate_is_unmapped) and (r.mpos >= end)))
+    #return num_wildtype_frags
 
 def get_wildtype_frags_3p(rname, start, end, bamfh):
-    num_wildtype_frags = len(set(r.qname for r in bamfh.fetch(rname, start, end)
-                                 if (not r.mate_is_unmapped) and (r.mpos < start)))
-    return num_wildtype_frags
+    qnames = set()
+    for r in bamfh.fetch(rname, start, end):
+        if r.is_unmapped or r.mate_is_unmapped:
+            continue
+        if r.mpos < start:
+            qnames.add(r.qname)
+    return len(qnames)
+    #num_wildtype_frags = len(set(r.qname for r in bamfh.fetch(rname, start, end)
+    #                             if (not r.mate_is_unmapped) and (r.mpos < start)))
+    #return num_wildtype_frags
 
-def get_wildtype_frags(c, bamfh):
-    rname5p = config.GENE_REF_PREFIX + c.tx_name_5p
-    rname3p = config.GENE_REF_PREFIX + c.tx_name_3p
-    num_wt_frags_5p = get_wildtype_frags_5p(rname5p, c.tx_start_5p, c.tx_end_5p, bamfh)
-    num_wt_frags_3p = get_wildtype_frags_3p(rname3p, c.tx_start_3p, c.tx_end_3p, bamfh)
+def get_wildtype_frags(c, bamfh, rname_genome_map):
+    # get genomic positions of chimera
+    # 5'
+    chrom5p,strand5p,start5p = gene_to_genome_pos(c.tx_name_5p, c.tx_start_5p, rname_genome_map)
+    chrom5p,strand5p,end5p = gene_to_genome_pos(c.tx_name_5p, c.tx_end_5p-1, rname_genome_map)
+    if strand5p == 1:
+        start5p,end5p = end5p,start5p
+    num_wt_frags_5p = get_wildtype_frags_5p(chrom5p, start5p, end5p, bamfh)
+    # 3'
+    chrom3p,strand3p,start3p = gene_to_genome_pos(c.tx_name_3p, c.tx_start_3p, rname_genome_map)
+    chrom3p,strand3p,end3p = gene_to_genome_pos(c.tx_name_3p, c.tx_end_3p-1, rname_genome_map)
+    if strand3p == 1:
+        start3p,end3p = end3p,start3p        
+    num_wt_frags_3p = get_wildtype_frags_3p(chrom3p, start3p, end3p, bamfh)
     return num_wt_frags_5p, num_wt_frags_3p
+#    rname5p = config.GENE_REF_PREFIX + c.tx_name_5p
+#    rname3p = config.GENE_REF_PREFIX + c.tx_name_3p    
+#    num_wt_frags_5p = get_wildtype_frags_5p(rname5p, c.tx_start_5p, c.tx_end_5p, bamfh)
+#    num_wt_frags_3p = get_wildtype_frags_3p(rname3p, c.tx_start_3p, c.tx_end_3p, bamfh)
+#    return num_wt_frags_5p, num_wt_frags_3p
 
-def filter_chimeric_isoform_fraction(c, frac, bamfh):
+def filter_chimeric_isoform_fraction(c, frac, bamfh, rname_genome_map):
     """
-    filters chimeras with fewer than 'threshold' total
-    unique read alignments
+    filters chimeras when the number of chimeric reads is much smaller
+    than the number of total reads
     """
     num_wt_frags_5p, num_wt_frags_3p = get_wildtype_frags(c, bamfh)
     num_chimeric_frags = c.get_num_frags()
@@ -106,6 +134,10 @@ def filter_chimeras(input_file, output_file,
         false_pos_pairs = read_false_pos_file(false_pos_file)
     else:
         false_pos_pairs = set()
+    # build a lookup table to get genome coordinates from transcript 
+    # coordinates
+    gene_file = os.path.join(index_dir, config.GENE_FEATURE_FILE)
+    rname_genome_map = build_rname_genome_map(open(gene_file))
     # open BAM file for checking wild-type isoform
     bamfh = pysam.Samfile(bam_file, "rb")
     # filter chimeras
@@ -123,7 +155,8 @@ def filter_chimeras(input_file, output_file,
         good = good and (false_pos_key not in false_pos_pairs)
         if not good:
             continue
-        good = good and filter_chimeric_isoform_fraction(c, isoform_fraction, bamfh)        
+        good = good and filter_chimeric_isoform_fraction(c, isoform_fraction, bamfh, 
+                                                         rname_genome_map)        
         if good:
             print >>f, '\t'.join(map(str, c.to_list()))
             num_filtered_chimeras += 1
@@ -138,20 +171,20 @@ def filter_chimeras(input_file, output_file,
 def get_highest_coverage_isoforms(input_file, gene_file):
     # place overlapping chimeras into clusters
     logging.debug("Building isoform cluster lookup table")
-    tx_cluster_map = build_tx_cluster_map(open(gene_file))
+    rname_cluster_map = build_rname_cluster_map(open(gene_file))
     # build a lookup table to get genome coordinates from transcript 
     # coordinates
-    tx_genome_map = build_gene_to_genome_map(open(gene_file))
+    rname_genome_map = build_rname_genome_map(open(gene_file))
     cluster_chimera_dict = collections.defaultdict(lambda: [])
     for c in Chimera.parse(open(input_file)):
         # TODO: adjust this to score chimeras differently!
         key = (c.name, c.get_num_frags())
         # get cluster of overlapping genes
-        cluster5p = tx_cluster_map[c.tx_name_5p]
-        cluster3p = tx_cluster_map[c.tx_name_3p]
+        cluster5p = rname_cluster_map[c.tx_name_5p]
+        cluster3p = rname_cluster_map[c.tx_name_3p]
         # get genomic positions of breakpoints
-        coord5p = gene_to_genome_pos(c.tx_name_5p, c.tx_end_5p-1, tx_genome_map)
-        coord3p = gene_to_genome_pos(c.tx_name_3p, c.tx_start_3p, tx_genome_map)
+        coord5p = gene_to_genome_pos(c.tx_name_5p, c.tx_end_5p-1, rname_genome_map)
+        coord3p = gene_to_genome_pos(c.tx_name_3p, c.tx_start_3p, rname_genome_map)
         # add to dictionary
         cluster_chimera_dict[(cluster5p,cluster3p,coord5p,coord3p)].append(key)    
     # choose highest coverage chimeras within each pair of clusters

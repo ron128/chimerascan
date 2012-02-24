@@ -29,15 +29,15 @@ import collections
 from chimerascan import pysam
 from chimerascan.lib.chimera import Chimera, get_chimera_type
 from chimerascan.lib import config
-from chimerascan.lib.gene_to_genome import build_gene_to_genome_map, \
-    build_tx_cluster_map, build_genome_tx_trees, build_tx_name_gene_map, gene_to_genome_pos
+from chimerascan.lib.gene_to_genome import build_rname_genome_map, \
+    build_rname_cluster_map, build_genome_tx_trees, build_tx_name_gene_map, gene_to_genome_pos
 
 from chimerascan.pipeline.filter_chimeras import get_wildtype_frags
 
 
 def get_chimera_groups(input_file, gene_file):
     # build a lookup table to get gene clusters from transcript name    
-    tx_cluster_map = build_tx_cluster_map(open(gene_file))
+    tx_cluster_map = build_rname_cluster_map(open(gene_file))
     # build a lookup table to get genome coordinates from transcript 
     # coordinates
     # TODO: can either group by exact breakpoint, or just by
@@ -74,7 +74,7 @@ def write_output(input_file, bam_file, output_file, index_dir):
     gene_file = os.path.join(index_dir, config.GENE_FEATURE_FILE)
     # build a lookup table to get genome coordinates from transcript 
     # coordinates
-    tx_genome_map = build_gene_to_genome_map(open(gene_file))    
+    tx_genome_map = build_rname_genome_map(open(gene_file))    
     tx_name_gene_map = build_tx_name_gene_map(gene_file)    
     genome_tx_trees = build_genome_tx_trees(gene_file)
     # open BAM file for checking wild-type isoform
@@ -120,7 +120,7 @@ def write_output(input_file, bam_file, output_file, index_dir):
                                           "-" if dr.is_reverse else "+"), 
                                          dr.seq])
         # get isoform fraction
-        num_wt_frags_5p, num_wt_frags_3p = get_wildtype_frags(c, bamfh)
+        num_wt_frags_5p, num_wt_frags_3p = get_wildtype_frags(c, bamfh, tx_genome_map)
         num_chimeric_frags = c.get_num_frags()
         frac5p = float(num_chimeric_frags) / (num_chimeric_frags + num_wt_frags_5p)
         frac3p = float(num_chimeric_frags) / (num_chimeric_frags + num_wt_frags_3p)

@@ -65,7 +65,42 @@ def build_genome_tx_trees(genefile):
         genome_tx_trees[g.chrom].insert_interval(interval)
     return genome_tx_trees
 
-def build_rname_cluster_map(line_iter, rname_prefix=None):
+def build_tid_tx_cluster_map(bamfh, line_iter, rname_prefix=None):
+    rname_tid_map = get_rname_tid_map(bamfh)
+    rname_prefix = '' if rname_prefix is None else rname_prefix
+    cluster_trees = collections.defaultdict(lambda: ClusterTree(0,1))
+    genes = []    
+    for g in GeneFeature.parse(line_iter):
+        # only use genes that are references in the sam file
+        rname = rname_prefix + g.tx_name
+        if rname not in rname_tid_map:
+            continue
+        genome_tid = rname_tid_map[g.chrom]
+        # insert into cluster tree        
+        cluster_trees[genome_tid].insert(g.tx_start, g.tx_end, len(genes)) 
+        genes.append(g)
+    # extract gene clusters
+    tid_tx_cluster_map = {}
+    current_cluster_id = 0
+    for genome_tid, tree in cluster_trees.iteritems():
+        for start, end, indexes in tree.getregions():
+            # group overlapping transcripts on same strand together            
+            strand_tx_dict = collections.defaultdict(lambda: set())
+            for index in indexes:
+                g = genes[index]
+                rname = rname_prefix + g.tx_name                
+                tid = rname_tid_map[rname]
+                strand_tx_dict[g.strand].add(tid)
+            # build a map between transcript tids and all the overlapping
+            # transcripts on the same strand
+            for strand, tids in strand_tx_dict.iteritems():
+                for tid in tids:                    
+                    tid_tx_cluster_map[tid] = current_cluster_id
+                current_cluster_id += 1
+                #print strand, [bamfh.getrname(tid) for tid in tids]
+    return tid_tx_cluster_map
+
+def build_tx_cluster_map(line_iter, rname_prefix=None):
     rname_prefix = '' if rname_prefix is None else rname_prefix
     cluster_trees = collections.defaultdict(lambda: ClusterTree(0,1))
     genes = []    
@@ -91,9 +126,29 @@ def build_rname_cluster_map(line_iter, rname_prefix=None):
                 for rname in rnames:                    
                     tx_cluster_map[rname] = current_cluster_id
                 current_cluster_id += 1
+                #print strand, [bamfh.getrname(tid) for tid in tids]
     return tx_cluster_map
 
-def build_rname_genome_map(line_iter, rname_prefix=None):
+def build_tid_to_genome_map(bamfh, line_iter, rname_prefix=None):
+    rname_tid_map = get_rname_tid_map(bamfh)
+    rname_prefix = '' if rname_prefix is None else rname_prefix
+    tid_genome_map = {}    
+    for g in GeneFeature.parse(line_iter):        
+        rname = rname_prefix + g.tx_name
+        if rname not in rname_tid_map:
+            continue
+        tid = rname_tid_map[rname]
+        genome_tid = rname_tid_map[g.chrom]
+        strand = 1 if g.strand == '-' else 0 
+        exon_vectors = [(start, end) for start, end in g.exons]
+        if strand:
+            exon_vectors.reverse()
+        if tid in tid_genome_map:
+            logging.error("Duplicate references %s found in file" % (tid))
+        tid_genome_map[tid] = (genome_tid, strand, exon_vectors)
+    return tid_genome_map
+
+def build_gene_to_genome_map(line_iter, rname_prefix=None):
     # create arrays to map genes in bed file to genome 
     rname_prefix = '' if rname_prefix is None else rname_prefix
     gene_genome_map = {}    

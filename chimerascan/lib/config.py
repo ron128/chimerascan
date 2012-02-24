@@ -27,11 +27,8 @@ JOB_ERROR = 1
 ALIGN_INDEX = 'align_index'
 ALIGN_INDEX_FASTA_FILE = 'align_index.fa'
 BOWTIE_INDEX_FILE = 'align_index.1.ebwt'
-FRAG_SIZE_INDEX = "frag_size_index"
-FRAG_SIZE_INDEX_FILE = "frag_size_index.1.ebwt"
 GENE_REF_PREFIX = 'gene_'
 GENE_FEATURE_FILE = "gene_features.txt"
-RAW_JUNCS_FILE = "known_juncs.txt"
 
 # chimerascan subdirectories
 LOG_DIR = "log"
@@ -47,6 +44,14 @@ RUNCONFIG_XML_FILE = "runconfig.xml"
 CONVERTED_FASTQ_PREFIX = "reads"
 CONVERTED_FASTQ_FILES = tuple(CONVERTED_FASTQ_PREFIX + "_%d.fq" % (x+1) 
                               for x in xrange(2))
+# output from Tophat
+TOPHAT_UNMAPPED_FASTQ_FILES = ("unmapped_left.fq.z", "unmapped_right.fq.z")
+TOPHAT_SORTED_ALIGNED_BAM_FILE = "accepted_hits.bam"
+
+# Bowtie args for realigning unmapped reads
+DISCORD_BOWTIE_ARGS = "--best"
+# Bowtie args for aligning spanning reads
+SPANNING_BOWTIE_ARGS = "--best --strata"
 
 # output from initial bowtie alignment
 ALIGNED_READS_BAM_FILE = "aligned_reads.bam"

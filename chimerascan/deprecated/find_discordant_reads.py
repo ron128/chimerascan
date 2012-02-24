@@ -1,732 +1,426 @@
 '''
-Created on Jan 25, 2011
+Created on Jun 2, 2011
 
 @author: mkiyer
-
-chimerascan: chimeric transcript discovery using RNA-seq
-
-Copyright (C) 2011 Matthew Iyer
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
-import collections
-import itertools
 import logging
-import operator
+import collections
 import os
 
-# local libs
 from chimerascan import pysam
-from chimerascan.bx.intersection import Interval, IntervalTree
+from chimerascan.bx.cluster import ClusterTree
 
-# local imports
 from chimerascan.lib import config
-from chimerascan.lib.base import parse_library_type, parse_bool, parse_string_none, SamTags
-from chimerascan.lib.gene_to_genome import build_gene_maps
+from chimerascan.lib.base import LibraryTypes
+from chimerascan.lib.sam import parse_pe_reads, pair_reads, copy_read, select_best_mismatch_strata
+from chimerascan.lib.gene_to_genome import build_tid_to_genome_map, \
+    build_tid_tx_cluster_map, gene_to_genome_pos
+from chimerascan.lib.chimera import DiscordantTags, DISCORDANT_TAG_NAME, \
+    OrientationTags, ORIENTATION_TAG_NAME, cmp_orientation
 
-# Mapping codes
-NONMAPPING = 0
-MULTIMAPPING = 1
-MAPPING = 2
-_mapping_code_strings = ["NONMAPPING", "MULTIMAPPING", "MAPPING"]
-    
-def get_mapping_code(read, multihit_limit):
-    if read.is_unmapped:
-        if read.opt(SamTags.RTAG_BOWTIE_MULTIMAP) >= multihit_limit:
-            return MULTIMAPPING
-        else:
-            return NONMAPPING
-    return MAPPING
+# globals
+imin2 = lambda a,b: a if a <= b else b
 
-def parse_reads(bamfh): 
-    # reads must be binned by qname, mate, hit, and segment
-    # so initialize to mate 0, hit 0, segment 0
-    pe_reads = ([], [])
-    num_reads = 0
-    prev_qname = None
-    for read in bamfh:
-        # ignore paired reads
-        if read.is_proper_pair:
+def annotate_multihits(bamfh, reads, tid_genome_map):
+    hits = set()
+    any_unmapped = False
+    for r in reads:
+        if r.is_unmapped:
+            any_unmapped = True
             continue
-        # get read attributes
-        qname = read.qname
-        mate = 0 if read.is_read1 else 1
-        # get hit/segment/mapping tags
-        num_split_partitions = read.opt(SamTags.RTAG_NUM_PARTITIONS)
-        partition_ind = read.opt(SamTags.RTAG_PARTITION_IND)
-        num_splits = read.opt(SamTags.RTAG_NUM_SPLITS)
-        split_ind = read.opt(SamTags.RTAG_SPLIT_IND)
-        num_mappings = read.opt(SamTags.RTAG_NUM_MAPPINGS)
-        mapping_ind = read.opt(SamTags.RTAG_MAPPING_IND)
-        # if query name changes we have completely finished
-        # the fragment and can reset the read data
-        if num_reads > 0 and qname != prev_qname:
-            yield pe_reads
-            # reset state variables
-            pe_reads = ([], [])
-            num_reads = 0
-        prev_qname = qname
-        # initialize mate hits
-        if len(pe_reads[mate]) == 0:
-            pe_reads[mate].extend([list() for x in xrange(num_split_partitions)])
-        mate_reads = pe_reads[mate]
-        # initialize hit segments
-        if len(mate_reads[partition_ind]) == 0:
-            mate_reads[partition_ind].extend([list() for x in xrange(num_splits)])
-        split_reads = mate_reads[partition_ind][split_ind]
-        # initialize segment mappings
-        if len(split_reads) == 0:
-            split_reads.extend([None for x in xrange(num_mappings)])
-        # add segment to hit/mate/read
-        split_reads[mapping_ind] = read
-        num_reads += 1
-    if num_reads > 0:
-        yield pe_reads
-
-
-class RefCluster(object):
-    def __init__(self, rname, strand, max_dist):
-        self.rname = rname
-        self.strand = strand
-        self.vals = []
-        self.max_dist = max_dist
-
-    def add(self, start, end, ind, val):
-        self.vals.append((start, end, ind, val))
-
-    def get_clusters(self):
-        if len(self.vals) == 0:
-            return
-        # sort values in order of increasing start position
-        self.vals.sort(key=operator.itemgetter(0))
-        # initialize cluster
-        valiter = iter(self.vals)
-        start, end, ind, val = valiter.next()
-        ind_val_dict = collections.defaultdict(lambda: [])
-        ind_val_dict[ind].append(val)
-        # find clusters
-        for next_start, next_end, ind, val in valiter:
-            if next_start > (end + self.max_dist):
-                # this interval is outside bounds of current cluster
-                yield Interval(start, end, chrom=self.rname, strand=self.strand, value=ind_val_dict)
-                ind_val_dict = collections.defaultdict(lambda: [])
-                start = next_start
-            # update values
-            if next_end > end:
-                end = next_end
-            ind_val_dict[ind].append(val)
-        if len(ind_val_dict) > 0:
-            yield Interval(start, end, chrom=self.rname, strand=self.strand, value=ind_val_dict)
-
-class ReadCluster(object):
-    def __init__(self, interval, start_ind, end_ind, mapped_inds, 
-                 unmapped_inds, unmapped_read_dict):
-        # access interval object with start, end, strand, chrom info
-        self.start = interval.start
-        self.end = interval.end
-        self.rname = interval.chrom
-        self.strand = interval.strand
-        self.split_dict = {}
-        self.multimaps = None
-        # copy split dict from clustered intervals (value)
-        for ind,reads in interval.value.iteritems():
-            self.split_dict[ind] = reads
-            # find minimum multimaps for all reads in cluster
-            min_multimaps = min(r.opt('NH') for r in reads)
-            if (self.multimaps is None) or self.multimaps < min_multimaps:
-                self.multimaps = min_multimaps
-        # set to zero if still None
-        if self.multimaps is None:
-            self.multimaps = 0
-        # Indexes within split segments in the cluster
-        self.start_ind = start_ind
-        self.end_ind = end_ind
-        self.mapped_inds = mapped_inds
-        self.unmapped_inds = unmapped_inds
-        # fill in missing splits in cluster with unmapped splits
-        for ind in unmapped_inds:
-            # TODO: remove assert
-            assert ind not in self.split_dict
-            self.split_dict[ind] = unmapped_read_dict[ind]
-        # set mate to 0 (read1) or 1 (read2)
-        self.mate = self.split_dict[start_ind][0].is_read2
-
-    def __repr__(self):
-        return ("<%s(rname=%s, strand=%s, start=%d, end=%d, multimaps=%d, mate=%d, start_ind=%d, "
-                "end_ind=%d, mapped_inds=%s, unmapped_inds=%s)>" % 
-                (self.__class__.__name__, self.rname, self.strand, self.start, self.end,
-                 self.multimaps, self.mate, self.start_ind, self.end_ind, self.mapped_inds, 
-                 self.unmapped_inds))
-    
-    @property
-    def is_unmapped(self):
-        return self.rname == -1
-    
-    def get_padding(self, padding=0):
-        '''
-        padding: extra padding to add.  used when reads were trimmed during
-        mapping and want to see whether they could be spanning
-        '''
-        if self.strand == 0:
-            pad_left, pad_right = 0, padding
+        if r.rname not in tid_genome_map:
+            tid = r.rname
+            pos = r.pos
         else:
-            pad_left, pad_right = padding, 0
-        if (len(self.mapped_inds) == 0 or
-            len(self.unmapped_inds) == 0):
-            return pad_left, pad_right
-        # pad left
-        for i in xrange(self.start_ind, self.mapped_inds[0]):
-            pad_left += len(self.split_dict[i][0].seq)
-        # pad right
-        for i in xrange(self.mapped_inds[-1] + 1, self.end_ind):
-            pad_right += len(self.split_dict[i][0].seq)
-        # add extra padding
-        if self.strand == 0:
-            return (pad_left, pad_right)
-        else:
-            return (pad_right, pad_left)
+            # use the position that is most 5' relative to genome
+            left_tid, left_strand, left_pos = gene_to_genome_pos(r.rname, r.pos, tid_genome_map)
+            right_tid, right_strand, right_pos = gene_to_genome_pos(r.rname, r.aend-1, tid_genome_map)
+            tid = left_tid
+            pos = imin2(left_pos, right_pos)
+        hits.add((tid, pos))
+        #print r.qname, bamfh.getrname(r.rname), r.pos, bamfh.getrname(tid), pos  
+    for i,r in enumerate(reads):
+        # annotate reads with 'HI', and 'IH' tags
+        r.tags = r.tags + [("HI",i), ("IH",len(reads)), ("NH", len(hits))]
+    return any_unmapped
 
-
-def find_split_points(refmaps, num_clusters):
-    cluster_intervals = []
-    # build a mapping between splits in the refmaps and the clusters 
-    # those splits are associated with.  we call this an 'ind_clust_map'
-    # which associates a split index with a set of intervals
-    # that represent clusters    
-    ind_clust_map = collections.defaultdict(lambda: set())
-    for refmap in refmaps.itervalues():
-        for interval in refmap.get_clusters():
-            # add to master list of read clusters
-            clust_id = len(cluster_intervals)
-            cluster_intervals.append(interval)
-            # build an index from cluster index to id of reference/strand
-            # object containing the ReadClusters at that index
-            ind_rclust_dict = interval.value 
-            for ind in ind_rclust_dict:
-                ind_clust_map[ind].add(clust_id)
-    # now walk through cluster indexes in order to find split points
-    start_ind = 0
-    mapped_inds = []
-    current_clust_ids = set()
-    concordant_clust_ids = []
-    for split_ind in xrange(num_clusters):
-        # if there are no clusters then this index
-        # is unmapped and not useful
-        if split_ind not in ind_clust_map:
-            continue  
-        # get items at this index
-        clust_ids = set(ind_clust_map[split_ind])
-        if len(current_clust_ids) == 0:
-            # initialize the current clusters to the 
-            # first mapped index
-            current_clust_ids.update(clust_ids)
-        elif current_clust_ids.isdisjoint(clust_ids):
-            # save the set of concordant clusters and the split index
-            concordant_clust_ids.append((start_ind, split_ind, mapped_inds, current_clust_ids))
-            # initialize new clusters
-            current_clust_ids = clust_ids            
-            start_ind = mapped_inds[-1] + 1
-            mapped_inds = []
-        else:
-            # intersect index clusters together to 
-            # reduce number of current clusters
-            current_clust_ids.intersection_update(clust_ids)
-        # keep track of the last mapped index so that any
-        # unmapped indexes in between can be attributed to 
-        # both the 5' and 3' split genes
-        mapped_inds.append(split_ind)
-    # add the last set of clusters
-    if len(current_clust_ids) > 0:
-        concordant_clust_ids.append((start_ind, split_ind+1, mapped_inds, current_clust_ids))
-    return cluster_intervals, concordant_clust_ids
-
-
-def find_split_read_clusters(partition_splits, max_indel_size, max_multihits):
-    refmaps = {}
-    split_mapping_codes = []
-    unmapped_read_dict = collections.defaultdict(lambda: [])
-    for split_ind, split_reads in enumerate(partition_splits):
-        mapping_codes = set()                         
-        for r in split_reads:
-            #print 'IND', split_ind, 'mapping code', _mapping_code_strings[get_mapping_code(r, max_multihits)]            
-            # keep track of mapping results for reads in this split
-            mapping_codes.add(get_mapping_code(r, max_multihits))
+def map_reads_to_references(pe_reads, tid_tx_cluster_map):
+    """
+    bin reads by transcript cluster and reference (tid)
+    """
+    refdict = collections.defaultdict(lambda: ([], []))
+    genedict = collections.defaultdict(lambda: ([], []))
+    for readnum, reads in enumerate(pe_reads):
+        for r in reads:
             if r.is_unmapped:
-                #print 'UNMAPPED', 'IND', split_ind, 'READ', r
-                unmapped_read_dict[split_ind].append(r)
-                continue
-            #print 'MAPPED', 'IND', split_ind, 'READ', r
-            # cluster reads by reference name and strand
-            strand = int(r.is_reverse)            
-            rkey = (r.rname, strand)
-            if rkey not in refmaps:
-                refmaps[rkey] = RefCluster(r.rname, strand, max_indel_size)
-            refmaps[rkey].add(r.pos, r.aend, split_ind, r)
-        split_mapping_codes.append(mapping_codes)
-    # convert unmapped reads index dict to a static dict
-    unmapped_read_dict = dict(unmapped_read_dict)
-    if all((MAPPING not in codes) for codes in split_mapping_codes):
-        # if there are no mapped reads, create a dummy "unmapped" ReadCluster
-        # and return early
-        interval = Interval(0, 0, chrom=-1, strand=0, value={})        
-        rclust = ReadCluster(interval, start_ind=0, end_ind=len(partition_splits), 
-                             mapped_inds=[], unmapped_inds=set(unmapped_read_dict),
-                             unmapped_read_dict=unmapped_read_dict)
-        # results are returned as a list of tuples, where each tuple represents
-        # a set of reads that cluster together. return a singleton tuple here  
-        return split_mapping_codes, [(rclust,)]
-    # search reference maps by index to find split points
-    cluster_intervals, concordant_clust_ids = find_split_points(refmaps, len(partition_splits))
-    # convert from cluster ids to read cluster intervals
-    concordant_clusters = []
-    for start_ind, end_ind, mapped_inds, clust_ids in concordant_clust_ids:
-        #print 'SR START', start_ind, 'END', end_ind, 'MAPPED INDS', mapped_inds, 'IDS', clust_ids
-        # determine indexes of unmapped splits in this cluster and 
-        # get lists of unmapped reads        
-        unmapped_inds = set(xrange(start_ind, end_ind)).difference(mapped_inds)
-        rclusts = []        
-        for id in clust_ids:
-            interval = cluster_intervals[id]
-            # build a new ReadCluster object with complete information about 
-            # start,end indexes and which indexes are mapping/nonmapping.  
-            # thus clusters will now be contiguous lists of split indexes with 
-            # padding information at the start/end
-            rclust = ReadCluster(interval, start_ind, end_ind, mapped_inds, 
-                                 unmapped_inds, unmapped_read_dict)
-            rclusts.append(rclust)
-        concordant_clusters.append(tuple(rclusts))
-    return split_mapping_codes, concordant_clusters
+                continue 
+            # get cluster id
+            if r.rname in tid_tx_cluster_map:
+                # add to cluster dict
+                cluster_id = tid_tx_cluster_map[r.rname]
+                pairs = genedict[cluster_id]
+                pairs[readnum].append(r)
+            # add to reference dict
+            pairs = refdict[r.rname]
+            pairs[readnum].append(r)
+    return refdict, genedict
 
-def merge_read_clusters(clusters1, clusters2, max_dist, library_type):
-    assert library_type[0] != library_type[1]
-    # TODO: currently only support "fr" or "rf" libraries
-    paired_clusters = list(itertools.chain(clusters1, reversed(clusters2)))
-    refmaps = {}    
-    for cluster_ind, rclusts in enumerate(paired_clusters):
-        # add the ReadCluster objects to cluster trees
-        for rclust in rclusts:
-            # ignore unmapped read clusters
-            if rclust.is_unmapped:
-                continue
-            # we reverse strand of one of the mates, and by convention
-            # choose the second mate
-            strand = int(not rclust.strand) if rclust.mate == 1 else rclust.strand
-            # use the flipped strand in the key - we must dig into the
-            # individual ReadClusters to get the original strands back
-            rkey = (rclust.rname, strand)
-            if rkey not in refmaps:
-                refmaps[rkey] = RefCluster(rclust.rname, strand, max_dist)
-            refmaps[rkey].add(rclust.start, rclust.end, cluster_ind, rclust)
-    # organize clusters based on the indexes they incorporate
-    ind_cluster_dict = collections.defaultdict(lambda: [])
-    for rkey, refmap in refmaps.iteritems():
-        for interval in refmap.get_clusters():
-            # build an index from cluster indexes to cluster interval data
-            ind_dict = interval.value
-            ind_cluster_dict[tuple(sorted(ind_dict))].append(interval)
-    # sorted index tuples from low to hi to ensure reading from read1 -> read2
-    # if read1 and read2 overlap, this should still work.
-    def cmplen(x,y):
-        res = -1*cmp(len(x),len(y))
-        if res != 0: return res
-        return cmp(x,y)
-    paired_clusters = []
-    used_inds = set()
-    for ind_tuple in sorted(ind_cluster_dict, cmp=cmplen):
-        if used_inds.isdisjoint(ind_tuple):            
-            used_inds.update(ind_tuple)
-            paired_clusters.append(ind_cluster_dict[ind_tuple])
-        # TODO: analyze complex mapping tuples further
-        #else:
-        #    logging.warning("TUPLE %s NOT DISJOINT (ALL TUPLES=%s" % (ind_tuple, sorted(ind_cluster_dict, cmp=cmplen)))
-    return paired_clusters
-
-
-class DiscordantCluster(object):
-    __slots__ = ('rname', 'start', 'end', 'strand', 'pad_start', 'pad_end', 
-                 'multimaps', 'seq', 'qual')
-    def __init__(self, rname, start, end, strand, pad_start, pad_end, multimaps,
-                 seq=None, 
-                 qual=None):
-        self.rname = rname
-        self.start = start
-        self.end = end
-        self.strand = strand
-        self.pad_start = pad_start
-        self.pad_end = pad_end
-        self.multimaps = multimaps
-        self.seq = seq
-        self.qual = qual
-    def __repr__(self):
-        return ("<%s(rname=%s, strand=%s, start=%d, end=%d, pad_start=%d, "
-                "pad_end=%d, multimaps=%d, seq=%s, qual=%s)>" %
-                (self.__class__.__name__, self.rname, self.strand, self.start, self.end,
-                 self.pad_start, self.pad_end, self.multimaps, self.seq, self.qual))
-    def to_list(self):
-        return [self.rname, self.start, self.end, self.strand, 
-                self.pad_start, self.pad_end, self.multimaps,
-                self.seq, self.qual]
-    @staticmethod
-    def from_list(fields):        
-        seq = parse_string_none(fields[7])
-        qual = parse_string_none(fields[8])
-        return DiscordantCluster(fields[0], int(fields[1]), int(fields[2]), 
-                                 fields[3], int(fields[4]), int(fields[5]),
-                                 int(fields[6]), seq, qual)
-
-    
-class DiscordantFragment(object):
-    __slots__ = ('qname', 'is_genome', 'discordant5p', 'discordant3p',
-                 'code', 'read1_is_sense', 'clust5p', 'clust3p')
-    # columns in the tabular output that contain the references
-    # (useful for sorting)
-    REF1_COL = 6
-    REF2_COL = 15
-    
-    # fragment type codes
-    NA = 0
-    NONMAPPING = 1
-    CONCORDANT_SINGLE = 2
-    DISCORDANT_SINGLE = 3
-    DISCORDANT_SINGLE_COMPLEX = 4
-    CONCORDANT_PAIRED = 5
-    DISCORDANT_PAIRED = 6
-    DISCORDANT_PAIRED_COMPLEX = 7
-    _discordant_codes = ["NA", 
-                         "NONMAPPING",
-                         "CONCORDANT_SINGLE",
-                         "DISCORDANT_SINGLE",
-                         "DISCORDANT_SINGLE_COMPLEX",
-                         "CONCORDANT_PAIRED",
-                         "DISCORDANT_PAIRED",
-                         "DISCORDANT_PAIRED_COMPLEX"]
-    # flag bits
-    FLAG_DISCORDANT_5P = 0b10
-    FLAG_DISCORDANT_3P = 0b1
-
-    def __init__(self, qname, read1_is_sense, clust5p, clust3p,
-                 code=0, is_genome=False, discordant5p=False, 
-                 discordant3p=False): 
-        self.qname = qname
-        self.read1_is_sense = read1_is_sense
-        self.clust5p = clust5p
-        self.clust3p = clust3p
-        self.code = code
-        self.is_genome = is_genome
-        self.discordant5p = discordant5p
-        self.discordant3p = discordant3p
-
-    def __repr__(self):
-        return ("<%s(qname=%s, read1_is_sense=%s, clust5p=%s, clust3p=%s "
-                "is_genome=%s, discordant5p=%s, discordant3p=%s, "
-                "code=%d, string_code=%s)>" %
-                (self.__class__.__name__, self.qname, self.read1_is_sense,
-                 self.clust5p, self.clust3p, 
-                 self.is_genome, self.discordant5p, self.discordant3p, 
-                 self.code, self._discordant_codes[self.code]))
-
-    @property
-    def clust1(self):
-        return self.clust5p if self.read1_is_sense else self.clust3p
-    @property
-    def clust2(self):
-        return self.clust3p if self.read1_is_sense else self.clust5p
-
-    def set_flags(self, nclusts1, nclusts2, nclustspe):
-        # set 5'/3' discordant flags according to sense/antisense
-        # orientation and cluster mappings
-        if self.read1_is_sense:
-            self.discordant5p = (nclusts1 > 1)
-            self.discordant3p = (nclusts2 > 1)
+def get_genome_orientation(r, library_type):
+    if library_type == LibraryTypes.FR_FIRSTSTRAND:
+        if r.is_read2:
+            return OrientationTags.FIVEPRIME
         else:
-            self.discordant5p = (nclusts2 > 1)
-            self.discordant3p = (nclusts1 > 1)                    
-        if nclustspe == 0:
-            self.code = self.NONMAPPING
-        elif nclustspe == 1:
-            if (nclusts1 == 0) or (nclusts2 == 0):
-                # one of the reads is concordant and the other is unmapped
-                self.code = self.CONCORDANT_SINGLE
+            return OrientationTags.THREEPRIME
+    elif library_type == LibraryTypes.FR_SECONDSTRAND:
+        if r.is_read1:
+            return OrientationTags.FIVEPRIME
+        else:
+            return OrientationTags.THREEPRIME
+    return OrientationTags.NONE
+
+def get_gene_orientation(r, library_type):
+    if library_type == LibraryTypes.FR_UNSTRANDED:
+        if r.is_reverse:
+            return OrientationTags.THREEPRIME
+        else:
+            return OrientationTags.FIVEPRIME
+    elif library_type == LibraryTypes.FR_FIRSTSTRAND:
+        if r.is_read2:
+            return OrientationTags.FIVEPRIME
+        else:
+            return OrientationTags.THREEPRIME
+    elif library_type == LibraryTypes.FR_SECONDSTRAND:
+        if r.is_read1:
+            return OrientationTags.FIVEPRIME
+        else:
+            return OrientationTags.THREEPRIME
+    logging.error("Unknown library type %s, aborting" % (library_type))
+    assert False
+
+def classify_unpaired_reads(reads, tid_genome_map, library_type):
+    gene_hits_5p = []
+    gene_hits_3p = []
+    genome_hits = []
+    for r in reads:
+        # check to see if this alignment is to a gene, or genomic
+        if (r.rname not in tid_genome_map):
+            # this is a genome alignment
+            orientation = get_genome_orientation(r, library_type)
+            genome_hits.append(r)
+            r.tags = r.tags + [(DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_GENOME),
+                               (ORIENTATION_TAG_NAME, orientation)] 
+        else:
+            # this alignment is to a transcript (gene), so need
+            # to determine whether it is 5' or 3'
+            orientation = get_gene_orientation(r, library_type)
+            if orientation == OrientationTags.FIVEPRIME:
+                gene_hits_5p.append(r)
             else:
-                # both reads are mapped and concordant
-                self.code = self.CONCORDANT_PAIRED
-        elif nclustspe == 2:
-            if (nclusts1 > 1) or (nclusts2 > 1):
-                # one of the reads is discordant and the other is
-                # unmapped
-                if (nclusts1 > 2) or (nclusts2 > 2):        
-                    self.code = self.DISCORDANT_SINGLE_COMPLEX
+                gene_hits_3p.append(r)
+            # add a tag to the sam file describing the read orientation and
+            # that it is discordant
+            r.tags = r.tags + [(DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_GENE),
+                               (ORIENTATION_TAG_NAME, orientation)]                               
+    return gene_hits_5p, gene_hits_3p, genome_hits
+
+def find_discordant_pairs(pe_reads, 
+                          tid_genome_map,
+                          library_type):
+    """
+    iterate through combinations of read1/read2 to predict valid 
+    discordant read pairs
+    """
+    # classify the reads as 5' or 3' gene alignments or genome alignments
+    r1_5p_gene_hits, r1_3p_gene_hits, r1_genome_hits = \
+        classify_unpaired_reads(pe_reads[0], tid_genome_map, library_type)
+    r2_5p_gene_hits, r2_3p_gene_hits, r2_genome_hits = \
+        classify_unpaired_reads(pe_reads[1], tid_genome_map, library_type)
+    # pair 5' and 3' gene alignments
+    gene_pairs = []
+    combos = [(r1_5p_gene_hits,r2_3p_gene_hits),
+              (r1_3p_gene_hits,r2_5p_gene_hits)]
+    for r1_list,r2_list in combos:
+        for r1 in r1_list:
+            for r2 in r2_list:
+                cr1 = copy_read(r1)
+                cr2 = copy_read(r2)
+                pair_reads(cr1,cr2)
+                gene_pairs.append((cr1,cr2))
+    # pair genome alignments
+    genome_pairs = []
+    for r1 in r1_genome_hits:
+        for r2 in r2_genome_hits:
+            cr1 = copy_read(r1)
+            cr2 = copy_read(r2)
+            pair_reads(cr1,cr2)
+            genome_pairs.append((cr1,cr2))
+    if len(gene_pairs) > 0 or len(genome_pairs) > 0:
+        return gene_pairs, genome_pairs, []
+    # if no pairs were found, then we can try to pair gene reads
+    # with genome reads
+    pairs = []
+    combos = [(r1_5p_gene_hits, r2_genome_hits),
+              (r1_3p_gene_hits, r2_genome_hits),
+              (r1_genome_hits, r2_5p_gene_hits),
+              (r1_genome_hits, r2_3p_gene_hits)]    
+    for r1_list,r2_list in combos:        
+        for r1 in r1_list:
+            for r2 in r2_list:
+                # check orientation compatibility
+                if cmp_orientation(r1.opt(ORIENTATION_TAG_NAME),
+                                   r2.opt(ORIENTATION_TAG_NAME)):
+                    cr1 = copy_read(r1)
+                    cr2 = copy_read(r2)
+                    pair_reads(cr1,cr2)
+                    pairs.append((cr1,cr2))
+    return [],[],pairs
+
+
+def classify_read_pairs(pe_reads, max_isize,
+                        library_type, tid_genome_map,
+                        tid_tx_cluster_map):
+    """
+    examines all the alignments of a single fragment and tries to find ways
+    to pair reads together.
+    
+    annotates all read pairs with an integer tag corresponding to a value
+    in the DiscordantTags class
+    
+    returns a tuple with the following lists:
+    1) pairs (r1,r2) aligning to genes (pairs may be discordant)
+    2) pairs (r1,r2) aligning to genome (pairs may be discordant)
+    3) unpaired reads, if any
+    """
+    # to satisfy library type reads must either be on 
+    # same strand or opposite strands
+    concordant_tx_pairs = []
+    discordant_tx_pairs = []
+    concordant_gene_pairs = []
+    discordant_gene_pairs = []
+    concordant_genome_pairs = []
+    discordant_genome_pairs = []
+    # 
+    # first, try to pair reads that map to the same transcript, or to the
+    # genome within the insert size range
+    #
+    same_strand = LibraryTypes.same_strand(library_type)
+    refdict,clusterdict = map_reads_to_references(pe_reads, tid_tx_cluster_map)
+    found_pair = False
+    for tid, tid_pe_reads in refdict.iteritems():
+        # check if there are alignments involving both reads in a pair
+        if len(tid_pe_reads[0]) == 0 or len(tid_pe_reads[1]) == 0:
+            # no paired alignments exist at this reference
+            continue
+        # check if there are alignments involving both reads in a pair        
+        for r1 in tid_pe_reads[0]:
+            for r2 in tid_pe_reads[1]:
+                # read strands must agree with library type
+                strand_match = (same_strand == (r1.is_reverse == r2.is_reverse))
+                # check to see if this tid is a gene or genomic
+                if (tid not in tid_genome_map):
+                    # this is a genomic hit so check insert size                                         
+                    if r1.pos > r2.pos:
+                        isize = r1.aend - r2.pos
+                    else:
+                        isize = r2.aend - r1.pos
+                    if (isize <= max_isize):
+                        # these reads can be paired
+                        found_pair = True
+                        cr1 = copy_read(r1)
+                        cr2 = copy_read(r2)
+                        # reads are close to each other on same chromosome
+                        # so check strand
+                        if strand_match:
+                            tags = [(DISCORDANT_TAG_NAME, DiscordantTags.CONCORDANT_GENOME)]
+                            concordant_genome_pairs.append((cr1,cr2))
+                        else:
+                            tags = [(DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_STRAND_GENOME)]
+                            discordant_genome_pairs.append((cr1, cr2))                     
+                        pair_reads(cr1,cr2,tags)
                 else:
-                    self.code = self.DISCORDANT_SINGLE
-            else:
-                self.code = self.DISCORDANT_PAIRED
+                    # these reads can be paired
+                    found_pair = True
+                    cr1 = copy_read(r1)
+                    cr2 = copy_read(r2)                    
+                    # this is a hit to same transcript (gene)
+                    # pair the reads if strand comparison is correct
+                    if strand_match:
+                        tags = [(DISCORDANT_TAG_NAME, DiscordantTags.CONCORDANT_TX)]
+                        concordant_tx_pairs.append((cr1,cr2))
+                    else:
+                        # hit to same gene with wrong strand, which
+                        # could happen in certain wacky cases
+                        tags = [(DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_STRAND_TX)]
+                        discordant_tx_pairs.append((cr1,cr2))
+                    pair_reads(cr1,cr2,tags)
+    # at this point, if we have not been able to find a suitable way
+    # to pair the reads, then search within the transcript cluster
+    if not found_pair:
+        for cluster_id, cluster_pe_reads in clusterdict.iteritems():
+            # check if there are alignments involving both reads in a pair
+            if len(cluster_pe_reads[0]) == 0 or len(cluster_pe_reads[1]) == 0:
+                # no paired alignments in this transcript cluster            
+                continue
+            for r1 in cluster_pe_reads[0]:
+                for r2 in cluster_pe_reads[1]:
+                    # check strand compatibility
+                    strand_match = (same_strand == (r1.is_reverse == r2.is_reverse))
+                    # these reads can be paired
+                    found_pair = True
+                    cr1 = copy_read(r1)
+                    cr2 = copy_read(r2)                    
+                    if strand_match:
+                        tags = [(DISCORDANT_TAG_NAME, DiscordantTags.CONCORDANT_GENE)]
+                        concordant_gene_pairs.append((cr1,cr2))
+                    else:
+                        tags = [(DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_STRAND_GENE)]
+                        discordant_gene_pairs.append((cr1,cr2))
+                    pair_reads(cr1,cr2,tags)
+    # at this point, we have tried all combinations.  if any paired reads
+    # are concordant then return them without considering discordant reads 
+    gene_pairs = []
+    if len(concordant_tx_pairs) > 0:
+        gene_pairs = concordant_tx_pairs
+    elif len(concordant_gene_pairs) > 0:
+        gene_pairs = concordant_gene_pairs
+    if len(gene_pairs) > 0 or len(concordant_genome_pairs) > 0:
+        return gene_pairs, concordant_genome_pairs, []
+    # if no concordant reads in transcripts or genome, return any
+    # discordant reads that may violate strand requirements but still
+    # remain colocalized on the same gene/chromosome
+    gene_pairs = []
+    if len(discordant_tx_pairs) > 0:
+        gene_pairs = discordant_tx_pairs
+    elif len(discordant_gene_pairs) > 0:
+        gene_pairs = discordant_gene_pairs    
+    if len(gene_pairs) > 0 or len(discordant_genome_pairs) > 0:
+        return gene_pairs, discordant_genome_pairs, []
+    #
+    # at this point, no read pairings were found so the read is 
+    # assumed to be discordant.  
+    #
+    # TODO: now that we know that the reads are discordant, no reason
+    # to keep all the mappings hanging around if there is a small subset
+    # with a small number of mismatches.  is this the right thing to do
+    # here?
+    # 
+    pe_reads = (select_best_mismatch_strata(pe_reads[0]),
+                select_best_mismatch_strata(pe_reads[1]))
+    #
+    # now we can create all valid combinations of read1/read2 as putative 
+    # discordant read pairs 
+    #    
+    gene_pairs, genome_pairs, combo_pairs = \
+        find_discordant_pairs(pe_reads, tid_genome_map, library_type)
+    if len(gene_pairs) > 0 or len(genome_pairs) > 0:
+        return gene_pairs, genome_pairs, []
+    elif len(combo_pairs) > 0:
+        return combo_pairs, [], []
+    # last resort suggests that there are some complex read mappings that
+    # don't make sense and cannot be explained, warranting further 
+    # investigation
+    return [], [], pe_reads
+
+def write_pe_reads(bamfh, pe_reads):
+    for reads in pe_reads:
+        for r in reads:
+            bamfh.write(r)
+
+def write_pairs(bamfh, pairs):
+    for r1,r2 in pairs:
+        bamfh.write(r1)
+        bamfh.write(r2)
+
+def find_discordant_fragments(input_bam_file, gene_paired_bam_file,
+                              genome_paired_bam_file, unmapped_bam_file, 
+                              complex_bam_file, index_dir, max_isize, 
+                              library_type):
+    """
+    parses BAM file and categorizes reads into several groups:
+    - concordant
+    - discordant within gene (splicing isoforms)
+    - discordant between different genes (chimeras)
+    - discordant genome alignments (unannotated)
+    """
+    logging.info("Finding discordant read pair combinations")
+    logging.debug("\tInput file: %s" % (input_bam_file))
+    logging.debug("\tMax insert size: '%d'" % (max_isize))
+    logging.debug("\tLibrary type: '%s'" % (library_type))
+    logging.debug("\tGene paired file: %s" % (gene_paired_bam_file))
+    logging.debug("\tGenome paired file: %s" % (genome_paired_bam_file))
+    logging.debug("\tUnmapped file: %s" % (unmapped_bam_file))
+    logging.debug("\tComplex file: %s" % (complex_bam_file))
+    # setup input and output files
+    bamfh = pysam.Samfile(input_bam_file, "rb")
+    genefh = pysam.Samfile(gene_paired_bam_file, "wb", template=bamfh)
+    genomefh = pysam.Samfile(genome_paired_bam_file, "wb", template=bamfh)
+    unmappedfh = pysam.Samfile(unmapped_bam_file, "wb", template=bamfh)
+    complexfh = pysam.Samfile(complex_bam_file, "wb", template=bamfh)
+    gene_file = os.path.join(index_dir, config.GENE_FEATURE_FILE)
+    # build a lookup table to get all the overlapping transcripts given a
+    # transcript 'tid'
+    tid_tx_cluster_map = build_tid_tx_cluster_map(bamfh, 
+                                                  open(gene_file), 
+                                                  rname_prefix=config.GENE_REF_PREFIX)
+    # build a lookup table to get genome coordinates from transcript 
+    # coordinates
+    tid_genome_map = build_tid_to_genome_map(bamfh, 
+                                             open(gene_file), 
+                                             rname_prefix=config.GENE_REF_PREFIX)
+    for pe_reads in parse_pe_reads(bamfh):
+        # add hit index and number of multimaps information to read tags
+        # this function also checks for unmapped reads
+        any_unmapped = False
+        for reads in pe_reads:
+            any_unmapped = (any_unmapped or 
+                            annotate_multihits(bamfh, reads, tid_genome_map))
+        if any_unmapped:
+            # write to output as discordant reads and continue to 
+            # next fragment
+            write_pe_reads(unmappedfh, pe_reads)
+            continue
+        # examine all read pairing combinations and rule out invalid 
+        # pairings.  this returns gene pairs and genome pairs
+        gene_pairs, genome_pairs, unpaired_reads = \
+            classify_read_pairs(pe_reads, max_isize,
+                                library_type, tid_genome_map,
+                                tid_tx_cluster_map)
+        if len(gene_pairs) > 0 or len(genome_pairs) > 0:
+            write_pairs(genefh, gene_pairs)
+            write_pairs(genomefh, genome_pairs)
         else:
-            self.code = self.DISCORDANT_PAIRED_COMPLEX
-        return self
-
-    def _pack_flags(self):
-        '''pack flags into a single integer value for reading/writing to file'''
-        flags = ((self.discordant5p << self.FLAG_DISCORDANT_5P) |
-                 (self.discordant3p << self.FLAG_DISCORDANT_3P))
-        return flags
-    
-    def _unpack_flags(self, val):
-        '''unpack flags and set attributes'''
-        self.discordant5p = bool(val & self.FLAG_DISCORDANT_5P)
-        self.discordant3p = bool(val & self.FLAG_DISCORDANT_3P)
-
-    def to_list(self):
-        genome = "GENOME" if self.is_genome else "GENE"
-        return ([self.qname, int(self.read1_is_sense), genome,
-                 self._discordant_codes[self.code], self._pack_flags()] +
-                self.clust5p.to_list() + self.clust3p.to_list())
-
-    @staticmethod
-    def from_list(fields):
-        qname = fields[0]        
-        read1_is_sense = bool(int(fields[1]))
-        is_genome = True if fields[2] == "GENOME" else False
-        code = DiscordantFragment._discordant_codes.index(fields[3])
-        flags = int(fields[4])
-        clust5p = DiscordantCluster.from_list(fields[5:14])
-        clust3p = DiscordantCluster.from_list(fields[14:23])
-        f = DiscordantFragment(qname, read1_is_sense, clust5p, clust3p,
-                               code=code, is_genome=is_genome)
-        f._unpack_flags(flags)
-        return f
-        
-
-def interval_to_discordant_cluster(interval, tid_rname_map, gene_genome_map,
-                                   padding):
-    if interval.chrom == -1:
-        chrom = "*"
-    elif gene_genome_map[interval.chrom] is not None:
-        chrom = gene_genome_map[interval.chrom].tx_name
-    else:
-        chrom = tid_rname_map[interval.chrom]    
-    strand = "+" if interval.strand == 0 else "-"
-    pad_start, pad_end = interval.start, interval.end
-    multimaps = None
-    ind_rclust_dict = interval.value    
-    for rclusts in ind_rclust_dict.itervalues():
-        for rclust in rclusts:
-            left, right = rclust.get_padding(padding=padding)
-            #print 'PAD', pad_start, pad_end, 'RCLUST', rclust, 'LEFT, RIGHT', left, right
-            if (rclust.start - left) < pad_start:
-                pad_start = rclust.start - left
-            if (rclust.end + right) > pad_end:
-                pad_end = rclust.end + right
-            if (multimaps is None) or multimaps < rclust.multimaps:
-                multimaps = rclust.multimaps
-    clust = DiscordantCluster(chrom, 
-                              interval.start, 
-                              interval.end, 
-                              strand,
-                              pad_start, 
-                              pad_end, 
-                              multimaps)
-    return clust
-
-def count_cluster_mappings(clusts):
-    '''
-    return number of mapped ReadCluster objects within the
-    'clusts' list
-    '''
-    num_mapped = 0
-    for rclusts in clusts:
-        is_mapped = 0
-        for rclust in rclusts:
-            if rclust.is_unmapped:
-                continue
-            is_mapped = 1
-            break
-        num_mapped += is_mapped
-    return num_mapped
-
-def clusters_to_discordant_fragments(qname, clusters1, clusters2, 
-                                     paired_clusters, gene_genome_map, 
-                                     tid_rname_map, padding):
-    assert len(paired_clusters) > 1
-    nclusts1 = count_cluster_mappings(clusters1)
-    nclusts2 = count_cluster_mappings(clusters2)
-    nclustspe = len(paired_clusters)        
-    # bin clusters as genes/genome.  enforce strandedness for 
-    # gene clusters  
-    gene_clusts = (([], []), ([], []))
-    genome_clusts = ([],[])
-    for clust_num, intervals in enumerate(paired_clusters):
-        for interval in intervals:
-            # create DiscordantCluster objects and bin by cluster index and
-            # strand (genes only) 
-            discordant_clust = \
-                interval_to_discordant_cluster(interval, tid_rname_map, 
-                                               gene_genome_map, padding)
-            if gene_genome_map[interval.chrom] is None:
-                genome_clusts[clust_num].append(discordant_clust)
-            else:
-                gene_clusts[clust_num][interval.strand].append(discordant_clust)
-    # paired cluster hits
-    frags = []
-    for strand in (0,1):
-        # find correct strand for discordant clusters that have
-        # read1 or read2 unmapped
-        if nclusts1 == 0:
-            read1_is_sense = (strand == 1)
-        else:
-            read1_is_sense = (strand == 0)        
-        clusts1, clusts2 = gene_clusts[0][strand], gene_clusts[1][strand]
-        for clust1 in clusts1:
-            for clust2 in clusts2:
-                if read1_is_sense:
-                    clust5p, clust3p = clust1, clust2
-                else:
-                    clust5p, clust3p = clust2, clust1                
-                f = DiscordantFragment(qname, read1_is_sense, clust5p, clust3p,
-                                       is_genome=False)
-                f.set_flags(nclusts1, nclusts2, nclustspe)
-                frags.append(f)                
-    if len(frags) > 0:
-        return frags, []
-    # if no gene hits, then find genome hits
-    # correct for strand if read1 is unmapped
-    clusts1, clusts2 = genome_clusts[0], genome_clusts[1]
-    for clust1 in clusts1:
-        for clust2 in clusts2:
-            if nclusts1 == 0:
-                read1_is_sense = int(clust2.strand == 1)
-            else:
-                read1_is_sense = int(clust1.strand == 0)
-            f = DiscordantFragment(qname, read1_is_sense, clust1, clust2,
-                                   is_genome=False)
-            f.set_flags(nclusts1, nclusts2, nclustspe)
-            frags.append(f)                
-    return [], frags
+            write_pe_reads(complexfh, unpaired_reads)
+    genefh.close()
+    genomefh.close()
+    unmappedfh.close()
+    complexfh.close()
+    bamfh.close()  
+    logging.info("Finished pairing reads")
 
 
-def find_discordant_pairs(pe_reads, tid_rname_map, gene_genome_map, 
-                          max_indel_size, max_isize, max_multihits, 
-                          library_type, padding):
-    pe_clusters = ([],[])
-    mate_mapping_codes = (set(), set())
-    qname = pe_reads[0][0][0][0].qname
-    #print 'QNAME', qname 
-    # search for discordant read clusters in individual reads first
-    # before using paired-end information
-    for mate, partitions in enumerate(pe_reads):
-        #print 'MATE', mate, 'PARTITIONS', len(partitions)
-        for partition_ind, partition_splits in enumerate(partitions):
-            #print 'PARTITION', partition_ind, 'SPLITS', len(partition_splits)
-            # check for discordant reads 
-            split_mapping_codes, read_clusters = \
-                find_split_read_clusters(partition_splits, max_indel_size, 
-                                         max_multihits)
-            # update aggregated mapping codes
-            mate_mapping_codes[mate].update(*split_mapping_codes)
-            # store mate clusters
-            pe_clusters[mate].append(read_clusters)
-    # find out how many clusters we produced from each read in the pair
-    #print 'QNAME', qname, 'MAPPING CODES', mate_mapping_codes
-    both_unmapped = ((MAPPING not in mate_mapping_codes[0]) and
-                     (MAPPING not in mate_mapping_codes[1]))
-    # if unmapped return early
-    if both_unmapped:
-        return [],[]
-    # combine paired-end cluster information to predict discordant reads
-    gene_frags = []
-    genome_frags = []
-    for read1_clusters in pe_clusters[0]:
-        for read2_clusters in pe_clusters[1]:
-            # combine 5'/3' partners
-            paired_clusters = merge_read_clusters(read1_clusters, 
-                                                  read2_clusters, 
-                                                  max_isize, 
-                                                  library_type)
-            if len(paired_clusters) <= 1:
-                # if the reads cluster together than they are
-                # not discordant
-                continue
-            if len(paired_clusters) > 2:
-                # if the reads form more than two clusters they
-                # are "complex"
-                continue
-            # make discordant pair objects
-            gene_hits, genome_hits = \
-                clusters_to_discordant_fragments(qname, 
-                                                 read1_clusters, 
-                                                 read2_clusters, 
-                                                 paired_clusters,                                                       
-                                                 gene_genome_map,
-                                                 tid_rname_map,
-                                                 padding)
-            gene_frags.extend(gene_hits)
-            genome_frags.extend(genome_hits)
-    return gene_frags, genome_frags
-
-
-def find_discordant_reads(bamfh, gene_output_file, genome_output_file, 
-                          gene_file, max_indel_size, max_isize, 
-                          max_multihits, library_type, padding):
-    # build genome map
-    logging.info("Loading gene table")
-    gene_genome_map, gene_trees = build_gene_maps(bamfh, gene_file)    
-    logging.info("Finding discordant reads")
-    refs = bamfh.references
-    gene_fh = open(gene_output_file, "w")
-    genome_fh = open(genome_output_file, "w")
-    for pe_reads in parse_reads(bamfh):    
-        gene_pairs, genome_pairs = \
-            find_discordant_pairs(pe_reads, refs, gene_genome_map, 
-                                  max_indel_size, max_isize, 
-                                  max_multihits, library_type,
-                                  padding)
-        for pair in gene_pairs:
-            print >>gene_fh, '\t'.join(map(str, pair.to_list()))
-        for pair in genome_pairs:
-            print >>genome_fh, '\t'.join(map(str, pair.to_list()))
-    gene_fh.close()
-    genome_fh.close()
-        
 def main():
     from optparse import OptionParser
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    parser = OptionParser("usage: %prog [options] <bam> <out.bedpe>")
-    parser.add_option("--index", dest="index_dir",
-                      help="Path to chimerascan index directory")
+    parser = OptionParser("usage: %prog [options] <index> <in.bam> "
+                          "<gene_paired.bam> <genome_paired.bam> "
+                          "<unmapped.bam> <complex.bam>")
     parser.add_option('--max-fragment-length', dest="max_fragment_length", 
                       type="int", default=1000)
-    parser.add_option('--max-indel-size', dest="max_indel_size", 
-                      type="int", default=100)
-    parser.add_option('--library-type', dest="library_type", default="fr")
-    parser.add_option('--multihits', type="int", default=1)
-    parser.add_option('--padding', type="int", default=0)
-    options, args = parser.parse_args()
-    input_bam_file = args[0]
-    gene_output_file = args[1]
-    genome_output_file = args[2]    
-    gene_feature_file = os.path.join(options.index_dir, config.GENE_FEATURE_FILE)
-    library_type = parse_library_type(options.library_type)
-    # open bam file
-    bamfh = pysam.Samfile(input_bam_file, "rb")
-    find_discordant_reads(bamfh, gene_output_file, genome_output_file,                           
-                          gene_feature_file,
-                          max_indel_size=options.max_indel_size, 
-                          max_isize=options.max_fragment_length,
-                          max_multihits=options.multihits,
-                          library_type=library_type,
-                          padding=options.padding)
-    bamfh.close()
+    parser.add_option('--library', dest="library_type", 
+                      default=LibraryTypes.FR_UNSTRANDED)
+    options, args = parser.parse_args()    
+    index_dir = args[0]
+    input_bam_file = args[1]
+    gene_paired_bam_file = args[2]
+    genome_paired_bam_file = args[3]
+    unmapped_bam_file = args[4]
+    complex_bam_file = args[5]
+    find_discordant_fragments(input_bam_file, gene_paired_bam_file,
+                              genome_paired_bam_file, unmapped_bam_file, 
+                              complex_bam_file, index_dir,
+                              max_isize=options.max_fragment_length,
+                              library_type=options.library_type)
 
 if __name__ == '__main__':
     main()

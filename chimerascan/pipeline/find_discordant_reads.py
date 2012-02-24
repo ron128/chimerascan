@@ -13,38 +13,37 @@ from chimerascan.bx.cluster import ClusterTree
 from chimerascan.lib import config
 from chimerascan.lib.base import LibraryTypes
 from chimerascan.lib.sam import parse_pe_reads, pair_reads, copy_read, select_best_mismatch_strata
-from chimerascan.lib.gene_to_genome import build_tid_to_genome_map, \
-    build_tid_tx_cluster_map, gene_to_genome_pos
+from chimerascan.lib.gene_to_genome import build_rname_genome_map, \
+    build_rname_cluster_map, gene_to_genome_pos
 from chimerascan.lib.chimera import DiscordantTags, DISCORDANT_TAG_NAME, \
-    OrientationTags, ORIENTATION_TAG_NAME, cmp_orientation
+    OrientationTags, ORIENTATION_TAG_NAME
 
 # globals
 imin2 = lambda a,b: a if a <= b else b
 
-def annotate_multihits(bamfh, reads, tid_genome_map):
+def annotate_multihits(bamfh, reads, rname_genome_map, tid_rname_map):
     hits = set()
     any_unmapped = False
     for r in reads:
         if r.is_unmapped:
             any_unmapped = True
             continue
-        if r.rname not in tid_genome_map:
-            tid = r.rname
-            pos = r.pos
-        else:
-            # use the position that is most 5' relative to genome
-            left_tid, left_strand, left_pos = gene_to_genome_pos(r.rname, r.pos, tid_genome_map)
-            right_tid, right_strand, right_pos = gene_to_genome_pos(r.rname, r.aend-1, tid_genome_map)
-            tid = left_tid
-            pos = imin2(left_pos, right_pos)
-        hits.add((tid, pos))
+        # get reference name from tid
+        rname = tid_rname_map[r.rname]
+        # TODO: remove this after debugging
+        assert rname in rname_genome_map
+        # use the position that is smallest relative to genome
+        left_rname, left_strand, left_pos = gene_to_genome_pos(rname, r.pos, rname_genome_map)
+        right_rname, right_strand, right_pos = gene_to_genome_pos(rname, r.aend-1, rname_genome_map)
+        pos = imin2(left_pos, right_pos)
+        hits.add((left_rname, pos))
         #print r.qname, bamfh.getrname(r.rname), r.pos, bamfh.getrname(tid), pos  
     for i,r in enumerate(reads):
         # annotate reads with 'HI', and 'IH' tags
         r.tags = r.tags + [("HI",i), ("IH",len(reads)), ("NH", len(hits))]
     return any_unmapped
 
-def map_reads_to_references(pe_reads, tid_tx_cluster_map):
+def map_reads_to_references(pe_reads, rname_cluster_map, tid_rname_map):
     """
     bin reads by transcript cluster and reference (tid)
     """
@@ -54,10 +53,12 @@ def map_reads_to_references(pe_reads, tid_tx_cluster_map):
         for r in reads:
             if r.is_unmapped:
                 continue 
+            # get reference name from tid
+            rname = tid_rname_map[r.rname]
             # get cluster id
-            if r.rname in tid_tx_cluster_map:
+            if rname in rname_cluster_map:
                 # add to cluster dict
-                cluster_id = tid_tx_cluster_map[r.rname]
+                cluster_id = rname_cluster_map[rname]
                 pairs = genedict[cluster_id]
                 pairs[readnum].append(r)
             # add to reference dict
@@ -97,44 +98,33 @@ def get_gene_orientation(r, library_type):
     logging.error("Unknown library type %s, aborting" % (library_type))
     assert False
 
-def classify_unpaired_reads(reads, tid_genome_map, library_type):
+def classify_unpaired_reads(reads, library_type):
     gene_hits_5p = []
     gene_hits_3p = []
-    genome_hits = []
     for r in reads:
-        # check to see if this alignment is to a gene, or genomic
-        if (r.rname not in tid_genome_map):
-            # this is a genome alignment
-            orientation = get_genome_orientation(r, library_type)
-            genome_hits.append(r)
-            r.tags = r.tags + [(DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_GENOME),
-                               (ORIENTATION_TAG_NAME, orientation)] 
+        # this alignment is to a transcript (gene), so need
+        # to determine whether it is 5' or 3'
+        orientation = get_gene_orientation(r, library_type)
+        if orientation == OrientationTags.FIVEPRIME:
+            gene_hits_5p.append(r)
         else:
-            # this alignment is to a transcript (gene), so need
-            # to determine whether it is 5' or 3'
-            orientation = get_gene_orientation(r, library_type)
-            if orientation == OrientationTags.FIVEPRIME:
-                gene_hits_5p.append(r)
-            else:
-                gene_hits_3p.append(r)
-            # add a tag to the sam file describing the read orientation and
-            # that it is discordant
-            r.tags = r.tags + [(DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_GENE),
-                               (ORIENTATION_TAG_NAME, orientation)]                               
-    return gene_hits_5p, gene_hits_3p, genome_hits
+            gene_hits_3p.append(r)
+        # add a tag to the sam file describing the read orientation and
+        # that it is discordant
+        r.tags = r.tags + [(DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_GENE),
+                           (ORIENTATION_TAG_NAME, orientation)]                               
+    return gene_hits_5p, gene_hits_3p
 
-def find_discordant_pairs(pe_reads, 
-                          tid_genome_map,
-                          library_type):
+def find_discordant_pairs(pe_reads, library_type):
     """
     iterate through combinations of read1/read2 to predict valid 
     discordant read pairs
     """
     # classify the reads as 5' or 3' gene alignments or genome alignments
-    r1_5p_gene_hits, r1_3p_gene_hits, r1_genome_hits = \
-        classify_unpaired_reads(pe_reads[0], tid_genome_map, library_type)
-    r2_5p_gene_hits, r2_3p_gene_hits, r2_genome_hits = \
-        classify_unpaired_reads(pe_reads[1], tid_genome_map, library_type)
+    r1_5p_gene_hits, r1_3p_gene_hits = \
+        classify_unpaired_reads(pe_reads[0], library_type)
+    r2_5p_gene_hits, r2_3p_gene_hits = \
+        classify_unpaired_reads(pe_reads[1], library_type)
     # pair 5' and 3' gene alignments
     gene_pairs = []
     combos = [(r1_5p_gene_hits,r2_3p_gene_hits),
@@ -146,39 +136,12 @@ def find_discordant_pairs(pe_reads,
                 cr2 = copy_read(r2)
                 pair_reads(cr1,cr2)
                 gene_pairs.append((cr1,cr2))
-    # pair genome alignments
-    genome_pairs = []
-    for r1 in r1_genome_hits:
-        for r2 in r2_genome_hits:
-            cr1 = copy_read(r1)
-            cr2 = copy_read(r2)
-            pair_reads(cr1,cr2)
-            genome_pairs.append((cr1,cr2))
-    if len(gene_pairs) > 0 or len(genome_pairs) > 0:
-        return gene_pairs, genome_pairs, []
-    # if no pairs were found, then we can try to pair gene reads
-    # with genome reads
-    pairs = []
-    combos = [(r1_5p_gene_hits, r2_genome_hits),
-              (r1_3p_gene_hits, r2_genome_hits),
-              (r1_genome_hits, r2_5p_gene_hits),
-              (r1_genome_hits, r2_3p_gene_hits)]    
-    for r1_list,r2_list in combos:        
-        for r1 in r1_list:
-            for r2 in r2_list:
-                # check orientation compatibility
-                if cmp_orientation(r1.opt(ORIENTATION_TAG_NAME),
-                                   r2.opt(ORIENTATION_TAG_NAME)):
-                    cr1 = copy_read(r1)
-                    cr2 = copy_read(r2)
-                    pair_reads(cr1,cr2)
-                    pairs.append((cr1,cr2))
-    return [],[],pairs
-
+    return gene_pairs
 
 def classify_read_pairs(pe_reads, max_isize,
-                        library_type, tid_genome_map,
-                        tid_tx_cluster_map):
+                        library_type,
+                        rname_cluster_map,
+                        tid_rname_map):
     """
     examines all the alignments of a single fragment and tries to find ways
     to pair reads together.
@@ -188,8 +151,6 @@ def classify_read_pairs(pe_reads, max_isize,
     
     returns a tuple with the following lists:
     1) pairs (r1,r2) aligning to genes (pairs may be discordant)
-    2) pairs (r1,r2) aligning to genome (pairs may be discordant)
-    3) unpaired reads, if any
     """
     # to satisfy library type reads must either be on 
     # same strand or opposite strands
@@ -197,14 +158,12 @@ def classify_read_pairs(pe_reads, max_isize,
     discordant_tx_pairs = []
     concordant_gene_pairs = []
     discordant_gene_pairs = []
-    concordant_genome_pairs = []
-    discordant_genome_pairs = []
     # 
     # first, try to pair reads that map to the same transcript, or to the
     # genome within the insert size range
     #
     same_strand = LibraryTypes.same_strand(library_type)
-    refdict,clusterdict = map_reads_to_references(pe_reads, tid_tx_cluster_map)
+    refdict,clusterdict = map_reads_to_references(pe_reads, rname_cluster_map, tid_rname_map)
     found_pair = False
     for tid, tid_pe_reads in refdict.iteritems():
         # check if there are alignments involving both reads in a pair
@@ -214,49 +173,28 @@ def classify_read_pairs(pe_reads, max_isize,
         # check if there are alignments involving both reads in a pair        
         for r1 in tid_pe_reads[0]:
             for r2 in tid_pe_reads[1]:
+                # these reads can be paired
+                # TODO: insist on being within an expectedc insert size distance?
+                found_pair = True
+                cr1 = copy_read(r1)
+                cr2 = copy_read(r2)                    
+                # this is a hit to same transcript (gene)
                 # read strands must agree with library type
+                # reads are concordant if strand comparison is correct
                 strand_match = (same_strand == (r1.is_reverse == r2.is_reverse))
-                # check to see if this tid is a gene or genomic
-                if (tid not in tid_genome_map):
-                    # this is a genomic hit so check insert size                                         
-                    if r1.pos > r2.pos:
-                        isize = r1.aend - r2.pos
-                    else:
-                        isize = r2.aend - r1.pos
-                    if (isize <= max_isize):
-                        # these reads can be paired
-                        found_pair = True
-                        cr1 = copy_read(r1)
-                        cr2 = copy_read(r2)
-                        # reads are close to each other on same chromosome
-                        # so check strand
-                        if strand_match:
-                            tags = [(DISCORDANT_TAG_NAME, DiscordantTags.CONCORDANT_GENOME)]
-                            concordant_genome_pairs.append((cr1,cr2))
-                        else:
-                            tags = [(DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_STRAND_GENOME)]
-                            discordant_genome_pairs.append((cr1, cr2))                     
-                        pair_reads(cr1,cr2,tags)
+                if strand_match:
+                    tags = [(DISCORDANT_TAG_NAME, DiscordantTags.CONCORDANT_TX)]
+                    concordant_tx_pairs.append((cr1,cr2))
                 else:
-                    # these reads can be paired
-                    found_pair = True
-                    cr1 = copy_read(r1)
-                    cr2 = copy_read(r2)                    
-                    # this is a hit to same transcript (gene)
-                    # pair the reads if strand comparison is correct
-                    if strand_match:
-                        tags = [(DISCORDANT_TAG_NAME, DiscordantTags.CONCORDANT_TX)]
-                        concordant_tx_pairs.append((cr1,cr2))
-                    else:
-                        # hit to same gene with wrong strand, which
-                        # could happen in certain wacky cases
-                        tags = [(DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_STRAND_TX)]
-                        discordant_tx_pairs.append((cr1,cr2))
-                    pair_reads(cr1,cr2,tags)
+                    # hit to same gene with wrong strand, which
+                    # could happen in certain wacky cases
+                    tags = [(DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_STRAND_TX)]
+                    discordant_tx_pairs.append((cr1,cr2))
+                pair_reads(cr1,cr2,tags)
     # at this point, if we have not been able to find a suitable way
     # to pair the reads, then search within the transcript cluster
     if not found_pair:
-        for cluster_id, cluster_pe_reads in clusterdict.iteritems():
+        for cluster_pe_reads in clusterdict.itervalues():
             # check if there are alignments involving both reads in a pair
             if len(cluster_pe_reads[0]) == 0 or len(cluster_pe_reads[1]) == 0:
                 # no paired alignments in this transcript cluster            
@@ -283,8 +221,8 @@ def classify_read_pairs(pe_reads, max_isize,
         gene_pairs = concordant_tx_pairs
     elif len(concordant_gene_pairs) > 0:
         gene_pairs = concordant_gene_pairs
-    if len(gene_pairs) > 0 or len(concordant_genome_pairs) > 0:
-        return gene_pairs, concordant_genome_pairs, []
+    if len(gene_pairs) > 0:
+        return gene_pairs
     # if no concordant reads in transcripts or genome, return any
     # discordant reads that may violate strand requirements but still
     # remain colocalized on the same gene/chromosome
@@ -293,8 +231,8 @@ def classify_read_pairs(pe_reads, max_isize,
         gene_pairs = discordant_tx_pairs
     elif len(discordant_gene_pairs) > 0:
         gene_pairs = discordant_gene_pairs    
-    if len(gene_pairs) > 0 or len(discordant_genome_pairs) > 0:
-        return gene_pairs, discordant_genome_pairs, []
+    if len(gene_pairs) > 0:
+        return gene_pairs
     #
     # at this point, no read pairings were found so the read is 
     # assumed to be discordant.  
@@ -310,16 +248,8 @@ def classify_read_pairs(pe_reads, max_isize,
     # now we can create all valid combinations of read1/read2 as putative 
     # discordant read pairs 
     #    
-    gene_pairs, genome_pairs, combo_pairs = \
-        find_discordant_pairs(pe_reads, tid_genome_map, library_type)
-    if len(gene_pairs) > 0 or len(genome_pairs) > 0:
-        return gene_pairs, genome_pairs, []
-    elif len(combo_pairs) > 0:
-        return combo_pairs, [], []
-    # last resort suggests that there are some complex read mappings that
-    # don't make sense and cannot be explained, warranting further 
-    # investigation
-    return [], [], pe_reads
+    gene_pairs = find_discordant_pairs(pe_reads, library_type)
+    return gene_pairs
 
 def write_pe_reads(bamfh, pe_reads):
     for reads in pe_reads:
@@ -332,8 +262,7 @@ def write_pairs(bamfh, pairs):
         bamfh.write(r2)
 
 def find_discordant_fragments(input_bam_file, gene_paired_bam_file,
-                              genome_paired_bam_file, unmapped_bam_file, 
-                              complex_bam_file, index_dir, max_isize, 
+                              unmapped_bam_file, index_dir, max_isize, 
                               library_type):
     """
     parses BAM file and categorizes reads into several groups:
@@ -347,33 +276,31 @@ def find_discordant_fragments(input_bam_file, gene_paired_bam_file,
     logging.debug("\tMax insert size: '%d'" % (max_isize))
     logging.debug("\tLibrary type: '%s'" % (library_type))
     logging.debug("\tGene paired file: %s" % (gene_paired_bam_file))
-    logging.debug("\tGenome paired file: %s" % (genome_paired_bam_file))
     logging.debug("\tUnmapped file: %s" % (unmapped_bam_file))
-    logging.debug("\tComplex file: %s" % (complex_bam_file))
     # setup input and output files
     bamfh = pysam.Samfile(input_bam_file, "rb")
     genefh = pysam.Samfile(gene_paired_bam_file, "wb", template=bamfh)
-    genomefh = pysam.Samfile(genome_paired_bam_file, "wb", template=bamfh)
     unmappedfh = pysam.Samfile(unmapped_bam_file, "wb", template=bamfh)
-    complexfh = pysam.Samfile(complex_bam_file, "wb", template=bamfh)
     gene_file = os.path.join(index_dir, config.GENE_FEATURE_FILE)
     # build a lookup table to get all the overlapping transcripts given a
     # transcript 'tid'
-    tid_tx_cluster_map = build_tid_tx_cluster_map(bamfh, 
-                                                  open(gene_file), 
-                                                  rname_prefix=config.GENE_REF_PREFIX)
+    rname_cluster_map = build_rname_cluster_map(open(gene_file), 
+                                                rname_prefix=config.GENE_REF_PREFIX)
     # build a lookup table to get genome coordinates from transcript 
     # coordinates
-    tid_genome_map = build_tid_to_genome_map(bamfh, 
-                                             open(gene_file), 
-                                             rname_prefix=config.GENE_REF_PREFIX)
+    rname_genome_map = build_rname_genome_map(open(gene_file), 
+                                              rname_prefix=config.GENE_REF_PREFIX)
+    # get tid -> rname mappings
+    tid_rname_map = bamfh.references
     for pe_reads in parse_pe_reads(bamfh):
         # add hit index and number of multimaps information to read tags
         # this function also checks for unmapped reads
         any_unmapped = False
         for reads in pe_reads:
             any_unmapped = (any_unmapped or 
-                            annotate_multihits(bamfh, reads, tid_genome_map))
+                            annotate_multihits(bamfh, reads, 
+                                               rname_genome_map, 
+                                               tid_rname_map))
         if any_unmapped:
             # write to output as discordant reads and continue to 
             # next fragment
@@ -381,30 +308,20 @@ def find_discordant_fragments(input_bam_file, gene_paired_bam_file,
             continue
         # examine all read pairing combinations and rule out invalid 
         # pairings.  this returns gene pairs and genome pairs
-        gene_pairs, genome_pairs, unpaired_reads = \
-            classify_read_pairs(pe_reads, max_isize,
-                                library_type, tid_genome_map,
-                                tid_tx_cluster_map)
-        if len(gene_pairs) > 0 or len(genome_pairs) > 0:
-            write_pairs(genefh, gene_pairs)
-            write_pairs(genomefh, genome_pairs)
-        else:
-            write_pe_reads(complexfh, unpaired_reads)
+        gene_pairs = classify_read_pairs(pe_reads, max_isize, library_type,
+                                         rname_cluster_map, tid_rname_map)
+        write_pairs(genefh, gene_pairs)
     genefh.close()
-    genomefh.close()
     unmappedfh.close()
-    complexfh.close()
     bamfh.close()  
     logging.info("Finished pairing reads")
-
 
 def main():
     from optparse import OptionParser
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = OptionParser("usage: %prog [options] <index> <in.bam> "
-                          "<gene_paired.bam> <genome_paired.bam> "
-                          "<unmapped.bam> <complex.bam>")
+                          "<gene_paired.bam> <unmapped.bam>")
     parser.add_option('--max-fragment-length', dest="max_fragment_length", 
                       type="int", default=1000)
     parser.add_option('--library', dest="library_type", 
@@ -413,12 +330,9 @@ def main():
     index_dir = args[0]
     input_bam_file = args[1]
     gene_paired_bam_file = args[2]
-    genome_paired_bam_file = args[3]
-    unmapped_bam_file = args[4]
-    complex_bam_file = args[5]
+    unmapped_bam_file = args[3]
     find_discordant_fragments(input_bam_file, gene_paired_bam_file,
-                              genome_paired_bam_file, unmapped_bam_file, 
-                              complex_bam_file, index_dir,
+                              unmapped_bam_file, index_dir,
                               max_isize=options.max_fragment_length,
                               library_type=options.library_type)
 

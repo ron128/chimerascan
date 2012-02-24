@@ -30,33 +30,34 @@ from chimerascan.lib.seq import get_qual_conversion_func
 from chimerascan.lib.base import parse_lines
 import chimerascan.lib.config as config
 
-def detect_format(fastq_files):
-    if all(f.endswith(".gz") for f in fastq_files):
+def detect_format(f):
+    if f.endswith(".gz") or f.endswith(".z"):
         return "gz"
-    elif all(f.endswith(".bz2") for f in fastq_files):
+    elif f.endswith(".bz2"):
         return "bz2"
-    elif all(f.endswith(".zip") for f in fastq_files):
+    elif f.endswith(".zip"):
         return "zip"
     else:
         return "txt"
 
-def open_compressed(fastq_files):
-    compression_format = detect_format(fastq_files)
+def open_compressed(f):    
+    compression_format = detect_format(f)    
     if compression_format == "gz":
-        filehandles = [gzip.open(f, "r") for f in fastq_files]
+        fh = gzip.open(f, "r")
     elif compression_format == "bz2":
-        filehandles = [bz2.BZ2File(f, "r") for f in fastq_files]
+        fh = bz2.BZ2File(f, "r")
     elif compression_format == "zip":
-        filehandles = [zipfile.ZipFile(f, "r") for f in fastq_files]
+        fh = zipfile.ZipFile(f, "r")
     else:
-        filehandles = [open(f, "r") for f in fastq_files]
-    return filehandles
+        fh = open(f, "r")
+    return fh
 
-def detect_read_lengths(fastq_files):
-    filehandles = open_compressed(fastq_files)
-    tags = [f.next() for f in filehandles]
-    seqs = [f.next() for f in filehandles]
-    return [len(s) for s in seqs]
+def detect_read_length(filename):
+    fh = open_compressed(filename)
+    fh.next()
+    seq = fh.next()
+    fh.close()
+    return len(seq)
 
 def inspect_reads(fastq_files, output_prefix, quals):
     """
@@ -64,7 +65,7 @@ def inspect_reads(fastq_files, output_prefix, quals):
     to 'sanger' format
     """
     # setup file iterators
-    filehandles = open_compressed(fastq_files)
+    filehandles = [open_compressed(f) for f in fastq_files]
     fqiters = [parse_lines(f, numlines=4) for f in filehandles]
     output_files = [(output_prefix + "_%d.fq" % (x+1)) 
                     for x in xrange(len(fastq_files))]
