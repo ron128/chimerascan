@@ -194,7 +194,7 @@ def get_chimera_type(fiveprime_gene, threeprime_gene, gene_trees):
                 # genes on same strand, partners oriented, but 
                 # intervening genes
                 return ChimeraTypes.INTRACHROMOSOMAL, distance
-        else:            
+        else:
             if len(genes_between) == 0:
                 # no intervening genes but partners in opposite orientations
                 return (ChimeraTypes.ADJ_COMPLEX, distance)

@@ -53,7 +53,7 @@ from chimerascan.lib.base import LibraryTypes, check_executable, \
 from chimerascan.lib.seq import FASTQ_QUAL_FORMATS, SANGER_FORMAT
 from chimerascan.lib.fragment_size_distribution import InsertSizeDistribution
 
-from chimerascan.pipeline.fastq_inspect_reads import inspect_reads, detect_read_lengths
+from chimerascan.pipeline.fastq_inspect_reads import inspect_reads, detect_read_length
 from chimerascan.pipeline.align_bowtie import align_pe, align_sr, trim_align_pe_sr
 from chimerascan.pipeline.find_discordant_reads import find_discordant_fragments
 from chimerascan.pipeline.discordant_reads_to_bedpe import discordant_reads_to_bedpe, sort_bedpe
@@ -349,7 +349,7 @@ class RunConfig(object):
                 config_passed = False
         # check read lengths
         logging.debug("Checking read lengths")
-        read_lengths = detect_read_lengths(self.fastq_files)
+        read_lengths = [detect_read_length(fq) for fq in self.fastq_files]
         for i,rlen in enumerate(read_lengths):
             logging.debug("File %s read length: %d" % 
                           (self.fastq_files[i], rlen))
@@ -441,7 +441,7 @@ def run_chimerascan(runconfig):
     bowtie_index = os.path.join(runconfig.index_dir, config.ALIGN_INDEX)
     bowtie_bin = os.path.join(runconfig.bowtie_path, "bowtie")
     bowtie_build_bin = os.path.join(runconfig.bowtie_path, "bowtie-build")
-    original_read_length = detect_read_lengths(runconfig.fastq_files)[0]
+    original_read_length = detect_read_length(runconfig.fastq_files[0])
     # minimum fragment length cannot be smaller than the trimmed read length
     trimmed_read_length = original_read_length - runconfig.trim5 - runconfig.trim3
     min_fragment_length = max(runconfig.min_fragment_length, 
