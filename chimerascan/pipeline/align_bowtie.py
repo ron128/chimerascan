@@ -29,9 +29,6 @@ from chimerascan.lib.base import LibraryTypes
 from chimerascan.lib.seq import SANGER_FORMAT, SOLEXA_FORMAT, ILLUMINA_FORMAT
 from chimerascan.lib import config
 
-# TODO: move this somewhere else
-from chimerascan.pipeline.fastq_inspect_reads import detect_read_length
-
 translate_quals = {SOLEXA_FORMAT: 'solexa-quals',
                    ILLUMINA_FORMAT: 'solexa1.3-quals',
                    SANGER_FORMAT: 'phred33-quals'}
@@ -64,14 +61,12 @@ def align_pe(fastq_files,
              bowtie_args=None,
              log_file=None,
              keep_unmapped=False):
-    read_length = detect_read_length(fastq_files[0])
     args = [bowtie_bin, "-q", "-S", 
             "-p", str(num_processors),
             "--%s" % translate_quals[quals],
             "-k", str(multihits),
             "-m", str(multihits),
-            "-n", str(mismatches),
-            "-l", str(read_length),
+            "-v", str(mismatches),
             "--minins", min_fragment_length,
             "--maxins", max_fragment_length,
             "--trim5", trim5,
@@ -150,7 +145,6 @@ def align_sr(fastq_file,
             "-k", str(multihits),
             "-m", str(multihits),
             "-v", str(mismatches),
-            #"-n", str(mismatches),
             "--trim5", trim5,
             "--trim3", trim3,
             "--%s" % translate_library_type(library_type)]
