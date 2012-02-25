@@ -34,7 +34,8 @@ setup_kwargs = {"name": "chimerascan",
                 "package_data": {'chimerascan.tools': ['table_template.html']},                             
                 "scripts": ["chimerascan/chimerascan_run.py",
                             "chimerascan/chimerascan_index.py",
-                            "chimerascan/tools/chimerascan_html_table.py"]}
+                            "chimerascan/tools/chimerascan_html_table.py",
+                            "chimerascan/tools/gtf_to_genepred.py"]}
 
 # ---- Extension Modules ----------------------------------------------------
 
