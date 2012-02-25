@@ -35,7 +35,8 @@ setup_kwargs = {"name": "chimerascan",
                 "scripts": ["chimerascan/chimerascan_run.py",
                             "chimerascan/chimerascan_index.py",
                             "chimerascan/tools/chimerascan_html_table.py",
-                            "chimerascan/tools/gtf_to_genepred.py"]}
+                            "chimerascan/tools/gtf_to_genepred.py",
+                            "chiemrascan/tools/make_false_positive_file.py"]}
 
 # ---- Extension Modules ----------------------------------------------------
 
