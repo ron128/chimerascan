@@ -90,26 +90,31 @@ def create_chimerascan_index(output_dir,
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         logging.info("Created index directory: %s" % (output_dir))
-    # copy reference fasta file to output dir and write 
-    # gene features to destination directory
+    # copy reference fasta file to output dir and index it
     index_fasta_file = os.path.join(output_dir, ALIGN_INDEX + ".fa")
+    msg = "Adding reference genome to index"
+    if (up_to_date(index_fasta_file, genome_fasta_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        shutil.copyfile(genome_fasta_file, index_fasta_file)
+        # index the genome fasta file
+        logging.info("Indexing FASTA file")
+        fh = pysam.Fastafile(index_fasta_file)
+        fh.close()
+    # add gene sequences to index
     dst_gene_feature_file = os.path.join(output_dir, GENE_FEATURE_FILE)
     msg = "Building transcriptome sequences and gene features"
-    if (up_to_date(index_fasta_file, genome_fasta_file) and
-        up_to_date(index_fasta_file, gene_feature_file) and
+    if (up_to_date(index_fasta_file, gene_feature_file) and
         up_to_date(dst_gene_feature_file, gene_feature_file)):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)
-        # open the genome fasta file to check for an index
-        logging.debug("Checking reference genome sequence file")
-        fh = pysam.Fastafile(genome_fasta_file)
-        fh.close()
         # write sequences from gene feature file
         logging.info("Adding transcript sequences and gene features to index")
-        fasta_fh = open(index_fasta_file, "w")
+        fasta_fh = open(index_fasta_file, "a")
         gene_fh = open(dst_gene_feature_file, "w")
-        for g, fa_record in genepred_to_fasta(gene_feature_file, genome_fasta_file):
+        for g, fa_record in genepred_to_fasta(gene_feature_file, index_fasta_file):
             print >>gene_fh, str(g)
             print >>fasta_fh, fa_record
         gene_fh.close()
@@ -118,7 +123,7 @@ def create_chimerascan_index(output_dir,
         if os.path.exists(index_fasta_file + ".fai"):
             os.remove(index_fasta_file + ".fai")
         # index the combined fasta file
-        logging.info("Indexing the FASTA file")
+        logging.info("Reindexing the FASTA file")
         fh = pysam.Fastafile(index_fasta_file)
         fh.close()
     # build bowtie index on the reference sequence file
