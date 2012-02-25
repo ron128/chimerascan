@@ -108,7 +108,7 @@ def build_rname_genome_map(line_iter, rname_prefix=None):
         gene_genome_map[rname] = (g.chrom, strand, exon_vectors)
     return gene_genome_map
 
-def gene_to_genome_pos(rname, pos, gene_genome_map):    
+def transcript_to_genome_pos(rname, pos, gene_genome_map):    
     '''
     translate gene 'rname' position 'gene_pos' to genomic
     coordinates.  returns a 3-tuple with (chrom, strand, pos)
