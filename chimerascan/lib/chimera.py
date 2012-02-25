@@ -5,8 +5,6 @@ Created on Jun 3, 2011
 '''
 from base import parse_string_none
 from sam import get_clipped_interval
-from stats import hist, scoreatpercentile
-import collections
 
 DISCORDANT_TAG_NAME = "XC"
 class DiscordantTags(object):
@@ -40,22 +38,19 @@ EXON_JUNCTION_TRIM_BP = 10
 # chimera types
 class ChimeraTypes(object):
     INTERCHROMOSOMAL = "Interchromosomal"
+    OVERLAP_SAME = "Overlapping_Same"
     OVERLAP_CONVERGE = "Overlapping_Converging"
     OVERLAP_DIVERGE = "Overlapping_Diverging"
-    OVERLAP_SAME = "Overlapping_Same"
     OVERLAP_COMPLEX = "Overlapping_Complex"
     READTHROUGH = "Read_Through"
-    INTRACHROMOSOMAL = "Intrachromosomal"
     ADJ_CONVERGE = "Adjacent_Converging"
     ADJ_DIVERGE = "Adjacent_Diverging"
-    ADJ_SAME = "Adjacent_Same"
     ADJ_COMPLEX = "Adjacent_Complex"
+    INTRACHROMOSOMAL = "Intrachromosomal"
+    INTRA_CONVERGE = "Intrachromosomal_Converging"
+    INTRA_DIVERGE = "Intrachromsomal_Diverging"
     INTRA_COMPLEX = "Intrachromosomal_Complex"
     UNKNOWN = "Undetermined"
-    #CHIMERA_INTRA_CONVERGE = "Intrachromosomal_Converging"
-    #CHIMERA_INTRA_DIVERGE = "Intrachromsomal_Diverging"
-    #CHIMERA_INTRA_SAME = "Intrachromosomal_Same"
-
 
 class DiscordantRead(object):
     """
@@ -146,28 +141,29 @@ def get_chimera_type(fiveprime_gene, threeprime_gene, gene_trees):
     between 5' and 3' genes 
     """
     # get gene information
-    chrom5p, start5p, end5p, strand1 = fiveprime_gene.chrom, fiveprime_gene.tx_start, fiveprime_gene.tx_end, fiveprime_gene.strand
-    chrom3p, start3p, end3p, strand2 = threeprime_gene.chrom, threeprime_gene.tx_start, threeprime_gene.tx_end, threeprime_gene.strand
+    chrom5p, start5p, end5p, strand5p = fiveprime_gene.chrom, fiveprime_gene.tx_start, fiveprime_gene.tx_end, fiveprime_gene.strand
+    chrom3p, start3p, end3p, strand3p = threeprime_gene.chrom, threeprime_gene.tx_start, threeprime_gene.tx_end, threeprime_gene.strand
     # interchromosomal
     if chrom5p != chrom3p:
         return ChimeraTypes.INTERCHROMOSOMAL, None
-    # orientation
-    same_strand = strand1 == strand2
+    # gene orientation
+    same_strand = (strand5p == strand3p)
+    # partner orientation
+    partners_oriented = ((start5p <= start3p and strand5p == "+") or
+                         (start5p > start3p and strand5p == "-"))    
     # genes on same chromosome so check overlap
     is_overlapping = (start5p < end3p) and (start3p < end5p)            
     if is_overlapping:
-        if not same_strand:
-            if ((start5p <= start3p and strand1 == "+") or
-                (start5p > start3p and strand1 == "-")):                    
-                return (ChimeraTypes.OVERLAP_CONVERGE, 0)
-            else:
-                return (ChimeraTypes.OVERLAP_DIVERGE, 0)
-        else:
-            if ((start5p <= start3p and strand1 == "+") or
-                (end5p >= end3p and strand1 == "-")):
+        if same_strand:
+            if partners_oriented:
                 return (ChimeraTypes.OVERLAP_SAME, 0)
             else:
                 return (ChimeraTypes.OVERLAP_COMPLEX, 0)
+        else:
+            if partners_oriented:
+                return (ChimeraTypes.OVERLAP_CONVERGE, 0)
+            else:
+                return (ChimeraTypes.OVERLAP_DIVERGE, 0)
     # if code gets here then the genes are on the same chromosome but do not
     # overlap.  first calculate distance (minimum distance between genes)
     if start5p <= start3p:
@@ -181,36 +177,47 @@ def get_chimera_type(fiveprime_gene, threeprime_gene, gene_trees):
     genes_between = []
     genes_between_same_strand = []
     for hit in gene_trees[chrom5p].find(between_start,
-                                       between_end):
+                                        between_end):
         if (hit.start > between_start and
             hit.end < between_end):             
-            if hit.strand == strand1:
-                genes_between_same_strand.append(hit)
             genes_between.append(hit)
-            
+            if hit.strand == strand5p:
+                genes_between_same_strand.append(hit)
+    # logic for determining chimera type
     if same_strand:
-        if len(genes_between_same_strand) == 0:
-            return ChimeraTypes.READTHROUGH, distance
-        else:
-            return ChimeraTypes.INTRACHROMOSOMAL, distance
-    else:
-        # check for reads between neighboring genes    
-        if len(genes_between) == 0:
-            if ((start5p <= start3p and strand1 == "+") or
-                (start5p > start3p and strand1 == "-")):                    
-                return (ChimeraTypes.ADJ_CONVERGE, distance)
-            elif ((start5p >= start3p and strand1 == "+") or
-                  (start5p < start3p and strand1 == "-")):
-                return (ChimeraTypes.ADJ_DIVERGE, distance)
-            elif ((start5p <= start3p and strand1 == "+") or
-                  (start5p > start3p and strand1 == "-")):
-                return (ChimeraTypes.ADJ_SAME, distance)
-            elif ((start5p >= start3p and strand1 == "+") or
-                  (start5p < start3p and strand1 == '-')):
+        if partners_oriented:
+            if len(genes_between_same_strand) == 0:
+                # genes on same strand, no intervening genes, and 
+                # 5' -> 3' partners match gene orientation
+                return ChimeraTypes.READTHROUGH, distance
+            else:                
+                # genes on same strand, partners oriented, but 
+                # intervening genes
+                return ChimeraTypes.INTRACHROMOSOMAL, distance
+        else:            
+            if len(genes_between) == 0:
+                # no intervening genes but partners in opposite orientations
                 return (ChimeraTypes.ADJ_COMPLEX, distance)
+            else:
+                # intervening genes with partners in opposite orientations
+                return (ChimeraTypes.INTRA_COMPLEX, distance)
+    else:        
+        # genes on opposite strands so has to be a complex rearrangement 
+        # of some kind
+        if len(genes_between) == 0:
+            if partners_oriented:
+                # 5' -> 3' genomic orientation maintained
+                return (ChimeraTypes.ADJ_CONVERGE, distance)
+            else:
+                return (ChimeraTypes.ADJ_DIVERGE, distance)
         else:
-            return ChimeraTypes.INTRA_COMPLEX, distance    
-    return ChimeraTypes.UNKNOWN, distance
+            # intervening genes
+            if partners_oriented:
+                # 5' -> 3' genomic orientation maintained
+                return (ChimeraTypes.INTRA_CONVERGE, distance)
+            else:
+                return (ChimeraTypes.INTRA_DIVERGE, distance)
+
 
 class Chimera(object):
     FIELD_DELIM = "|"
