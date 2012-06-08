@@ -57,8 +57,10 @@ def bowtie2_align_pe(index,
     retcode = sam2bam_p.wait()
     if retcode != 0:
         aln_p.terminate()
-    else:
-        retcode = aln_p.wait()
+        return config.JOB_ERROR
+    retcode = aln_p.wait()
+    if retcode != 0:
+        return config.JOB_ERROR        
     logfh.close()
     return retcode
 
@@ -130,12 +132,14 @@ def trim_and_merge_fastq(infiles, outfile, segment_length):
     return config.JOB_SUCCESS
 
 def bowtie2_align_pe_sr(index,
+                        transcript_file,
                         fastq_files,
                         bam_file,
                         log_file,
                         tmp_dir,
                         segment_length,
                         maxhits=1,
+                        max_multihits=1,
                         num_processors=1):
     # create tmp interleaved fastq file
     interleaved_fastq_file = os.path.join(tmp_dir, config.INTERLEAVED_TRIMMED_FASTQ_FILE)
@@ -165,17 +169,32 @@ def bowtie2_align_pe_sr(index,
     # adding padding to CIGAR string
     #
     py_script = os.path.join(_pipeline_dir, "sam_to_bam_pesr.py")
-    args = [sys.executable, py_script, "-", interleaved_fastq_file, bam_file] 
+    args = [sys.executable, py_script, "-", interleaved_fastq_file, "-"] 
     logging.debug("SAM to BAM converter args: %s" % (' '.join(args)))
-    sam2bam_p = subprocess.Popen(args, stdin=aln_p.stdout, stderr=logfh)
+    sam2bam_p = subprocess.Popen(args, stdin=aln_p.stdout, stdout=subprocess.PIPE, stderr=logfh)
+    #
+    # Pipe through BAM filter that annotates and filters multihits
+    #
+    py_script = os.path.join(_pipeline_dir, "filter_bam_multihits.py")    
+    args = [sys.executable, py_script, "--max-multihits", max_multihits, 
+            transcript_file, "-", bam_file]
+    logging.debug("Multihit filter args: %s" % (' '.join(args)))
+    multihit_p = subprocess.Popen(args, stdin=sam2bam_p.stdout, stderr=logfh)
+    # wait for this to finish
+    retcode = multihit_p.wait()
+    if retcode != 0:        
+        logging.debug("Error during multihit filtering")
+        sam2bam_p.terminate()
+        aln_p.terminate()
+        return config.JOB_ERROR
     retcode = sam2bam_p.wait()
     if retcode != 0:
         logging.debug("Error during SAM to BAM conversion")
         aln_p.terminate()
-        return retcode
+        return config.JOB_ERROR
     retcode = aln_p.wait()
     if retcode != 0:
         logging.debug("Error during alignment")
-        return retcode
+        return config.JOB_ERROR        
     logfh.close()
-    return config.JOB_SUCCESS
+    return retcode

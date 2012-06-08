@@ -299,8 +299,7 @@ def find_discordant_fragments(input_bam_file,
             # next fragment
             write_pe_reads(unmappedfh, pe_reads)
             continue
-        # examine all read pairing combinations and rule out invalid 
-        # pairings.
+        # examine all read pairing combinations and rule out invalid pairings
         gene_pairs, unpaired_reads = classify_read_pairs(pe_reads, 
                                                          max_isize,
                                                          library_type, 

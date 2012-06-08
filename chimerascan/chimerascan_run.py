@@ -82,13 +82,12 @@ DEFAULT_BOWTIE2_ARGS = ["--end-to-end",
                         "--reorder"]
 
 # defaults for bowtie
-DEFAULT_BOWTIE_ARGS = "--best --strata"
-DEFAULT_DISCORD_BOWTIE_ARGS = "--best"
 DEFAULT_MIN_FRAG_LENGTH = 0
 DEFAULT_MAX_FRAG_LENGTH = 1000 
 DEFAULT_TRIM5 = 0
 DEFAULT_TRIM3 = 0
 DEFAULT_SEGMENT_LENGTH = None
+DEFAULT_MAX_MULTIHITS = 1
 DEFAULT_HOMOLOGY_MISMATCHES = config.BREAKPOINT_HOMOLOGY_MISMATCHES
 DEFAULT_ANCHOR_MIN = 4
 DEFAULT_ANCHOR_LENGTH = 8
@@ -110,6 +109,7 @@ class RunConfig(object):
              ("trim5", int, DEFAULT_TRIM5),
              ("trim3", int, DEFAULT_TRIM3),
              ("segment_length", int, DEFAULT_SEGMENT_LENGTH),
+             ("max_multihits", int, DEFAULT_MAX_MULTIHITS),
              ("homology_mismatches", int, DEFAULT_HOMOLOGY_MISMATCHES),
              ("anchor_min", int, DEFAULT_ANCHOR_MIN),
              ("anchor_length", int, DEFAULT_ANCHOR_LENGTH),
@@ -242,9 +242,16 @@ class RunConfig(object):
                             dest="segment_length", 
                             default=DEFAULT_SEGMENT_LENGTH,
                             metavar="N",
-                            help="Size of soft-clipped read segments during "
-                            "discordant alignment phase. By default this is "
-                            "automatically determined but can be overridden")
+                            help="Override size of soft-clipped read "
+                            "segments during discordant alignment phase "
+                            "(determined empirically by default)")
+        parser.add_argument("--multihits", type=int, 
+                            dest="max_multihits", 
+                            default=DEFAULT_MAX_MULTIHITS,
+                            metavar="N",
+                            help="Override size of soft-clipped read "
+                            "segments during discordant alignment phase "
+                            "(determined empirically by default)")
         # filtering options
         group = parser.add_argument_group('Filtering options')
         group.add_argument("--homology-mismatches", type=int, 
@@ -431,6 +438,7 @@ def run_chimerascan(runconfig):
     #
     # Setup run parameters
     #
+    transcript_file = os.path.join(runconfig.index_dir, config.TRANSCRIPT_FEATURE_FILE)
     genome_index = os.path.join(runconfig.index_dir, config.GENOME_INDEX)
     transcriptome_index = os.path.join(runconfig.index_dir, config.TRANSCRIPTOME_INDEX)
     maxhits_file = os.path.join(runconfig.index_dir, 
@@ -635,12 +643,14 @@ def run_chimerascan(runconfig):
     else:
         logging.info(msg)           
         retcode = bowtie2_align_pe_sr(index=transcriptome_index,
+                                      transcript_file=transcript_file,
                                       fastq_files=genome_unaligned_fastq_files,
                                       bam_file=realigned_bam_file,
                                       log_file=realigned_log_file,
                                       tmp_dir=tmp_dir,
                                       segment_length=segment_length,
                                       maxhits=maxhits,
+                                      max_multihits=runconfig.max_multihits,
                                       num_processors=runconfig.num_processors)
         if retcode != config.JOB_SUCCESS:
             if os.path.exists(realigned_bam_file):
