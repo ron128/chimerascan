@@ -24,53 +24,53 @@ def get_mapped_read_intervals(c, min_isize, max_isize, homolog_segment_length):
         end3p = start3p + homolog_segment_length
     return start5p, end5p, start3p, end3p
     
-def filter_homologous_genes(input_file, output_file, index_dir,
+def filter_homologous_genes(input_file, 
+                            output_file, 
+                            index_dir,
                             homolog_segment_length,
                             min_isize,
                             max_isize,
-                            bowtie_bin,
+                            maxhits,
                             num_processors,
                             tmp_dir):
     logging.debug("Parameters")
     logging.debug("\thomolog segment length: %d" % (homolog_segment_length))
     logging.debug("\tmin fragment size: %d" % (min_isize))
     logging.debug("\tmax fragment size: %d" % (max_isize))
-
     # open the reference sequence fasta file
-    ref_fasta_file = os.path.join(index_dir, config.ALIGN_INDEX + ".fa")
+    ref_fasta_file = os.path.join(index_dir, config.TRANSCRIPTOME_INDEX + ".fa")
     ref_fa = pysam.Fastafile(ref_fasta_file)
-    bowtie_index = os.path.join(index_dir, config.ALIGN_INDEX)
     interval_trees_3p = collections.defaultdict(lambda: IntervalTree())
-
     # generate FASTA file of sequences to use in mapping
     logging.debug("Generating homologous sequences to test")
     fasta5p = os.path.join(tmp_dir, "homologous_5p.fa")    
     f = open(fasta5p, "w")
     for c in Chimera.parse(open(input_file)):
-        tx_name_5p = config.GENE_REF_PREFIX + c.tx_name_5p
-        tx_name_3p = config.GENE_REF_PREFIX + c.tx_name_3p
         start5p, end5p, start3p, end3p = get_mapped_read_intervals(c, min_isize, max_isize, homolog_segment_length)
         # add 3' gene to interval trees
-        interval_trees_3p[tx_name_3p].insert_interval(Interval(start3p, end3p, value=c.name))
+        interval_trees_3p[c.tx_name_3p].insert_interval(Interval(start3p, end3p, value=c.name))
         # extract sequence of 5' gene
-        seq5p = ref_fa.fetch(tx_name_5p, start5p, end5p)
+        seq5p = ref_fa.fetch(c.tx_name_5p, start5p, end5p)
         for i in xrange(0, len(seq5p) - homolog_segment_length):
             print >>f, ">%s,%s:%d-%d\n%s" % (c.name,c.tx_name_5p,
                                              start5p+i,
                                              start5p+i+homolog_segment_length,
                                              seq5p[i:i+homolog_segment_length])
     f.close()
-    
     # map 5' sequences to reference using bowtie
     logging.debug("Mapping homologous sequences")
+    bowtie2_index = os.path.join(index_dir, config.TRANSCRIPTOME_INDEX)
     sam5p = os.path.join(tmp_dir, "homologous_5p.sam")
-    args = [bowtie_bin, "-p", num_processors, "-f", "-a", "-m", 100, 
-            "-y", "-v", 3, "-S",
-            bowtie_index, fasta5p, sam5p]   
+    args = [config.BOWTIE2_BIN, 
+            '-p', num_processors, '--phred33',
+            '--end-to-end', '--very-sensitive', '--reorder',
+            '-f', '-k', maxhits,
+            '-x', bowtie2_index,
+            '-U', fasta5p,
+            "-S", sam5p]
     retcode = subprocess.call(map(str,args))
     if retcode != 0:
         return config.JOB_ERROR
-
     # analyze results for homologous genes
     logging.debug("Analyzing mapping results")
     samfh = pysam.Samfile(sam5p, "r")
@@ -88,7 +88,6 @@ def filter_homologous_genes(input_file, output_file, index_dir,
         for hit in interval_trees_3p[rname].find(r.pos,r.aend):
             if hit.value == chimera_name:
                 homologous_chimeras.add(chimera_name)
-
     # write output
     logging.debug("Writing output")
     f = open(output_file, "w")
@@ -99,7 +98,6 @@ def filter_homologous_genes(input_file, output_file, index_dir,
             continue
         print >>f, '\t'.join(map(str, c.to_list()))        
     f.close()
-    
     # cleanup
     if os.path.exists(fasta5p):
         os.remove(fasta5p)

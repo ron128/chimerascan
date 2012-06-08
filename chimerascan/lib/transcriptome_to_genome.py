@@ -25,56 +25,48 @@ import collections
 
 from chimerascan.bx.cluster import ClusterTree
 from chimerascan.bx.intersection import Interval, IntervalTree
-# local imports
-from feature import GeneFeature
 
-def build_tid_gene_map(bamfh, genefile, rname_prefix=None):
+def build_tid_transcript_map(bamfh, feature_iter):
     rname_tid_map = dict((rname,tid) for tid,rname in enumerate(bamfh.references))
-    rname_prefix = '' if rname_prefix is None else rname_prefix
     tid_tx_map = {}
     # build gene and genome data structures for fast lookup
-    for g in GeneFeature.parse(open(genefile)):
-        # only use genes that are references in the sam file
-        rname = rname_prefix + g.tx_name
-        if rname not in rname_tid_map:
-            continue
-        tid = rname_tid_map[rname]
-        tid_tx_map[tid] = g
+    for f in feature_iter:
+        tid = rname_tid_map[str(f.tx_id)]
+        tid_tx_map[tid] = f
     return tid_tx_map
 
-def build_tx_name_gene_map(genefile, rname_prefix=None):
-    rname_prefix = '' if rname_prefix is None else rname_prefix
+def build_transcript_map(feature_iter):
     tx_map = {}
     # build gene and genome data structures for fast lookup
-    for g in GeneFeature.parse(open(genefile)):
-        tx_map[rname_prefix + g.tx_name] = g
+    for f in feature_iter:
+        tx_map[str(f.tx_id)] = f
     return tx_map
 
-def build_genome_tx_trees(genefile):
+def build_genome_transcript_trees(feature_iter):
     genome_tx_trees = collections.defaultdict(lambda: IntervalTree())    
     # build gene and genome data structures for fast lookup
-    for g in GeneFeature.parse(open(genefile)):
+    for g in feature_iter:
         # add gene to interval tree
         interval = Interval(g.tx_start, g.tx_end, strand=g.strand, value=g)
         genome_tx_trees[g.chrom].insert_interval(interval)
     return genome_tx_trees
 
-def build_transcript_cluster_map(line_iter, rname_prefix=None):
+def cluster_transcripts(feature_iter):
     # setup cluster trees
     chrom_strand_cluster_trees = \
         collections.defaultdict(lambda: {"+": ClusterTree(0,1),
                                          "-": ClusterTree(0,1)})
     transcripts = []
     index_cluster_map = {}
-    for transcript in GeneFeature.parse(line_iter):
+    for feature in feature_iter:
         # insert exons into cluster tree
-        cluster_tree = chrom_strand_cluster_trees[transcript.chrom][transcript.strand]
+        cluster_tree = chrom_strand_cluster_trees[feature.chrom][feature.strand]
         i = len(transcripts)
-        for start,end in transcript.exons:
+        for start,end in feature.exons:
             cluster_tree.insert(start, end, i)
         # each transcript is initially in a cluster by itself
         index_cluster_map[i] = set([i])
-        transcripts.append(transcript)
+        transcripts.append(feature)
     # extract gene clusters
     for strand_cluster_trees in chrom_strand_cluster_trees.itervalues():
         for cluster_tree in strand_cluster_trees.itervalues():
@@ -84,27 +76,32 @@ def build_transcript_cluster_map(line_iter, rname_prefix=None):
                 newclust = set(indexes)
                 for i in indexes:
                     newclust.update(index_cluster_map[i])
+                newclust = frozenset(newclust)
                 # map every transcript to the new cluster
                 for i in newclust:
                     index_cluster_map[i] = newclust
-    # enumerate all clusters
-    rname_prefix = '' if rname_prefix is None else rname_prefix
+    # consolidate list of clusters
+    clusters = set()
+    for clust in index_cluster_map.itervalues():
+        if clust not in clusters:
+            clusters.add(clust)
+    for clust in sorted(clusters):
+        yield tuple(transcripts[i] for i in clust)
+
+def build_transcript_cluster_map(feature_iter):
     transcript_cluster_map = {}
-    for cluster_id, clust in enumerate(index_cluster_map.values()):
-        for i in clust:
-            transcript = transcripts[i]
-            transcript_cluster_map[rname_prefix + transcript.tx_name] = cluster_id
+    for cluster_id, transcripts in enumerate(cluster_transcripts(feature_iter)):
+        for t in transcripts:        
+            transcript_cluster_map[str(t.tx_id)] = cluster_id
     return transcript_cluster_map
 
-def build_transcript_tid_cluster_map(bamfh, line_iter, rname_prefix=None):
+def build_transcript_tid_cluster_map(bamfh, feature_iter):
     # make the standard cluster map
-    transcript_cluster_map = build_transcript_cluster_map(line_iter, rname_prefix)
+    transcript_cluster_map = build_transcript_cluster_map(feature_iter)
     # map reference name to tid
     transcript_tid_map = {}
-    rname_prefix = '' if rname_prefix is None else rname_prefix
     for tid,rname in enumerate(bamfh.references):
-        if rname.startswith(rname_prefix):
-            transcript_tid_map[rname] = tid
+        transcript_tid_map[rname] = tid
     # remake the cluster map
     tid_cluster_map = {}
     for rname, cluster_id in transcript_cluster_map.iteritems():
@@ -114,35 +111,30 @@ def build_transcript_tid_cluster_map(bamfh, line_iter, rname_prefix=None):
         tid_cluster_map[tid] = cluster_id
     return tid_cluster_map
 
-def build_transcript_genome_map(line_iter, rname_prefix=None):
+def build_transcript_genome_map(feature_iter):
     # create arrays to map genes in bed file to genome 
-    rname_prefix = '' if rname_prefix is None else rname_prefix
     transcript_genome_map = {}    
-    for g in GeneFeature.parse(line_iter):
-        rname = rname_prefix + g.tx_name
-        strand = 1 if g.strand == '-' else 0 
-        exon_vectors = [(start, end) for start, end in g.exons]
+    for f in feature_iter:
+        strand = 1 if f.strand == '-' else 0 
+        exon_vectors = [(start, end) for start, end in f.exons]
         if strand:
             exon_vectors.reverse()
-        if rname in transcript_genome_map:
-            logging.error("Duplicate references %s found in bed file" % (rname))
-        transcript_genome_map[rname] = (g.chrom, strand, exon_vectors)
+        tx_id = str(f.tx_id)            
+        if tx_id in transcript_genome_map:
+            logging.error("Duplicate references %s found in bed file" % (tx_id))
+        transcript_genome_map[tx_id] = (f.chrom, strand, exon_vectors)
     return transcript_genome_map
 
-def build_transcript_tid_genome_map(bamfh, line_iter, rname_prefix=None):
+def build_tid_transcript_genome_map(bamfh, feature_iter):
     # make the standard map
-    transcript_genome_map = build_transcript_genome_map(line_iter, rname_prefix)
+    transcript_genome_map = build_transcript_genome_map(feature_iter)
     # map reference name to tid
-    rname_prefix = '' if rname_prefix is None else rname_prefix
     transcript_tid_map = {}
     for tid,rname in enumerate(bamfh.references):
-        if rname.startswith(rname_prefix):
-            transcript_tid_map[rname] = tid
+        transcript_tid_map[rname] = tid
     # remap using tid as key
     tid_genome_map = {}
     for rname, coords in transcript_genome_map.iteritems():
-        if rname not in transcript_tid_map:
-            continue
         tid = transcript_tid_map[rname]
         tid_genome_map[tid] = coords
     return tid_genome_map

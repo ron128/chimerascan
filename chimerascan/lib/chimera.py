@@ -35,8 +35,10 @@ CHIMERA_SEP = "|"
 # exon boundaries and going into intronic space
 EXON_JUNCTION_TRIM_BP = 10
 
-# chimera types
 class ChimeraTypes(object):
+    """
+    chimera classes based on orientation of genes
+    """
     INTERCHROMOSOMAL = "Interchromosomal"
     OVERLAP_SAME = "Overlapping_Same"
     OVERLAP_CONVERGE = "Overlapping_Converging"

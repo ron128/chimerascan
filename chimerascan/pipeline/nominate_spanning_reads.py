@@ -109,7 +109,7 @@ def parse_sync_chimera_with_bam(chimera_file, bam_file, orientation):
     # get first item from each iterator
     try:
         tx_name, clist = chimera_iter.next()
-        chimera_tx_name = config.GENE_REF_PREFIX + tx_name
+        chimera_tx_name = tx_name
     except StopIteration:
         return
     bamfh = pysam.Samfile(bam_file, "rb")
@@ -120,7 +120,7 @@ def parse_sync_chimera_with_bam(chimera_file, bam_file, orientation):
                 continue
             while read_tx_name > chimera_tx_name:
                 tx_name, clist = chimera_iter.next()
-                chimera_tx_name = config.GENE_REF_PREFIX + tx_name
+                chimera_tx_name = tx_name
             if read_tx_name == chimera_tx_name:
                 yield clist, reads, 
     except StopIteration:
@@ -140,9 +140,6 @@ def extract_single_mapped_reads(chimera_file,
     bamfh = pysam.Samfile(unmapped_bam_file, "rb")
     unsorted_single_mapped_bam_file = os.path.join(tmp_dir, "unsorted_single_mapped_reads.bam") 
     singlemap_bamfh = pysam.Samfile(unsorted_single_mapped_bam_file, "wb", template=bamfh)    
-    # get list of 'gene' references in bam file to compare with
-    gene_tids = set([tid for tid,refname in enumerate(bamfh.references)
-                     if refname.startswith(config.GENE_REF_PREFIX)])
     for pe_reads in parse_pe_reads(bamfh):
         # find which of the original reads was unmapped        
         r1_unmapped = any(r.is_unmapped for r in pe_reads[0])
@@ -161,9 +158,6 @@ def extract_single_mapped_reads(chimera_file,
             unmapped_seq = pe_reads[unmapped_readnum][0].seq
             unmapped_qual = pe_reads[unmapped_readnum][0].qual            
             for r in pe_reads[mapped_readnum]:
-                # only consider gene mappings
-                if r.rname not in gene_tids:
-                    continue
                 orientation = get_gene_orientation(r, library_type)
                 # TODO: may need to REVERSE read here to get original
                 r.tags = r.tags + [("R2", unmapped_seq), 

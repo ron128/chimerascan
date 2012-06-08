@@ -10,6 +10,8 @@ import string
 from math import log10
 from string import maketrans
 
+from base import open_compressed
+
 # Quality score formats
 SANGER_FORMAT = "sanger"
 SOLEXA_FORMAT = "solexa"
@@ -147,3 +149,10 @@ def split_seq(seq, chars_per_line=BASES_PER_LINE):
         newseq.append(seq[pos:endpos])
         pos = endpos
     return '\n'.join(newseq)
+
+def detect_read_length(filename):
+    fh = open_compressed(filename)
+    fh.next()
+    seq = fh.next()
+    fh.close()
+    return len(seq)

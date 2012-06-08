@@ -1,3 +1,2 @@
 1) Include all the reads in the main output, so that a single BAM file contains alignment results for all reads
 2) Do a p-value calculation based on rate of ligation artifacts in the mapping results
-3) Add features to the SAM -> BAM script to optionally annotate the reads with orientation, number of hits, etc

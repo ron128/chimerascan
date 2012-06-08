@@ -25,9 +25,10 @@ import collections
 import os
 
 from chimerascan import pysam
-from chimerascan.lib.gene_to_genome import build_transcript_genome_map, \
+from chimerascan.lib.transcriptome_to_genome import build_transcript_genome_map, \
     transcript_to_genome_pos, build_transcript_cluster_map
 from chimerascan.lib.chimera import Chimera
+from chimerascan.lib.feature import TranscriptFeature
 from chimerascan.lib import config
 
 def filter_unique_frags(c, threshold):
@@ -48,10 +49,8 @@ def get_wildtype_frags_3p(rname, start, end, bamfh):
     return num_wildtype_frags
 
 def get_wildtype_frags(c, bamfh):
-    rname5p = config.GENE_REF_PREFIX + c.tx_name_5p
-    rname3p = config.GENE_REF_PREFIX + c.tx_name_3p
-    num_wt_frags_5p = get_wildtype_frags_5p(rname5p, c.tx_start_5p, c.tx_end_5p, bamfh)
-    num_wt_frags_3p = get_wildtype_frags_3p(rname3p, c.tx_start_3p, c.tx_end_3p, bamfh)
+    num_wt_frags_5p = get_wildtype_frags_5p(c.tx_name_5p, c.tx_start_5p, c.tx_end_5p, bamfh)
+    num_wt_frags_3p = get_wildtype_frags_3p(c.tx_name_3p, c.tx_start_3p, c.tx_end_3p, bamfh)
     return num_wt_frags_5p, num_wt_frags_3p
 
 def filter_chimeric_isoform_fraction(c, frac, bamfh):
@@ -135,13 +134,12 @@ def filter_chimeras(input_file, output_file,
     bamfh.close()
     return config.JOB_SUCCESS
 
-def get_highest_coverage_isoforms(input_file, gene_file):
-    # place overlapping chimeras into clusters
-    logging.debug("Building isoform cluster lookup table")
-    transcript_cluster_map = build_transcript_cluster_map(open(gene_file))
+def get_highest_coverage_isoforms(input_file, transcripts):
+    # build lookup from transcript name to cluster id
+    transcript_cluster_map = dict((str(t.tx_id),t.cluster_id) for t in transcripts)
     # build a lookup table to get genome coordinates from transcript 
     # coordinates
-    transcript_genome_map = build_transcript_genome_map(open(gene_file))
+    transcript_genome_map = build_transcript_genome_map(transcripts)
     cluster_chimera_dict = collections.defaultdict(lambda: [])
     for c in Chimera.parse(open(input_file)):
         # TODO: adjust this to score chimeras differently!
@@ -168,9 +166,12 @@ def get_highest_coverage_isoforms(input_file, gene_file):
     return kept_chimeras
 
 def filter_highest_coverage_isoforms(index_dir, input_file, output_file):
+    # read transcripts
+    logging.debug("Reading transcripts")
+    transcript_file = os.path.join(index_dir, config.TRANSCRIPT_FEATURE_FILE)
+    transcripts = list(TranscriptFeature.parse(open(transcript_file)))
     # find highest coverage chimeras among isoforms
-    gene_file = os.path.join(index_dir, config.GENE_FEATURE_FILE)
-    kept_chimeras = get_highest_coverage_isoforms(input_file, gene_file)
+    kept_chimeras = get_highest_coverage_isoforms(input_file, transcripts)
     num_filtered_chimeras = 0
     f = open(output_file, "w")
     for c in Chimera.parse(open(input_file)):
@@ -181,8 +182,6 @@ def filter_highest_coverage_isoforms(index_dir, input_file, output_file):
     logging.debug("\tAfter choosing best isoform: %d" % 
                   num_filtered_chimeras)
     return config.JOB_SUCCESS
-
-
 
 def main():
     from optparse import OptionParser

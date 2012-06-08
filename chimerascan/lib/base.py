@@ -23,7 +23,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import os
 import subprocess
 import tempfile
-import operator
+import gzip
+import bz2
+import zipfile
 
 #
 # constants used for library type
@@ -42,6 +44,30 @@ class LibraryTypes:
     @staticmethod
     def same_strand(library_type):
         return (library_type[0] == library_type[1])
+
+imin2 = lambda a,b: a if a <= b else b
+
+def detect_format(f):
+    if f.endswith(".gz") or f.endswith(".z"):
+        return "gz"
+    elif f.endswith(".bz2"):
+        return "bz2"
+    elif f.endswith(".zip"):
+        return "zip"
+    else:
+        return "txt"
+
+def open_compressed(f):    
+    compression_format = detect_format(f)    
+    if compression_format == "gz":
+        fh = gzip.open(f, "r")
+    elif compression_format == "bz2":
+        fh = bz2.BZ2File(f, "r")
+    elif compression_format == "zip":
+        fh = zipfile.ZipFile(f, "r")
+    else:
+        fh = open(f, "r")
+    return fh
 
 def parse_lines(line_iter, numlines=1):
     """

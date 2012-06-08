@@ -20,15 +20,25 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
+# return codes
 JOB_SUCCESS = 0
 JOB_ERROR = 1
 
+# binary program names
+BOWTIE2_BIN = "bowtie2"
+BOWTIE2_BUILD_BIN = "bowtie2-build"
+BOWTIE2_INSPECT_BIN = "bowtie2-inspect"
+
 # constants for index
-ALIGN_INDEX = 'align_index'
-ALIGN_INDEX_FASTA_FILE = 'align_index.fa'
-BOWTIE_INDEX_FILE = 'align_index.1.ebwt'
-GENE_REF_PREFIX = 'gene_'
-GENE_FEATURE_FILE = "gene_features.txt"
+TRANSCRIPTOME_INDEX = 'transcriptome'
+TRANSCRIPTOME_FASTA_FILE = 'transcriptome.fa'
+TRANSCRIPT_FEATURE_FILE = 'transcripts.txt'
+GENOME_INDEX = 'genome'
+GENOME_FASTA_FILE = 'genome.fa'
+BOWTIE2_INDEX_FILE_EXTS = ('.1.bt2', '.2.bt2', '.3.bt2', '.4.bt2', '.rev.1.bt2', '.rev.2.bt2')
+GENOME_BOWTIE2_FILES = ((GENOME_INDEX + x) for x in BOWTIE2_INDEX_FILE_EXTS)  
+TRANSCRIPTOME_BOWTIE2_FILES = ((TRANSCRIPTOME_INDEX + x) for x in BOWTIE2_INDEX_FILE_EXTS) 
+MAX_MULTIMAPPING_FILE = 'max_multihits.txt'
 
 # chimerascan subdirectories
 LOG_DIR = "log"
@@ -36,7 +46,7 @@ TMP_DIR = "tmp"
 
 # constraints for run configuration
 BASE_PROCESSORS = 2
-MIN_SEGMENT_LENGTH = 20
+MIN_SEGMENT_LENGTH = 25
 RUNCONFIG_XML_FILE = "runconfig.xml"
 
 # output after read inspection, name conversion, and 
@@ -44,30 +54,40 @@ RUNCONFIG_XML_FILE = "runconfig.xml"
 CONVERTED_FASTQ_PREFIX = "reads"
 CONVERTED_FASTQ_FILES = tuple(CONVERTED_FASTQ_PREFIX + "_%d.fq" % (x+1) 
                               for x in xrange(2))
+READ_NAME_DBM_FILE = CONVERTED_FASTQ_PREFIX + ".dbm"
 
-# output from initial bowtie alignment
-ALIGNED_READS_BAM_FILE = "aligned_reads.bam"
-UNALIGNED_FASTQ_PARAM = "unaligned.fq"
-UNALIGNED_FASTQ_FILES = ("unaligned_1.fq", "unaligned_2.fq")
-MAXMULTIMAP_FASTQ_PARAM = "maxmulti.fq"
-MAXMULTIMAP_FASTQ_FILES = ("maxmulti_1.fq", "maxmulti_2.fq")
+# output from initial alignment
+TRANSCRIPTOME_BAM_FILE = "transcriptome_reads.bam"
+TRANSCRIPTOME_UNALIGNED_PATH = "transcriptome_unaligned.fq"
+TRANSCRIPTOME_UNALIGNED_FASTQ_FILES = ("transcriptome_unaligned.1.fq", 
+                                       "transcriptome_unaligned.2.fq")
+TRANSCRIPTOME_LOG_FILE = "transcriptome_alignment.log"
+SORTED_TRANSCRIPTOME_BAM_FILE = "transcriptome_reads.srt.bam"
+
+GENOME_BAM_FILE = "genome_reads.bam"
+GENOME_UNALIGNED_PATH = "genome_unaligned.fq"
+GENOME_UNALIGNED_FASTQ_FILES = ("genome_unaligned.1.fq", 
+                                "genome_unaligned.2.fq")
+GENOME_LOG_FILE = "genome_alignment.log"
 
 # sorted aligned reads bam file
-SORTED_ALIGNED_READS_BAM_FILE = "sorted_aligned_reads.bam"
+#SORTED_ALIGNED_READS_BAM_FILE = "sorted_aligned_reads.bam"
 
 # insert size estimation parameters
 ISIZE_MIN_SAMPLES = 100
 ISIZE_MAX_SAMPLES = 1e6
 ISIZE_DIST_FILE = "isize_dist.txt"
 
+# interleaved segmented paired-end reads file
+INTERLEAVED_TRIMMED_FASTQ_FILE = "interleaved_reads.fq"
+
 # output from realignment of trimmed reads
 REALIGNED_BAM_FILE = "realigned_reads.bam"
+REALIGNED_LOG_FILE = "realigned_reads.log"
 
 # output for different classes of discordant reads
-GENE_PAIRED_BAM_FILE = "gene_paired_reads.bam"
-GENOME_PAIRED_BAM_FILE = "genome_paired_reads.bam"
-REALIGNED_UNMAPPED_BAM_FILE = "unmapped_reads.bam"
-REALIGNED_COMPLEX_BAM_FILE = "complex_reads.bam"
+REALIGNED_PAIRED_BAM_FILE = "realigned_paired_reads.bam"
+REALIGNED_UNMAPPED_BAM_FILE = "realigned_unmapped_reads.bam"
 
 # discordant reads BEDPE file
 DISCORDANT_BEDPE_FILE = "discordant_reads.bedpe"
@@ -87,8 +107,8 @@ BREAKPOINT_HOMOLOGY_MISMATCHES = 2
 BREAKPOINT_CHIMERA_FILE = "encompassing_chimeras.breakpoint_sorted.txt"
 BREAKPOINT_MAP_FILE = "breakpoints.txt"
 BREAKPOINT_FASTA_FILE = "breakpoints.fa"
-BREAKPOINT_BOWTIE_INDEX = "breakpoints"
-BREAKPOINT_BOWTIE_INDEX_FILE = "breakpoints.1.ebwt"
+BREAKPOINT_INDEX = "breakpoints"
+BREAKPOINT_BOWTIE2_FILES = ((BREAKPOINT_INDEX + x) for x in BOWTIE2_INDEX_FILE_EXTS) 
 
 # reads to remap to breakpoint junction index
 ENCOMP_SPANNING_FASTQ_FILE = "encomp_spanning_reads.fq"

@@ -72,6 +72,22 @@ def parse_pe_reads(bamfh):
     if num_reads > 0:
         yield pe_reads
 
+def parse_and_pair_reads(samfh):
+    for pe_reads in parse_pe_reads(samfh):
+        # build a dict indexed by mate info
+        rdict = {}
+        for r in pe_reads[0]:
+            if r.mate_is_unmapped:
+                yield (r, pe_reads[1][0])
+            else:
+                rdict[(r.mrnm,r.mpos)] = r
+        for r in pe_reads[1]:
+            if r.mate_is_unmapped:
+                yield (pe_reads[0][0], r)
+            else:
+                mate = rdict[(r.rname,r.pos)]
+                yield (mate,r)      
+
 def parse_unpaired_pe_reads(bamfh):
     """
     parses alignments that were aligned in single read mode
@@ -106,6 +122,43 @@ def parse_unpaired_pe_reads(bamfh):
         num_reads += 1
     if num_reads > 0:
         yield pe_reads
+
+def select_best_scoring_pairs(pairs):
+    """
+    return the set of read pairs (provided as a list of tuples) with
+    the highest summed alignment score
+    """
+    if len(pairs) == 0:
+        return []
+    # gather alignment scores for each pair
+    pair_scores = [(pair[0].opt('AS') + pair[1].opt('AS'), pair) for pair in pairs]
+    pair_scores.sort(key=operator.itemgetter(0))
+    best_score = pair_scores[0][0]
+    best_pairs = [pair_scores[0][1]]
+    for score,pair in pair_scores[1:]:
+        if score < best_score:
+            break
+        best_pairs.append(pair)
+    return best_pairs
+
+def select_primary_alignments(reads):
+    """
+    return only reads that lack the secondary alignment bit
+    """
+    if len(reads) == 0:
+        return []
+    # sort reads by number of mismatches
+    unmapped_reads = []
+    primary_reads = []
+    for r in reads:
+        if r.is_unmapped:
+            unmapped_reads.append(r)
+        elif not r.is_secondary:
+            primary_reads.append(r)
+    if len(primary_reads) == 0:
+        assert len(unmapped_reads) > 0
+        return unmapped_reads
+    return primary_reads
 
 def select_best_mismatch_strata(reads, mismatch_tolerance=0):
     if len(reads) == 0:

@@ -22,14 +22,12 @@ import logging
 import os
 import sys
 import collections
-import itertools
-import operator
 
 from chimerascan import pysam
-
 from chimerascan.lib import config
+from chimerascan.lib.feature import TranscriptFeature
 from chimerascan.lib.chimera import DiscordantRead, Chimera, frags_to_encomp_string
-from chimerascan.lib.gene_to_genome import build_tx_name_gene_map, build_genome_tx_trees
+from chimerascan.lib.transcriptome_to_genome import build_transcript_map, build_genome_transcript_trees
 from chimerascan.lib.fragment_size_distribution import InsertSizeDistribution
 from chimerascan.lib.seq import calc_homology
 
@@ -112,21 +110,21 @@ def choose_best_breakpoints(r5p, r3p, tx5p, tx3p, trim_bp, isize_dist):
             best_breakpoints.update(local_best_breakpoints)
     return best_isize_prob, best_breakpoints
 
-def extract_breakpoint_sequence(tx_name_5p, tx_end_5p, 
-                                tx_name_3p, tx_start_3p, 
+def extract_breakpoint_sequence(tx_id_5p, tx_end_5p, 
+                                tx_id_3p, tx_start_3p, 
                                 ref_fa, max_read_length,
                                 homology_mismatches):
     tx_start_5p = max(0, tx_end_5p - max_read_length + 1)
     tx_end_3p = tx_start_3p + max_read_length - 1
     # fetch sequence
-    seq5p = ref_fa.fetch(tx_name_5p, tx_start_5p, tx_end_5p).upper()
-    seq3p = ref_fa.fetch(tx_name_3p, tx_start_3p, tx_end_3p).upper()
+    seq5p = ref_fa.fetch(tx_id_5p, tx_start_5p, tx_end_5p).upper()
+    seq3p = ref_fa.fetch(tx_id_3p, tx_start_3p, tx_end_3p).upper()
     # pad sequence if too short
     if len(seq5p) < (max_read_length - 1):
         logging.warning("Could not extract sequence of length >%d from "
                         "5' partner at %s:%d-%d, only retrieved "
                         "sequence of length %d" % 
-                        (max_read_length-1, tx_name_5p, tx_start_5p, 
+                        (max_read_length-1, tx_id_5p, tx_start_5p, 
                          tx_end_5p, len(seq5p)))
         # pad sequence
         padding = (max_read_length - 1) - len(seq5p)
@@ -135,7 +133,7 @@ def extract_breakpoint_sequence(tx_name_5p, tx_end_5p,
         logging.warning("Could not extract sequence of length >%d from "
                         "3' partner at %s:%d-%d, only retrieved "
                         "sequence of length %d" % 
-                        (max_read_length-1, tx_name_3p, tx_start_3p, 
+                        (max_read_length-1, tx_id_3p, tx_start_3p, 
                          tx_end_3p, len(seq3p)))
         # pad sequence
         padding = (max_read_length - 1) - len(seq3p)
@@ -143,11 +141,11 @@ def extract_breakpoint_sequence(tx_name_5p, tx_end_5p,
     # if 5' partner continues along its normal transcript
     # without fusing, get the sequence that would result
     homolog_end_5p = tx_end_5p + max_read_length - 1
-    homolog_seq_5p = ref_fa.fetch(tx_name_5p, tx_end_5p, homolog_end_5p).upper()
+    homolog_seq_5p = ref_fa.fetch(tx_id_5p, tx_end_5p, homolog_end_5p).upper()
     # if 3' partner were to continue in the 5' direction,
     # grab the sequence that would be produced
     homolog_start_3p = max(0, tx_start_3p - max_read_length + 1)
-    homolog_seq_3p = ref_fa.fetch(tx_name_3p, homolog_start_3p, tx_start_3p).upper()
+    homolog_seq_3p = ref_fa.fetch(tx_id_3p, homolog_start_3p, tx_start_3p).upper()
     # count number of bases in common between downstream 5' sequence
     # and the sequence of the 3' partner in the chimera
     homology_right = calc_homology(homolog_seq_5p, seq3p, 
@@ -163,12 +161,12 @@ def nominate_chimeras(index_dir, isize_dist_file, input_file, output_file,
     # read insert size distribution
     isize_dist = InsertSizeDistribution.from_file(open(isize_dist_file))
     # build a lookup table to get genomic intervals from transcripts
-    logging.debug("Reading gene information")
-    gene_file = os.path.join(index_dir, config.GENE_FEATURE_FILE)    
-    tx_name_gene_map = build_tx_name_gene_map(gene_file, rname_prefix=None)
-    #genome_tx_trees = build_genome_tx_trees(gene_file)
+    logging.debug("Reading transcript information")
+    transcript_feature_file = os.path.join(index_dir, config.TRANSCRIPT_FEATURE_FILE)    
+    transcripts = list(TranscriptFeature.parse(open(transcript_feature_file)))
+    tx_id_map = build_transcript_map(transcripts)
     # open the reference sequence fasta file
-    ref_fasta_file = os.path.join(index_dir, config.ALIGN_INDEX + ".fa")
+    ref_fasta_file = os.path.join(index_dir, config.TRANSCRIPTOME_FASTA_FILE)
     ref_fa = pysam.Fastafile(ref_fasta_file)
     # keep track of mapping from breakpoint sequence to breakpoint id
     # this requires storing all breakpoint sequences in memory which is
@@ -180,10 +178,10 @@ def nominate_chimeras(index_dir, isize_dist_file, input_file, output_file,
     logging.debug("Parsing discordant reads")
     chimera_num = 1
     outfh = open(output_file, "w")    
-    for tx_name_5p, tx_name_3p, frags in parse_discordant_bedpe_by_transcript_pair(open(input_file)):
+    for tx_id_5p, tx_id_3p, frags in parse_discordant_bedpe_by_transcript_pair(open(input_file)):
         # get gene information
-        tx5p = tx_name_gene_map[tx_name_5p]
-        tx3p = tx_name_gene_map[tx_name_3p]
+        tx5p = tx_id_map[tx_id_5p]
+        tx3p = tx_id_map[tx_id_3p]
         # bin fragments into putative breakpoints
         breakpoint_dict = collections.defaultdict(lambda: [])
         for dr5p,dr3p in frags:
@@ -198,8 +196,8 @@ def nominate_chimeras(index_dir, isize_dist_file, input_file, output_file,
         for breakpoint,frags in breakpoint_dict.iteritems():          
             exon_num_5p, tx_end_5p, exon_num_3p, tx_start_3p = breakpoint
             breakpoint_seq_5p, breakpoint_seq_3p, homology_left, homology_right = \
-                extract_breakpoint_sequence(config.GENE_REF_PREFIX + tx5p.tx_name, tx_end_5p,
-                                            config.GENE_REF_PREFIX + tx3p.tx_name, tx_start_3p,
+                extract_breakpoint_sequence(tx_id_5p, tx_end_5p,
+                                            tx_id_3p, tx_start_3p,
                                             ref_fa, max_read_length,
                                             homology_mismatches)                
             tx3p_length = sum((end - start) for start,end in tx3p.exons)
@@ -213,14 +211,14 @@ def nominate_chimeras(index_dir, isize_dist_file, input_file, output_file,
                 breakpoint_num += 1
             # write gene, breakpoint, and raw reads to a file and follow the
             # BEDPE format
-            gene_name_5p = '_'.join(tx5p.gene_name.split())
-            gene_name_3p = '_'.join(tx3p.gene_name.split())
-            fields = [tx5p.tx_name, 0, tx_end_5p,  # chrom1, start1, end1
-                      tx3p.tx_name, tx_start_3p, tx3p_length, # chrom2, start2, end2
+            gene_names_5p = ",".join(sorted(set(["_".join(x.split()) for x in tx5p.gene_names])))
+            gene_names_3p = ",".join(sorted(set(["_".join(x.split()) for x in tx3p.gene_names])))
+            fields = [tx5p.tx_id, 0, tx_end_5p,  # chrom1, start1, end1
+                      tx3p.tx_id, tx_start_3p, tx3p_length, # chrom2, start2, end2
                       "C%07d" % (chimera_num), # name
                       1.0, # pvalue
                       tx5p.strand, tx3p.strand, # strand1, strand2
-                      gene_name_5p, gene_name_3p, # gene names
+                      gene_names_5p, gene_names_3p, # gene names
                       # exon interval information
                       '%d-%d' % (0, exon_num_5p),
                       '%d-%d' % (exon_num_3p, len(tx3p.exons)),

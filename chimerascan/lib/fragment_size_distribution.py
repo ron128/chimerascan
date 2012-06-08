@@ -29,7 +29,6 @@ from chimerascan.bx.intersection import Interval, IntervalTree
 
 # local imports
 from sam import parse_pe_reads, CIGAR_N, CIGAR_S, CIGAR_H, CIGAR_P
-from feature import GeneFeature
 
 # SAM CIGAR flags that indicate skipping, padding, or clipping
 SKIP_CIGAR_FLAGS = set((CIGAR_N, CIGAR_S, CIGAR_H, CIGAR_P)) 

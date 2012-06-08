@@ -4,11 +4,7 @@ Created on Jun 11, 2011
 @author: mkiyer
 '''
 import logging
-import os
-import collections
 
-from chimerascan import pysam
-from chimerascan.lib import config
 from chimerascan.lib.chimera import Chimera
 from chimerascan.lib.batch_sort import batch_sort
 from chimerascan.lib.seq import split_seq

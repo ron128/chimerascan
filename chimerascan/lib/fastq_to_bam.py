@@ -4,47 +4,7 @@ Created on Apr 28, 2011
 @author: mkiyer
 '''
 from chimerascan import pysam
-from math import log10
-from string import maketrans
-
-def get_solexa_qual_conversion_table():
-    """
-    return a translation table that can be used by str.translate() for
-    converting solexa to sanger quality scores
-    """
-    offset = 64
-    conv_table = ['!'] * 256
-    conv_table[offset:] = "I" * (256-offset)
-    for solq in xrange(-5, 40):
-        phredq = 10*log10(1 + 10**(solq/10.0))
-        phredchr = chr(int(round(33 + phredq)))
-        conv_table[offset + solq] = phredchr
-    conv_string = ''.join(conv_table)
-    return maketrans(''.join(map(chr, range(256))), conv_string)
-
-def get_illumina_qual_conversion_table():
-    """Illumina 1.3+ format can encode a Phred quality score from 0 to 62 
-    using ASCII 64 to 126 (although in raw read data Phred scores from 0 
-    to 40 only are expected).
-    """
-    offset = 64
-    conv_table = ['!'] * 256
-    for x in xrange(0, 62):
-        conv_table[offset+x] = chr(33 + x)
-    conv_table[offset+40:] = "I" * (256-(offset+40))
-    conv_string = ''.join(conv_table)
-    return maketrans(''.join(map(chr, range(256))), conv_string)    
-
-def get_sanger_qual_conversion_table():
-    offset = 33
-    tbl = map(chr, range(256))
-    tbl[:offset] = "!" * offset
-    tbl[offset+40:] = "I" * (256-(offset+40))
-    return maketrans(''.join(map(chr, range(256))), ''.join(tbl))
-
-conv_tables = {"sanger": get_sanger_qual_conversion_table(),
-               "illumina": get_illumina_qual_conversion_table(),
-               "solexa": get_solexa_qual_conversion_table()}
+from seq import get_qual_conversion_func
 
 def parse_fastq(line_iter):
     with line_iter:
@@ -57,7 +17,7 @@ def parse_fastq(line_iter):
 
 def fastq_to_bam(fastq_files, qual_format, bam_file):
     fqfhs = [parse_fastq(open(f)) for f in fastq_files]
-    qual_trans_table = conv_tables[qual_format]
+    qual_func = get_qual_conversion_func(qual_format)
     header = {'HD': {'VN': '1.0', 'SO': 'unknown'}}
 #              'SQ': [{'LN': 1, 'SN': 'dummy'}]}
     bamfh = pysam.Samfile(bam_file, "wb", header=header)    
@@ -72,7 +32,7 @@ def fastq_to_bam(fastq_files, qual_format, bam_file):
                 #a.mpos = 0
                 a.qname = id
                 a.seq = seq
-                a.qual = qual.translate(qual_trans_table)
+                a.qual = qual_func(qual)
                 a.is_read1 = (i == 0)
                 a.is_read2 = (i == 1)
                 bamfh.write(a)
@@ -92,8 +52,8 @@ def bam_to_fastq(bam_file, fastq_files):
         print >>fqfhs[i], record
 
 if __name__ == '__main__':
-    sol2std = get_solexa_qual_conversion_table()
-    illumina2std = get_illumina_qual_conversion_table()
+    sol2std = get_qual_conversion_func("solexa")
+    illumina2std = get_qual_conversion_func("illumina")
     import sys
     fastq_to_bam(["read1.fq", "read2.fq"], "solexa", "hi.bam")
     bam_to_fastq("hi.bam", ["a1.fq", "a2.fq"])

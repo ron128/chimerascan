@@ -28,36 +28,22 @@ import collections
 
 from chimerascan import pysam
 from chimerascan.lib.chimera import Chimera, get_chimera_type
+from chimerascan.lib.feature import TranscriptFeature
 from chimerascan.lib import config
-from chimerascan.lib.gene_to_genome import build_transcript_genome_map, \
-    build_transcript_cluster_map, build_genome_tx_trees, \
-    build_tx_name_gene_map, transcript_to_genome_pos
-
+from chimerascan.lib.transcriptome_to_genome import build_transcript_genome_map, \
+    build_genome_transcript_trees, build_transcript_map, transcript_to_genome_pos
 from chimerascan.pipeline.filter_chimeras import get_wildtype_frags
 
-
-def get_chimera_groups(input_file, gene_file):
-    # build a lookup table to get gene clusters from transcript name    
-    transcript_cluster_map = build_transcript_cluster_map(open(gene_file))
-    # build a lookup table to get genome coordinates from transcript 
-    # coordinates
-    # TODO: can either group by exact breakpoint, or just by
-    # gene cluster
-    # transcript_genome_map = build_transcript_genome_map(open(gene_file))
+def get_chimera_groups(input_file, tx_id_map):
     # group chimeras in the same genomic cluster with the same
     # breakpoint
     cluster_chimera_dict = collections.defaultdict(lambda: [])
     for c in Chimera.parse(open(input_file)):
         # get cluster of overlapping genes
-        cluster5p = transcript_cluster_map[c.tx_name_5p]
-        cluster3p = transcript_cluster_map[c.tx_name_3p]
-        # get genomic positions of breakpoints
-        #coord5p = transcript_to_genome_pos(c.partner5p.tx_name, c.partner5p.end-1, transcript_genome_map)
-        #coord3p = transcript_to_genome_pos(c.partner3p.tx_name, c.partner3p.start, transcript_genome_map)
+        cluster5p = tx_id_map[c.tx_name_5p].cluster_id
+        cluster3p = tx_id_map[c.tx_name_3p].cluster_id
         # add to dictionary
         cluster_chimera_dict[(cluster5p,cluster3p)].append(c)
-        # TODO: use this grouping instead?
-        #cluster_chimera_dict[(cluster5p,cluster3p,coord5p,coord3p)].append(c)
     for key,chimeras in cluster_chimera_dict.iteritems():
         yield key,chimeras
 
@@ -72,18 +58,21 @@ def get_best_coverage_chimera(chimeras):
     return sorted_stats[0][0]
 
 def write_output(input_file, bam_file, output_file, index_dir):
-    gene_file = os.path.join(index_dir, config.GENE_FEATURE_FILE)
+    # read transcripts
+    logging.debug("Reading transcripts")
+    transcript_file = os.path.join(index_dir, config.TRANSCRIPT_FEATURE_FILE)
+    transcripts = list(TranscriptFeature.parse(open(transcript_file)))
     # build a lookup table to get genome coordinates from transcript 
     # coordinates
-    transcript_genome_map = build_transcript_genome_map(open(gene_file))    
-    tx_name_gene_map = build_tx_name_gene_map(gene_file)    
-    genome_tx_trees = build_genome_tx_trees(gene_file)
+    transcript_genome_map = build_transcript_genome_map(transcripts)
+    tx_id_map = build_transcript_map(transcripts)
+    genome_tx_trees = build_genome_transcript_trees(transcripts)
     # open BAM file for checking wild-type isoform
     bamfh = pysam.Samfile(bam_file, "rb")   
     # group chimera isoforms together
     lines = []
     chimera_clusters = 0
-    for key,chimeras in get_chimera_groups(input_file, gene_file):
+    for key,chimeras in get_chimera_groups(input_file, tx_id_map):
         txs5p = set()
         txs3p = set()
         genes5p = set()
@@ -97,8 +86,8 @@ def write_output(input_file, bam_file, output_file, index_dir):
             names.add(c.name)
         c = get_best_coverage_chimera(chimeras)
         # get chimera type and distance between genes
-        chimera_type, distance = get_chimera_type(tx_name_gene_map[c.tx_name_5p],
-                                                  tx_name_gene_map[c.tx_name_3p],
+        chimera_type, distance = get_chimera_type(tx_id_map[c.tx_name_5p],
+                                                  tx_id_map[c.tx_name_3p],
                                                   genome_tx_trees)
         # get genomic positions of chimera
         chrom5p,strand5p,start5p = transcript_to_genome_pos(c.tx_name_5p, c.tx_start_5p, transcript_genome_map)

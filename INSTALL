@@ -2,9 +2,9 @@
 System Requirements
 ===================
 
-Python 2.6+
+Python 2.7+
 ===========
-chimerascan requires python version 2.6 or higher (http://python.org)
+chimerascan requires python version 2.7 or higher (http://python.org)
 
 Pysam
 =====
@@ -27,12 +27,12 @@ manually modifying one line in Makefile.
 Pysam requires pyrex (0.9.8 or greater) and python (2.6 or greater).
 It has not been tested on many other platforms.
 
-Bowtie
-======
-You must have a working bowtie installation to run chimerascan.  The
-current distribution of chimerascan has been tested with bowtie 0.12.7.
-Please visit (http://bowtie-bio.sourceforge.net/index.shtml) for 
-instructions on downloading and installing bowtie.
+Bowtie2
+=======
+You must have a working bowtie2 installation to run chimerascan.  The
+current distribution of chimerascan has been tested with bowtie2 beta 6.
+Please visit (http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) for
+instructions on downloading and installing bowtie2.
 
 Cython (optional)
 =================
@@ -70,6 +70,6 @@ Architecture specific options
 =============================
 
 chimerascan has been tested on the following platforms:
-* 64-bit RedHat Enterprise Linux systems using python 2.6+
-* Mac OS/X Snow Leopard using python 2.6+
+* 64-bit RedHat Enterprise Linux systems using python 2.7+
+* Mac OS/X Snow Leopard using python 2.7+
 * Testing on other architectures is pending.
