@@ -83,11 +83,15 @@ def parse_sync_by_breakpoint(chimera_file, bam_file):
 def get_mismatch_positions(md):
     x = 0
     pos = []
+    digits = []    
     for y in xrange(len(md)):
-        if md[y].isalpha():
-            offset = int(md[x:y])
-            pos.append(offset)
-            x = y + 1
+        if md[y].isdigit():
+            digits.append(md[y])
+        elif md[y].isalpha():
+            if len(digits) > 0:
+                offset = int(''.join(digits))
+                pos.append(x + offset)
+            x += 1
     return pos
 
 def check_breakpoint_alignment(c, r,
