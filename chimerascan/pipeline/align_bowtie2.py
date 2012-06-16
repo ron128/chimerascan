@@ -20,6 +20,61 @@ def get_bowtie_library_type(library_type):
     """
     return library_type[0:2]
 
+def bowtie2_align_transcriptome_pe(transcriptome_index,
+                                   genome_index,
+                                   transcript_file,                                   
+                                   fastq_files,
+                                   unaligned_path,
+                                   bam_file,
+                                   log_file,
+                                   library_type,
+                                   min_fragment_length=0,
+                                   max_fragment_length=1000,
+                                   max_transcriptome_hits=1,
+                                   num_processors=1):
+    """
+    align reads to a transcriptome index, convert SAM to BAM,
+    and translate alignments to genomic coordinates
+    """
+    # setup bowtie2 library type param
+    library_type_param = get_bowtie_library_type(library_type)
+    # setup bowtie2 command line args
+    args = [config.BOWTIE2_BIN, 
+            '-p', num_processors, '--phred33',
+            '--end-to-end', '--very-sensitive', '--reorder',
+            '--no-mixed', '--no-discordant',
+            '-M', max_transcriptome_hits,
+            '-I', min_fragment_length,
+            '-X', max_fragment_length,
+            '--%s' % library_type_param,
+            '-x', transcriptome_index,
+            '-1', fastq_files[0],
+            '-2', fastq_files[1],
+            '--un-conc', unaligned_path]
+    args = map(str, args)
+    # kickoff alignment process
+    logfh = open(log_file, "w")
+    aln_p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=logfh)
+    # pipe the bowtie SAM output to a transcriptome to genome conversion
+    # script that writes a genomic BAM file
+    py_script = os.path.join(_pipeline_dir, "transcriptome_to_genome.py")
+    args = [sys.executable, py_script, "--library-type", library_type, 
+            "--sam", genome_index, transcript_file, "-", bam_file]
+    args = map(str, args)
+    logging.debug("Transcriptome to Genome converter args: %s" % 
+                  (' '.join(args)))
+    convert_p = subprocess.Popen(args, stdin=aln_p.stdout, stderr=logfh)
+    # wait for this to finish
+    retcode = convert_p.wait()
+    if retcode != 0:
+        aln_p.terminate()
+        return config.JOB_ERROR
+    retcode = aln_p.wait()
+    if retcode != 0:
+        return config.JOB_ERROR        
+    logfh.close()
+    return retcode
+
 def bowtie2_align_pe(index,
                      fastq_files,
                      unaligned_path,
@@ -28,15 +83,15 @@ def bowtie2_align_pe(index,
                      library_type,
                      min_fragment_length=0,
                      max_fragment_length=1000,
-                     maxhits=1,
+                     max_hits=1,
                      num_processors=1):
     # setup bowtie2 library type param
     library_type_param = get_bowtie_library_type(library_type)
     args = [config.BOWTIE2_BIN, 
             '-p', num_processors, '--phred33',
             '--end-to-end', '--very-sensitive', '--reorder',
-            '--no-mixed', '--no-discordant',
-            '-k', maxhits,
+            '--no-mixed', '--no-discordant', '--nounal',
+            '-M', max_hits,
             '-I', min_fragment_length,
             '-X', max_fragment_length,
             '--%s' % library_type_param,
@@ -175,9 +230,10 @@ def bowtie2_align_pe_sr(index,
     #
     # Pipe through BAM filter that annotates and filters multihits
     #
-    py_script = os.path.join(_pipeline_dir, "filter_bam_multihits.py")    
+    py_script = os.path.join(_pipeline_dir, "filter_transcriptome_multihits.py")    
     args = [sys.executable, py_script, "--max-multihits", max_multihits, 
             transcript_file, "-", bam_file]
+    args = map(str,args)
     logging.debug("Multihit filter args: %s" % (' '.join(args)))
     multihit_p = subprocess.Popen(args, stdin=sam2bam_p.stdout, stderr=logfh)
     # wait for this to finish

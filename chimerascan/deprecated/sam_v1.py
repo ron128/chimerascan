@@ -21,7 +21,6 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 import operator
-import collections
 
 from chimerascan import pysam
 from seq import DNA_reverse_complement
@@ -73,6 +72,41 @@ def parse_pe_reads(bamfh):
     if num_reads > 0:
         yield pe_reads
 
+def parse_unpaired_pe_reads(bamfh):
+    """
+    parses alignments that were aligned in single read mode
+    and hence all hits are labeled as 'read1' and lack mate
+    information.  instead the read1 read2 information is
+    attached to the 'qname' field
+    """
+    pe_reads = ([], [])
+    num_reads = 0
+    prev_qname = None
+    for read in bamfh:
+        # extract read1/2 from qname
+        readnum = int(read.qname[-1])
+        if readnum == 1:
+            read.is_read1 = True
+            mate = 0
+        elif readnum == 2:
+            mate = 1
+            read.is_read2 = True
+        # reconstitute correct qname
+        qname = read.qname[:-2]
+        read.qname = qname
+        # if query name changes we have completely finished
+        # the fragment and can reset the read data
+        if num_reads > 0 and qname != prev_qname:
+            yield pe_reads
+            # reset state variables
+            pe_reads = ([], [])
+            num_reads = 0
+        pe_reads[mate].append(read)
+        prev_qname = qname
+        num_reads += 1
+    if num_reads > 0:
+        yield pe_reads
+
 def group_read_pairs(pe_reads):
     """
     Given tuple of ([read1 reads],[read2 reads]) paired-end read alignments
@@ -91,12 +125,12 @@ def group_read_pairs(pe_reads):
     pairs = []
     if all((len(reads) > 0) for reads in paired_reads):
         # index read1 by mate reference name and position
-        rdict = collections.defaultdict(lambda: collections.deque())
+        rdict = {}
         for r in paired_reads[0]:
-            rdict[(r.mrnm,r.mpos)].append(r)
+            rdict[(r.mrnm,r.mpos)] = r
         # iterate through read2 and get mate pairs
         for r2 in paired_reads[1]:
-            r1 = rdict[(r2.rname,r2.pos)].popleft()
+            r1 = rdict[(r.rname,r.pos)]
             pairs.append((r1,r2))
     return pairs, unpaired_reads
 

@@ -100,7 +100,7 @@ def main():
     parser.add_argument("output_prefix")
     parser.add_argument("fastq_files", nargs="+")    
     args = parser.parse_args()
-    inspect_reads(args.fastq_files, args.output_prefix, args.quals, args.trim5, args.trim3)
+    process_input_reads(args.fastq_files, args.output_prefix, args.quals, args.trim5, args.trim3)
 
 if __name__ == '__main__':
     main()

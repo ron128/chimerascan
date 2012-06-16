@@ -40,7 +40,7 @@ def filter_multihits(transcript_file, input_bam_file, output_bam_file,
     logging.debug("Reading transcript features")
     transcripts = list(TranscriptFeature.parse(open(transcript_file)))
     # parse and convert sam -> bam
-    inbamfh = pysam.Samfile(input_bam_file, "r")
+    inbamfh = pysam.Samfile(input_bam_file, "rb")
     outbamfh = pysam.Samfile(output_bam_file, "wb", template=inbamfh)
     # build a transcript to genome coordinate map   
     tid_tx_genome_map = build_tid_transcript_genome_map(outbamfh, transcripts)

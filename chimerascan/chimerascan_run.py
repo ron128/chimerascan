@@ -53,7 +53,7 @@ from chimerascan.lib.seq import FASTQ_QUAL_FORMATS, SANGER_FORMAT, detect_read_l
 from chimerascan.lib.fragment_size_distribution import InsertSizeDistribution
 
 from chimerascan.pipeline.process_input_reads import process_input_reads
-from chimerascan.pipeline.align_bowtie2 import bowtie2_align_pe, bowtie2_align_pe_sr, bowtie2_align_sr
+from chimerascan.pipeline.align_bowtie2 import bowtie2_align_transcriptome_pe, bowtie2_align_pe, bowtie2_align_pe_sr, bowtie2_align_sr
 from chimerascan.pipeline.find_discordant_reads import find_discordant_fragments
 from chimerascan.pipeline.discordant_reads_to_bedpe import discordant_reads_to_bedpe, sort_bedpe
 from chimerascan.pipeline.nominate_chimeras import nominate_chimeras
@@ -441,9 +441,9 @@ def run_chimerascan(runconfig):
     transcript_file = os.path.join(runconfig.index_dir, config.TRANSCRIPT_FEATURE_FILE)
     genome_index = os.path.join(runconfig.index_dir, config.GENOME_INDEX)
     transcriptome_index = os.path.join(runconfig.index_dir, config.TRANSCRIPTOME_INDEX)
-    maxhits_file = os.path.join(runconfig.index_dir, 
-                                      config.MAX_MULTIMAPPING_FILE)
-    maxhits = int(open(maxhits_file).next().strip())
+    max_hits_file = os.path.join(runconfig.index_dir, 
+                                 config.MAX_MULTIMAPPING_FILE)
+    max_hits = int(open(max_hits_file).next().strip())
     original_read_length = detect_read_length(runconfig.fastq_files[0])
     # minimum fragment length cannot be smaller than the trimmed read length
     trimmed_read_length = (original_read_length - runconfig.trim5 - runconfig.trim3)
@@ -501,16 +501,18 @@ def run_chimerascan(runconfig):
     else:
         logging.info(msg)
         log_file = os.path.join(log_dir, config.TRANSCRIPTOME_LOG_FILE)
-        retcode = bowtie2_align_pe(index=transcriptome_index,
-                                   fastq_files=converted_fastq_files,
-                                   unaligned_path=transcriptome_unaligned_path,
-                                   bam_file=transcriptome_bam_file,
-                                   log_file=log_file,
-                                   library_type=runconfig.library_type,
-                                   min_fragment_length=min_fragment_length,
-                                   max_fragment_length=runconfig.max_fragment_length,
-                                   maxhits=maxhits,
-                                   num_processors=runconfig.num_processors)
+        retcode = bowtie2_align_transcriptome_pe(transcriptome_index=transcriptome_index,
+                                                 genome_index=genome_index,
+                                                 transcript_file=transcript_file,     
+                                                 fastq_files=converted_fastq_files,
+                                                 unaligned_path=transcriptome_unaligned_path,
+                                                 bam_file=transcriptome_bam_file,
+                                                 log_file=log_file,
+                                                 library_type=runconfig.library_type,
+                                                 min_fragment_length=min_fragment_length,
+                                                 max_fragment_length=runconfig.max_fragment_length,
+                                                 max_transcriptome_hits=max_hits,
+                                                 num_processors=runconfig.num_processors)
         # cleanup if job failed
         if retcode != config.JOB_SUCCESS:
             if os.path.exists(transcriptome_bam_file):
@@ -518,6 +520,31 @@ def run_chimerascan(runconfig):
             for f in transcriptome_unaligned_fastq_files:
                 if os.path.exists(f):
                     os.remove(f)
+    
+    return config.JOB_SUCCESS
+    #
+    # Sort transcriptome reads by position
+    #
+    msg = "Sorting transcriptome reads"
+    sorted_transcriptome_bam_file = os.path.join(runconfig.output_dir, 
+                                                 config.SORTED_TRANSCRIPTOME_BAM_FILE)
+    if (up_to_date(sorted_transcriptome_bam_file, transcriptome_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        sorted_aligned_bam_prefix = os.path.splitext(sorted_transcriptome_bam_file)[0]
+        pysam.sort("-m", str(int(1e9)), transcriptome_bam_file, sorted_aligned_bam_prefix)
+    #
+    # Index BAM file
+    #
+    msg = "Indexing BAM file"
+    sorted_aligned_bam_index_file = sorted_transcriptome_bam_file + ".bai"
+    if (up_to_date(sorted_aligned_bam_index_file, sorted_transcriptome_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        pysam.index(sorted_transcriptome_bam_file)
+
     #
     # Genome alignment step
     #
@@ -542,7 +569,7 @@ def run_chimerascan(runconfig):
                                    library_type=runconfig.library_type,
                                    min_fragment_length=min_fragment_length,
                                    max_fragment_length=runconfig.max_fragment_length,
-                                   maxhits=maxhits,
+                                   max_hits=max_hits,
                                    num_processors=runconfig.num_processors)
         # cleanup if job failed
         if retcode != config.JOB_SUCCESS:
@@ -551,32 +578,6 @@ def run_chimerascan(runconfig):
             for f in genome_unaligned_fastq_files:
                 if os.path.exists(f):
                     os.remove(f)
-    # 
-    # TODO: Convert transcriptome reads to genome, and index all genome 
-    # reads together 
-    # 
-    #
-    # Sort aligned reads by position
-    #
-    msg = "Sorting aligned reads"
-    sorted_transcriptome_bam_file = os.path.join(runconfig.output_dir, 
-                                                 config.SORTED_TRANSCRIPTOME_BAM_FILE)
-    if (up_to_date(sorted_transcriptome_bam_file, transcriptome_bam_file)):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        sorted_aligned_bam_prefix = os.path.splitext(sorted_transcriptome_bam_file)[0]
-        pysam.sort("-m", str(int(1e9)), transcriptome_bam_file, sorted_aligned_bam_prefix)
-    #
-    # Index BAM file
-    #
-    msg = "Indexing BAM file"
-    sorted_aligned_bam_index_file = sorted_transcriptome_bam_file + ".bai"
-    if (up_to_date(sorted_aligned_bam_index_file, sorted_transcriptome_bam_file)):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        pysam.index(sorted_transcriptome_bam_file)
     #
     # Get insert size distribution
     #
@@ -649,7 +650,7 @@ def run_chimerascan(runconfig):
                                       log_file=realigned_log_file,
                                       tmp_dir=tmp_dir,
                                       segment_length=segment_length,
-                                      maxhits=maxhits,
+                                      max_hits=max_hits,
                                       max_multihits=runconfig.max_multihits,
                                       num_processors=runconfig.num_processors)
         if retcode != config.JOB_SUCCESS:
@@ -866,7 +867,7 @@ def run_chimerascan(runconfig):
                                    bam_file=encomp_spanning_bam_file,
                                    log_file=encomp_spanning_log_file,
                                    library_type=runconfig.library_type,
-                                   maxhits=maxhits,
+                                   max_hits=max_hits,
                                    num_processors=runconfig.num_processors)
         if retcode != config.JOB_SUCCESS:
             logging.error("Bowtie failed with error code %d" % (retcode))    
@@ -902,7 +903,7 @@ def run_chimerascan(runconfig):
                                    bam_file=singlemap_spanning_bam_file,
                                    log_file=singlemap_spanning_log_file,
                                    library_type=runconfig.library_type,
-                                   maxhits=maxhits,
+                                   max_hits=max_hits,
                                    num_processors=runconfig.num_processors)
         if retcode != config.JOB_SUCCESS:
             logging.error("Bowtie failed with error code %d" % (retcode))
@@ -990,7 +991,7 @@ def run_chimerascan(runconfig):
                                 homolog_segment_length=segment_length-1,
                                 min_isize=min_isize,
                                 max_isize=max_isize,
-                                maxhits=maxhits,
+                                max_hits=max_hits,
                                 num_processors=runconfig.num_processors,
                                 tmp_dir=tmp_dir)
     #
