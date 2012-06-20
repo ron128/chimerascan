@@ -47,6 +47,9 @@ TMP_DIR = "tmp"
 # constraints for run configuration
 BASE_PROCESSORS = 2
 MIN_SEGMENT_LENGTH = 25
+DEFAULT_MIN_FRAG_LENGTH = 0
+DEFAULT_MAX_FRAG_LENGTH = 1000
+DEFAULT_MAX_MULTIHITS = 1
 RUNCONFIG_XML_FILE = "runconfig.xml"
 
 # output after read inspection, name conversion, and 
@@ -79,7 +82,8 @@ ISIZE_MAX_SAMPLES = 1e6
 ISIZE_DIST_FILE = "isize_dist.txt"
 
 # interleaved segmented paired-end reads file
-INTERLEAVED_TRIMMED_FASTQ_FILE = "interleaved_reads.fq"
+INTERLEAVED_FASTQ_FILE = "interleaved_reads.fq"
+INTERLEAVED_TRIMMED_FASTQ_FILE = "interleaved_trimmed_reads.fq"
 
 # output from realignment of trimmed reads
 REALIGNED_BAM_FILE = "realigned_reads.bam"
@@ -87,7 +91,13 @@ REALIGNED_LOG_FILE = "realigned_reads.log"
 
 # output for different classes of discordant reads
 REALIGNED_PAIRED_BAM_FILE = "realigned_paired_reads.bam"
-REALIGNED_UNMAPPED_BAM_FILE = "realigned_unmapped_reads.bam"
+REALIGNED_DISCORDANT_BAM_FILE = "realigned_discordant_paired_reads.bam"
+REALIGNED_UNPAIRED_BAM_FILE = "realigned_unpaired_reads.bam"
+REALIGNED_MULTIMAP_BAM_FILE = "realigned_multimap_reads.bam"
+
+# discordant pairs BAM file
+DISCORDANT_BAM_FILE = "discordant_pairs.bam"
+SORTED_DISCORDANT_BAM_FILE = "discordant_pairs.srt.bam"
 
 # discordant reads BEDPE file
 DISCORDANT_BEDPE_FILE = "discordant_reads.bedpe"

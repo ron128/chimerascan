@@ -28,10 +28,9 @@ from chimerascan import pysam
 from chimerascan.lib import config
 from chimerascan.lib.base import LibraryTypes
 from chimerascan.lib.sam import parse_pe_reads
-from chimerascan.lib.chimera import Chimera, OrientationTags, ORIENTATION_TAG_NAME
+from chimerascan.lib.chimera import Chimera, OrientationTags, ORIENTATION_TAG_NAME, get_orientation
 from chimerascan.lib.batch_sort import batch_sort
 from chimerascan.lib.seq import DNA_reverse_complement
-from chimerascan.pipeline.find_discordant_reads import get_gene_orientation
 
 def to_fastq(qname, readnum, seq, qual, is_reverse=False):
     if is_reverse:
@@ -158,7 +157,7 @@ def extract_single_mapped_reads(chimera_file,
             unmapped_seq = pe_reads[unmapped_readnum][0].seq
             unmapped_qual = pe_reads[unmapped_readnum][0].qual            
             for r in pe_reads[mapped_readnum]:
-                orientation = get_gene_orientation(r, library_type)
+                orientation = get_orientation(r, library_type)
                 # TODO: may need to REVERSE read here to get original
                 r.tags = r.tags + [("R2", unmapped_seq), 
                                    ("Q2", unmapped_qual),

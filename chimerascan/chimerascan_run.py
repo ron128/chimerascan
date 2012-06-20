@@ -51,15 +51,18 @@ from chimerascan.lib.base import LibraryTypes, check_executable, \
     parse_bool, indent_xml, up_to_date
 from chimerascan.lib.seq import FASTQ_QUAL_FORMATS, SANGER_FORMAT, detect_read_length
 from chimerascan.lib.fragment_size_distribution import InsertSizeDistribution
+from chimerascan.lib.feature import TranscriptFeature
 
 from chimerascan.pipeline.process_input_reads import process_input_reads
 from chimerascan.pipeline.align_bowtie2 import bowtie2_align_transcriptome_pe, bowtie2_align_pe, bowtie2_align_pe_sr, bowtie2_align_sr
 from chimerascan.pipeline.find_discordant_reads import find_discordant_fragments
-from chimerascan.pipeline.discordant_reads_to_bedpe import discordant_reads_to_bedpe, sort_bedpe
+from chimerascan.pipeline.transcriptome_to_genome import transcriptome_to_genome
+
+#from chimerascan.pipeline.discordant_reads_to_bedpe import discordant_reads_to_bedpe, sort_bedpe
 from chimerascan.pipeline.nominate_chimeras import nominate_chimeras
 from chimerascan.pipeline.chimeras_to_breakpoints import chimeras_to_breakpoints
-from chimerascan.pipeline.nominate_spanning_reads import nominate_encomp_spanning_reads, extract_single_mapped_reads, nominate_single_mapped_spanning_reads
-from chimerascan.pipeline.merge_spanning_alignments import merge_spanning_alignments
+#from chimerascan.pipeline.nominate_spanning_reads import nominate_encomp_spanning_reads, extract_single_mapped_reads, nominate_single_mapped_spanning_reads
+#from chimerascan.pipeline.merge_spanning_alignments import merge_spanning_alignments
 from chimerascan.pipeline.resolve_discordant_reads import resolve_discordant_reads
 from chimerascan.pipeline.filter_chimeras import filter_chimeras, filter_highest_coverage_isoforms, filter_encompassing_chimeras
 from chimerascan.pipeline.filter_homologous_genes import filter_homologous_genes
@@ -82,12 +85,9 @@ DEFAULT_BOWTIE2_ARGS = ["--end-to-end",
                         "--reorder"]
 
 # defaults for bowtie
-DEFAULT_MIN_FRAG_LENGTH = 0
-DEFAULT_MAX_FRAG_LENGTH = 1000 
 DEFAULT_TRIM5 = 0
 DEFAULT_TRIM3 = 0
 DEFAULT_SEGMENT_LENGTH = None
-DEFAULT_MAX_MULTIHITS = 1
 DEFAULT_HOMOLOGY_MISMATCHES = config.BREAKPOINT_HOMOLOGY_MISMATCHES
 DEFAULT_ANCHOR_MIN = 4
 DEFAULT_ANCHOR_LENGTH = 8
@@ -104,12 +104,12 @@ class RunConfig(object):
              ("library_type", str, DEFAULT_LIBRARY_TYPE),
              ("isize_mean", int, DEFAULT_ISIZE_MEAN),
              ("isize_stdev", float, DEFAULT_ISIZE_STDEV),
-             ("min_fragment_length", int, DEFAULT_MIN_FRAG_LENGTH),
-             ("max_fragment_length", int, DEFAULT_MAX_FRAG_LENGTH),
+             ("min_fragment_length", int, config.DEFAULT_MIN_FRAG_LENGTH),
+             ("max_fragment_length", int, config.DEFAULT_MAX_FRAG_LENGTH),
              ("trim5", int, DEFAULT_TRIM5),
              ("trim3", int, DEFAULT_TRIM3),
              ("segment_length", int, DEFAULT_SEGMENT_LENGTH),
-             ("max_multihits", int, DEFAULT_MAX_MULTIHITS),
+             ("max_multihits", int, config.DEFAULT_MAX_MULTIHITS),
              ("homology_mismatches", int, DEFAULT_HOMOLOGY_MISMATCHES),
              ("anchor_min", int, DEFAULT_ANCHOR_MIN),
              ("anchor_length", int, DEFAULT_ANCHOR_LENGTH),
@@ -228,12 +228,12 @@ class RunConfig(object):
                             help="Trim N bases from 3' end of read")
         parser.add_argument("--min-fragment-length", type=int, 
                             dest="min_fragment_length", 
-                            default=DEFAULT_MIN_FRAG_LENGTH,
+                            default=config.DEFAULT_MIN_FRAG_LENGTH,
                             help="Smallest expected fragment length "
                             "[default=%(default)s]")
         parser.add_argument("--max-fragment-length", type=int, 
                             dest="max_fragment_length", 
-                            default=DEFAULT_MAX_FRAG_LENGTH,
+                            default=config.DEFAULT_MAX_FRAG_LENGTH,
                             help="Largest expected fragment length (reads "
                             "less than this fragment length are assumed to "
                             "be unspliced and contiguous) "
@@ -247,7 +247,7 @@ class RunConfig(object):
                             "(determined empirically by default)")
         parser.add_argument("--multihits", type=int, 
                             dest="max_multihits", 
-                            default=DEFAULT_MAX_MULTIHITS,
+                            default=config.DEFAULT_MAX_MULTIHITS,
                             metavar="N",
                             help="Override size of soft-clipped read "
                             "segments during discordant alignment phase "
@@ -435,15 +435,17 @@ def run_chimerascan(runconfig):
     fh = open(runconfig_xml_file, "w")
     print >>fh, xmlstring
     fh.close()
-    #
-    # Setup run parameters
-    #
+    # read transcripts
+    logging.info("Reading transcript features")
     transcript_file = os.path.join(runconfig.index_dir, config.TRANSCRIPT_FEATURE_FILE)
+    transcripts = list(TranscriptFeature.parse(open(transcript_file)))
+    # setup alignment indexes
     genome_index = os.path.join(runconfig.index_dir, config.GENOME_INDEX)
     transcriptome_index = os.path.join(runconfig.index_dir, config.TRANSCRIPTOME_INDEX)
-    max_hits_file = os.path.join(runconfig.index_dir, 
-                                 config.MAX_MULTIMAPPING_FILE)
-    max_hits = int(open(max_hits_file).next().strip())
+    max_transcriptome_hits_file = os.path.join(runconfig.index_dir, 
+                                               config.MAX_MULTIMAPPING_FILE)
+    max_transcriptome_hits = int(open(max_transcriptome_hits_file).next().strip())
+    # detect read length
     original_read_length = detect_read_length(runconfig.fastq_files[0])
     # minimum fragment length cannot be smaller than the trimmed read length
     trimmed_read_length = (original_read_length - runconfig.trim5 - runconfig.trim3)
@@ -491,7 +493,7 @@ def run_chimerascan(runconfig):
     # Align to transcriptome in paired-end mode, trying to resolve as many 
     # reads as possible.
     #
-    transcriptome_bam_file = os.path.join(runconfig.output_dir, config.TRANSCRIPTOME_BAM_FILE)
+    transcriptome_bam_file = os.path.join(tmp_dir, config.TRANSCRIPTOME_BAM_FILE)
     transcriptome_unaligned_path = os.path.join(tmp_dir, config.TRANSCRIPTOME_UNALIGNED_PATH)
     transcriptome_unaligned_fastq_files = tuple(os.path.join(tmp_dir, fq) for fq in config.TRANSCRIPTOME_UNALIGNED_FASTQ_FILES)
     msg = "Aligning paired-end reads to transcriptome"
@@ -511,47 +513,24 @@ def run_chimerascan(runconfig):
                                                  library_type=runconfig.library_type,
                                                  min_fragment_length=min_fragment_length,
                                                  max_fragment_length=runconfig.max_fragment_length,
-                                                 max_transcriptome_hits=max_hits,
+                                                 max_transcriptome_hits=max_transcriptome_hits,
                                                  num_processors=runconfig.num_processors)
         # cleanup if job failed
         if retcode != config.JOB_SUCCESS:
+            logging.error("[FAILED] %s" % (msg))
             if os.path.exists(transcriptome_bam_file):
                 os.remove(transcriptome_bam_file)
             for f in transcriptome_unaligned_fastq_files:
                 if os.path.exists(f):
                     os.remove(f)
-    
-    return config.JOB_SUCCESS
-    #
-    # Sort transcriptome reads by position
-    #
-    msg = "Sorting transcriptome reads"
-    sorted_transcriptome_bam_file = os.path.join(runconfig.output_dir, 
-                                                 config.SORTED_TRANSCRIPTOME_BAM_FILE)
-    if (up_to_date(sorted_transcriptome_bam_file, transcriptome_bam_file)):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        sorted_aligned_bam_prefix = os.path.splitext(sorted_transcriptome_bam_file)[0]
-        pysam.sort("-m", str(int(1e9)), transcriptome_bam_file, sorted_aligned_bam_prefix)
-    #
-    # Index BAM file
-    #
-    msg = "Indexing BAM file"
-    sorted_aligned_bam_index_file = sorted_transcriptome_bam_file + ".bai"
-    if (up_to_date(sorted_aligned_bam_index_file, sorted_transcriptome_bam_file)):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        pysam.index(sorted_transcriptome_bam_file)
-
+            return config.JOB_ERROR
     #
     # Genome alignment step
     #
     # Align any unaligned transcriptome reads to genome in paired-end mode.
     # Resolve as many reads as possible.
     #
-    genome_bam_file = os.path.join(runconfig.output_dir, config.GENOME_BAM_FILE)
+    genome_bam_file = os.path.join(tmp_dir, config.GENOME_BAM_FILE)
     genome_unaligned_path = os.path.join(tmp_dir, config.GENOME_UNALIGNED_PATH)
     genome_unaligned_fastq_files = tuple(os.path.join(tmp_dir, fq) for fq in config.GENOME_UNALIGNED_FASTQ_FILES)
     msg = "Realigning unaligned paired-end reads to genome"
@@ -569,15 +548,39 @@ def run_chimerascan(runconfig):
                                    library_type=runconfig.library_type,
                                    min_fragment_length=min_fragment_length,
                                    max_fragment_length=runconfig.max_fragment_length,
-                                   max_hits=max_hits,
+                                   max_hits=max_transcriptome_hits,
                                    num_processors=runconfig.num_processors)
         # cleanup if job failed
         if retcode != config.JOB_SUCCESS:
+            logging.error("[FAILED] %s" % (msg))
             if os.path.exists(genome_bam_file):
                 os.remove(genome_bam_file)
             for f in genome_unaligned_fastq_files:
                 if os.path.exists(f):
                     os.remove(f)
+            return config.JOB_ERROR
+    #
+    # Sort transcriptome reads by position
+    #
+    msg = "Sorting transcriptome reads"
+    sorted_transcriptome_bam_file = os.path.join(runconfig.output_dir, 
+                                                 config.SORTED_TRANSCRIPTOME_BAM_FILE)
+    if (up_to_date(sorted_transcriptome_bam_file, transcriptome_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        sorted_aligned_bam_prefix = os.path.splitext(sorted_transcriptome_bam_file)[0]
+        pysam.sort("-m", str(int(1e9)), transcriptome_bam_file, sorted_aligned_bam_prefix)
+    #
+    # Index BAM file
+    #
+    msg = "Indexing BAM file"
+    sorted_transcriptome_bam_index_file = sorted_transcriptome_bam_file + ".bai"
+    if (up_to_date(sorted_transcriptome_bam_index_file, sorted_transcriptome_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        pysam.index(sorted_transcriptome_bam_file)
     #
     # Get insert size distribution
     #
@@ -589,11 +592,11 @@ def run_chimerascan(runconfig):
         isize_dist = InsertSizeDistribution.from_file(open(isize_dist_file, "r"))
     else:
         logging.info(msg)
-        max_isize_samples = config.ISIZE_MAX_SAMPLES
-        bamfh = pysam.Samfile(transcriptome_bam_file, "rb")
-        isize_dist = InsertSizeDistribution.from_bam(bamfh, min_isize=min_fragment_length, 
-                                                     max_isize=runconfig.max_fragment_length, 
-                                                     max_samples=max_isize_samples)
+        bamfh = pysam.Samfile(sorted_transcriptome_bam_file, "rb")
+        isize_dist = InsertSizeDistribution.from_genome_bam(bamfh, transcripts, 
+                                                            min_isize=min_fragment_length, 
+                                                            max_isize=runconfig.max_fragment_length, 
+                                                            max_samples=config.ISIZE_MAX_SAMPLES)
         bamfh.close()
         # if not enough samples, use a normal distribution instead
         # of the empirical distribution
@@ -607,7 +610,7 @@ def run_chimerascan(runconfig):
                                                             runconfig.isize_stdev, 
                                                             min_isize=runconfig.min_fragment_length,
                                                             max_isize=runconfig.max_fragment_length,
-                                                            samples=max_isize_samples)
+                                                            samples=config.ISIZE_MAX_SAMPLES)
         isize_dist.to_file(open(isize_dist_file, "w"))
     #
     # Determine ideal segment length automatically
@@ -621,8 +624,8 @@ def run_chimerascan(runconfig):
     logging.info("Determining soft-clipped segment length")
     logging.debug("\tInsert size at %f percent of distribution is %d" % 
                  (DEFAULT_FRAG_SIZE_SENSITIVITY, optimal_isize))
-    optimal_segment_length = int(round(optimal_isize / 2.0))
-    logging.debug("\tOptimal segment length is %d" % (optimal_segment_length))
+    optimal_segment_length = int(round(optimal_isize / 3.0))
+    logging.debug("\tOptimal segment length is %d/3.0 = %d" % (optimal_isize, optimal_segment_length))
     segment_length = min(optimal_segment_length, trimmed_read_length)
     segment_length = max(config.MIN_SEGMENT_LENGTH, segment_length)
     logging.debug("\tAfter adjusting for min %d and read length %d, final segment length is %d" % 
@@ -639,10 +642,11 @@ def run_chimerascan(runconfig):
     realigned_bam_file = os.path.join(tmp_dir, config.REALIGNED_BAM_FILE)
     realigned_log_file = os.path.join(log_dir, config.REALIGNED_LOG_FILE)
     msg = "Trimming and realigning initially unmapped reads"
-    if all(up_to_date(realigned_bam_file, fq) for fq in genome_unaligned_fastq_files):
+    if (all(up_to_date(realigned_bam_file, fq) for fq in genome_unaligned_fastq_files) and
+        up_to_date(realigned_bam_file, isize_dist_file)):
         logging.info("[SKIPPED] %s" % (msg))
     else:
-        logging.info(msg)           
+        logging.info(msg)
         retcode = bowtie2_align_pe_sr(index=transcriptome_index,
                                       transcript_file=transcript_file,
                                       fastq_files=genome_unaligned_fastq_files,
@@ -650,8 +654,7 @@ def run_chimerascan(runconfig):
                                       log_file=realigned_log_file,
                                       tmp_dir=tmp_dir,
                                       segment_length=segment_length,
-                                      max_hits=max_hits,
-                                      max_multihits=runconfig.max_multihits,
+                                      max_hits=max_transcriptome_hits,
                                       num_processors=runconfig.num_processors)
         if retcode != config.JOB_SUCCESS:
             if os.path.exists(realigned_bam_file):
@@ -665,25 +668,86 @@ def run_chimerascan(runconfig):
     # between different genes, and discordant in the genome
     #
     realigned_paired_bam_file = os.path.join(tmp_dir, config.REALIGNED_PAIRED_BAM_FILE)
-    realigned_unmapped_bam_file = os.path.join(tmp_dir, config.REALIGNED_UNMAPPED_BAM_FILE)
+    realigned_discordant_bam_file = os.path.join(tmp_dir, config.REALIGNED_DISCORDANT_BAM_FILE)
+    realigned_unpaired_bam_file = os.path.join(tmp_dir, config.REALIGNED_UNPAIRED_BAM_FILE)
+    realigned_multimap_bam_file = os.path.join(tmp_dir, config.REALIGNED_MULTIMAP_BAM_FILE)
     msg = "Classifying concordant and discordant read pairs"
     if (up_to_date(realigned_paired_bam_file, realigned_bam_file) and
-        up_to_date(realigned_unmapped_bam_file, realigned_bam_file)):
+        up_to_date(realigned_unpaired_bam_file, realigned_bam_file) and
+        up_to_date(realigned_discordant_bam_file, realigned_bam_file) and 
+        up_to_date(realigned_multimap_bam_file, realigned_bam_file)):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)
-        retcode = find_discordant_fragments(realigned_bam_file, 
+        retcode = find_discordant_fragments(transcripts=transcripts,
+                                            input_bam_file=realigned_bam_file, 
                                             paired_bam_file=realigned_paired_bam_file, 
-                                            unmapped_bam_file=realigned_unmapped_bam_file,
-                                            index_dir=runconfig.index_dir,
+                                            discordant_bam_file=realigned_discordant_bam_file,
+                                            unpaired_bam_file=realigned_unpaired_bam_file,
+                                            multimap_bam_file=realigned_multimap_bam_file,
                                             max_isize=runconfig.max_fragment_length,
+                                            max_multihits=runconfig.max_multihits,
                                             library_type=runconfig.library_type)
         if retcode != config.JOB_SUCCESS:
+            logging.error("[FAILED] %s" % (msg))
             if os.path.exists(realigned_paired_bam_file):
                 os.remove(realigned_paired_bam_file)
-            if os.path.exists(realigned_unmapped_bam_file):
-                os.remove(realigned_unmapped_bam_file)
+            if os.path.exists(realigned_discordant_bam_file):
+                os.remove(realigned_discordant_bam_file)
+            if os.path.exists(realigned_unpaired_bam_file):
+                os.remove(realigned_unpaired_bam_file)
+            if os.path.exists(realigned_multimap_bam_file):
+                os.remove(realigned_multimap_bam_file)
             return config.JOB_ERROR
+    #
+    # Convert discordant transcriptome reads to genome coordinates
+    #
+    discordant_bam_file = os.path.join(tmp_dir, config.DISCORDANT_BAM_FILE)
+    msg = "Converting discordant transcriptome hits to genomic coordinates"
+    if (up_to_date(discordant_bam_file, realigned_paired_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)        
+        retcode = transcriptome_to_genome(genome_index,
+                                          transcripts, 
+                                          input_file=realigned_discordant_bam_file, 
+                                          output_bam_file=discordant_bam_file,
+                                          library_type=runconfig.library_type,
+                                          input_is_sam=False)
+        if retcode != config.JOB_SUCCESS:
+            logging.error("[FAILED] %s" % (msg))
+            if os.path.exists(discordant_bam_file):
+                os.remove(discordant_bam_file)
+            return config.JOB_ERROR
+    #
+    # Sort discordant reads by position
+    #
+    msg = "Sorting discordant BAM file"
+    sorted_discordant_bam_file = os.path.join(runconfig.output_dir, config.SORTED_DISCORDANT_BAM_FILE)
+    if (up_to_date(sorted_discordant_bam_file, discordant_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        bam_prefix = os.path.splitext(sorted_discordant_bam_file)[0]
+        pysam.sort("-m", str(int(1e9)), discordant_bam_file, bam_prefix)
+    #
+    # Index BAM file
+    #
+    msg = "Indexing BAM file"
+    sorted_discordant_bam_index_file = sorted_discordant_bam_file + ".bai"
+    if (up_to_date(sorted_discordant_bam_index_file, sorted_discordant_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        pysam.index(sorted_discordant_bam_file)
+    #
+    # Group discordant reads into chimera candidates
+    # - filter by number of properly paired reads spanning 
+    #   possible breakpoint locations
+    #
+    
+    return config.JOB_SUCCESS
+
     #
     # Write a BEDPE file from discordant reads
     #

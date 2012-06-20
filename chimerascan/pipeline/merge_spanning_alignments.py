@@ -29,10 +29,8 @@ import os
 from chimerascan import pysam
 from chimerascan.lib.chimera import Chimera, DiscordantRead, \
     DiscordantTags, DISCORDANT_TAG_NAME, \
-    OrientationTags, ORIENTATION_TAG_NAME
+    OrientationTags, ORIENTATION_TAG_NAME, get_orientation
 from chimerascan.lib.base import LibraryTypes
-
-from chimerascan.pipeline.find_discordant_reads import get_gene_orientation
 
 def parse_group_by_attr(myiter, attr):
     mylist = []
@@ -152,7 +150,7 @@ def filter_spanning_reads(chimeras, reads,
                            ("IH", 1),
                            ("NH", 1),
                            (DISCORDANT_TAG_NAME, DiscordantTags.DISCORDANT_GENE),
-                           (ORIENTATION_TAG_NAME, get_gene_orientation(r, library_type))]
+                           (ORIENTATION_TAG_NAME, get_orientation(r, library_type))]
         dr = DiscordantRead.from_read(r)
         dr.is_spanning = True
         # check read alignment against chimeras

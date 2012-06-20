@@ -217,7 +217,9 @@ def pair_reads(r1, r2, tags=None):
     r1.mate_is_unmapped = r2.is_unmapped
     r1.mpos = r2.pos
     r1.mrnm = r2.rname
-    r1.tags = r1.tags + tags
+    tags1 = collections.OrderedDict(r1.tags)
+    tags1.update(tags)
+    r1.tags = tags1.items()
     # convert read2 to paired-end        
     r2.is_paired = True
     r2.is_proper_pair = True
@@ -226,7 +228,9 @@ def pair_reads(r1, r2, tags=None):
     r2.mate_is_unmapped = r1.is_unmapped
     r2.mpos = r1.pos
     r2.mrnm = r1.rname
-    r2.tags = r2.tags + tags
+    tags2 = collections.OrderedDict(r2.tags)
+    tags2.update(tags)
+    r2.tags = tags2.items()
     # compute insert size
     if r1.rname != r2.rname:
         r1.isize = 0

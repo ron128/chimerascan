@@ -3,7 +3,9 @@ Created on Jun 3, 2011
 
 @author: mkiyer
 '''
-from base import parse_string_none
+import logging
+
+from base import parse_string_none, LibraryTypes
 from sam import get_clipped_interval
 
 DISCORDANT_TAG_NAME = "XC"
@@ -17,16 +19,37 @@ class DiscordantTags(object):
     DISCORDANT_GENE = 9
     DISCORDANT_GENOME = 17
 
-ORIENTATION_TAG_NAME = "XD"
-class OrientationTags(object):
-    NONE = 0
-    FIVEPRIME = 1
-    THREEPRIME = 2
+ORIENTATION_TAG = "XD"
+ORIENTATION_NONE = 0
+ORIENTATION_5P = 1
+ORIENTATION_3P = 2
+
+DISCORDANT_CLUSTER_TAG = "XE"
+
 
 def cmp_orientation(a,b):
-    if (a == OrientationTags.NONE) or (b == OrientationTags.NONE):
+    if (a == ORIENTATION_NONE) or (b == ORIENTATION_NONE):
         return True
     return (a != b)
+
+def get_orientation(r, library_type):
+    if library_type == LibraryTypes.FR_UNSTRANDED:
+        if r.is_reverse:
+            return ORIENTATION_3P
+        else:
+            return ORIENTATION_5P
+    elif library_type == LibraryTypes.FR_FIRSTSTRAND:
+        if r.is_read2:
+            return ORIENTATION_5P
+        else:
+            return ORIENTATION_3P
+    elif library_type == LibraryTypes.FR_SECONDSTRAND:
+        if r.is_read1:
+            return ORIENTATION_5P
+        else:
+            return ORIENTATION_3P
+    logging.error("Unknown library type %s, aborting" % (library_type))
+    assert False
 
 # constants
 MULTIMAP_BINS = (1,2,4,8,16,32,64,128)
@@ -93,7 +116,7 @@ class DiscordantRead(object):
         a.numhits = r.opt('NH')
         a.mismatches = r.opt('NM')
         a.discordant_type = r.opt(DISCORDANT_TAG_NAME)
-        a.orientation = r.opt(ORIENTATION_TAG_NAME)
+        a.orientation = r.opt(ORIENTATION_TAG)
         a.is_spanning = False
         return a
 

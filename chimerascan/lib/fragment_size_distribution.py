@@ -41,48 +41,55 @@ def build_exon_trees(genes):
             trees[g.chrom].insert_interval(Interval(start, end, strand=g.strand))
     return trees
 
-def find_unambiguous_exon_intervals(genes):
+def find_unambiguous_exon_intervals(transcripts, genome_refs):
     """
     returns (chrom, start, end, strand) tuples for exon
     intervals that are unique and have no overlapping
     transcripts or exons.    
     """
-    trees = build_exon_trees(genes)    
-    for g in genes:
-        for start,end in g.exons:
+    trees = build_exon_trees(transcripts)    
+    for t in transcripts:
+        if t.chrom not in genome_refs:
+            continue
+        for start,end in t.exons:
             hits = set((hit.start, hit.end, hit.strand) 
-                       for hit in trees[g.chrom].find(start, end))
-            hits.add((start, end, g.strand))
+                       for hit in trees[t.chrom].find(start, end))
+            hits.add((start, end, t.strand))
             if len(hits) == 1:
-                yield g.chrom, start, end, g.strand
+                yield t.chrom, start, end, t.strand
 
-def sample_fragment_sizes(bamfh, genes, min_isize, max_isize):
+def sample_fragment_sizes(bamfh, transcripts, min_isize, max_isize):
     """
     sample fragment size distribution at genes with exons
     larger than the maximum insert size
     """
     # find all exons that are larger than the maximum estimated fragment size
-    exons = set(coord for coord in find_unambiguous_exon_intervals(genes)
-                if (coord[2] - coord[1]) >= max_isize)
-    logging.info("Found %d exons larger than %d" % (len(exons), max_isize))
-    refs = set(bamfh.references)
+    logging.debug("Finding large exons to use for estimating fragment size")
+    exons = set()
+    genome_refs = set(bamfh.references)
+    for chrom,start,end,strand in find_unambiguous_exon_intervals(transcripts, genome_refs):
+        if (end - start) >= max_isize:
+            exons.add((chrom,start,end,strand))
+    logging.debug("Found %d exons larger than %d" % (len(exons), min_isize))
     # stats
-    num_reads = 0
+    num_frags = 0
     unmapped = 0
     ambiguous = 0
     spliced = 0
+    splash = 0
     outside_range = 0
     count = 0
     # fetch reads from BAM file at large exons
     for chrom,start,end,strand in exons:
-        if chrom not in refs:
-            logging.warning("Skipping exon from reference %s not in BAM" % (chrom))
-            continue 
-        qname_dict = collections.defaultdict(lambda: [])
         for r in bamfh.fetch(chrom, start, end):
-            num_reads += 1
+            if (r.pos < start) or (r.aend > end):
+                splash += 1
+                continue
+            if r.is_read2:
+                continue
+            num_frags += 1
             # ignore unmapped reads, qc fail reads, or unpaired reads
-            if r.is_unmapped or r.is_qcfail or (not r.is_proper_pair):
+            if (not r.is_proper_pair) or r.is_unmapped or r.is_qcfail:
                 unmapped += 1
                 continue
             # ignore multi-mapping reads
@@ -93,20 +100,15 @@ def sample_fragment_sizes(bamfh, genes, min_isize, max_isize):
             has_skip = any(x[0] in SKIP_CIGAR_FLAGS for x in r.cigar)
             if has_skip:
                 spliced += 1
-                continue            
-            # group paired-end reads by read name
-            qname_dict[r.qname].append(abs(r.isize))
-        # keep paired reads with both mates in region
-        for isizes in qname_dict.itervalues():
-            isizes = set(abs(x) for x in isizes)
-            assert len(isizes) == 1
-            isize = isizes.pop()
+                continue
+            # add isize
+            isize = abs(r.isize)
             if (min_isize <= isize <= max_isize):
                 count += 1
                 yield isize
             else:
                 outside_range += 1
-    logging.debug("Processed reads: %d" % (num_reads))
+    logging.debug("Processed reads: %d" % (num_frags))
     logging.debug("Unique paired frags: %d" % (count))
     logging.debug("Outside range: %d" % (outside_range))
     logging.debug("Unmapped or invalid: %d" % (unmapped))
@@ -268,14 +270,14 @@ class InsertSizeDistribution(object):
         return d
     
     @staticmethod
-    def from_genome_bam(bamfh, genes, min_isize, max_isize, max_samples=None):
+    def from_genome_bam(bamfh, transcripts, min_isize, max_isize, max_samples=None):
         # initialize
         d = InsertSizeDistribution()
         d.min_isize = min_isize
         d.max_isize = max_isize
         d.arr = array.array('L', (0 for x in xrange(min_isize, max_isize+1)))
         count = 0
-        for isize in sample_fragment_sizes(bamfh, genes, min_isize, max_isize):
+        for isize in sample_fragment_sizes(bamfh, transcripts, min_isize, max_isize):
             if (min_isize <= isize <= max_isize):
                 # store in array
                 d.arr[isize - min_isize] += 1
