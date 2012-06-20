@@ -6,12 +6,14 @@ Created on Jun 20, 2012
 import logging
 import argparse
 import sys
+import os
 import collections
 
 from chimerascan.bx.cluster import ClusterTree
-from chimerascan.bx.intersection import Interval, IntervalTree
 from chimerascan import pysam
-from chimerascan.lib.chimera import ORIENTATION_TAG, ORIENTATION_5P, ORIENTATION_3P, DISCORDANT_CLUSTER_TAG
+from chimerascan.lib.sam import parse_pe_reads
+from chimerascan.lib.chimera import ORIENTATION_TAG, ORIENTATION_5P, \
+    ORIENTATION_3P, DISCORDANT_CLUSTER_TAG
 
 def window_overlap(a, b):
     if a[0] != b[0]:
@@ -81,17 +83,25 @@ def add_reads_to_clusters(reads, next_cluster_id):
 def cluster_discordant_reads(discordant_bam_file, 
                              concordant_bam_file, 
                              output_bam_file, 
-                             output_cluster_file):
+                             cluster_file,
+                             cluster_pair_file,
+                             tmp_dir):
+    #
+    # iterate through sorted discordant read alignments and form clusters
+    # of overlapping alignments
+    #
     discordant_bamfh = pysam.Samfile(discordant_bam_file, "rb")
     concordant_bamfh = pysam.Samfile(concordant_bam_file, "rb")
     outbamfh = pysam.Samfile(output_bam_file, "wb", template=discordant_bamfh)
-    outfh = open(output_cluster_file, "w")
+    outfh = open(cluster_file, "w")
     next_cluster_id = 0
-    for locus_reads in cluster_loci(iter(bamfh)):
+    for locus_reads in cluster_loci(iter(discordant_bamfh)):
         locus_clusters, next_cluster_id = add_reads_to_clusters(locus_reads, next_cluster_id)
         for cluster in locus_clusters:
             (rname, start, end, cluster_id, strand, orientation, qnames) = cluster
-            fields = [bamfh.getrname(rname), start, end, cluster_id, strand, len(qnames), orientation, ','.join(qnames)]
+            fields = [discordant_bamfh.getrname(rname), start, end, 
+                      cluster_id, strand, len(qnames), orientation, 
+                      ','.join(qnames)]
             fields = map(str, fields)
             print >>outfh, '\t'.join(fields)
         for r in locus_reads:
@@ -100,20 +110,59 @@ def cluster_discordant_reads(discordant_bam_file,
     outbamfh.close()
     concordant_bamfh.close()
     discordant_bamfh.close()
+    #
+    # sort the BAM file that has cluster annotations by read name
+    #
+    qname_sorted_bam_prefix = os.path.splitext(output_bam_file)[0] + ".byname"
+    qname_sorted_bam_file = qname_sorted_bam_prefix + ".bam" 
+    pysam.sort("-n", "-m", str(int(1e9)), output_bam_file, qname_sorted_bam_prefix)
+    #
+    # iterate through named-sorted bam file and aggregate cluster pairs
+    #
+    cluster_pairs = collections.defaultdict(lambda: [])
+    bamfh = pysam.Samfile(qname_sorted_bam_file, "rb")
+    for pe_reads in parse_pe_reads(bamfh):
+        # group into 5' and 3' reads
+        reads5p = []
+        reads3p = []
+        for reads in pe_reads:
+            for r in reads:
+                orientation = r.opt(ORIENTATION_TAG)
+                if orientation == ORIENTATION_5P:
+                    reads5p.append(r)
+                else:
+                    reads3p.append(r)
+        # iterate through possible pairs
+        for r5p in reads5p:
+            for r3p in reads3p:
+                cluster_id_5p = r5p.opt(DISCORDANT_CLUSTER_TAG)
+                cluster_id_3p = r3p.opt(DISCORDANT_CLUSTER_TAG)
+                cluster_pairs[(cluster_id_5p, cluster_id_3p)].append(r5p.qname)
+    bamfh.close()
+    # write cluster pairs
+    outfh = open(cluster_pair_file, "w")
+    for idtuple, qnames in cluster_pairs.iteritems():
+        id5p, id3p = idtuple
+        print >>outfh, '\t'.join(map(str, [id5p, id3p, ','.join(qnames)]))
+    outfh.close()
     
 def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
+    parser.add_argument("--tmp-dir", dest="tmp_dir", default=None)
     parser.add_argument("discordant_bam_file") 
     parser.add_argument("concordant_bam_file") 
     parser.add_argument("output_bam_file") 
-    parser.add_argument("output_cluster_file") 
+    parser.add_argument("cluster_file") 
+    parser.add_argument("cluster_pair_file") 
     args = parser.parse_args()
     return cluster_discordant_reads(args.discordant_bam_file,
                                     args.concordant_bam_file, 
                                     args.output_bam_file, 
-                                    args.output_cluster_file)
+                                    args.cluster_file,
+                                    args.cluster_pair_file,
+                                    tmp_dir=args.tmp_dir)
 
 if __name__ == '__main__':
     sys.exit(main())
