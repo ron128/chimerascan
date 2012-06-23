@@ -4,6 +4,7 @@ Created on Jun 3, 2011
 @author: mkiyer
 '''
 import logging
+import collections
 
 from base import parse_string_none, LibraryTypes
 from sam import get_clipped_interval
@@ -25,7 +26,16 @@ ORIENTATION_5P = 1
 ORIENTATION_3P = 2
 
 DISCORDANT_CLUSTER_TAG = "XE"
+DiscordantCluster = collections.namedtuple('DiscordantCluster', 
+                                           ('tid', 'start', 'end', 
+                                            'cluster_id', 'strand',
+                                            'orientation', 'qnames',
+                                            'concordant_frags'))
 
+STRAND_TAG = "XS"
+STRAND_POS = "+"
+STRAND_NEG = "-"
+STRAND_NONE = "."
 
 def cmp_orientation(a,b):
     if (a == ORIENTATION_NONE) or (b == ORIENTATION_NONE):

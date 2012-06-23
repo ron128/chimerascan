@@ -9,7 +9,9 @@ import argparse
 import collections
 import subprocess
 
-from chimerascan import pysam
+#from chimerascan import pysam
+import pysam
+
 from chimerascan.lib import config
 from chimerascan.lib.seq import DNA_reverse_complement
 from chimerascan.lib.base import check_executable, LibraryTypes

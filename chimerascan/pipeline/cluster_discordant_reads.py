@@ -9,11 +9,11 @@ import sys
 import os
 import collections
 
-from chimerascan.bx.cluster import ClusterTree
 from chimerascan import pysam
+from chimerascan.bx.cluster import ClusterTree
 from chimerascan.lib.sam import parse_pe_reads
 from chimerascan.lib.chimera import ORIENTATION_TAG, ORIENTATION_5P, \
-    ORIENTATION_3P, DISCORDANT_CLUSTER_TAG
+    ORIENTATION_3P, DISCORDANT_CLUSTER_TAG, DiscordantCluster
 
 def window_overlap(a, b):
     if a[0] != b[0]:
@@ -47,7 +47,31 @@ def cluster_loci(bam_iter):
     if len(window) > 0:
         yield window
 
-def add_reads_to_clusters(reads, next_cluster_id):
+def get_concordant_frags(bamfh, tid, start, end, strand, orientation):
+    # TODO: remove assert
+    assert strand in ("+", "-")
+    qnames = set()
+    rname = bamfh.getrname(tid)
+    read_iter = bamfh.fetch(rname, start, end)
+    for r in bamfh.fetch(rname, start, end):
+        print 'YO', r
+    print 'fetching', rname, start, end
+    # concordant fragments that extend past the cluster boundary are
+    # evidence of non-chimeric transcripts 
+    if (((strand == "+") and (orientation == ORIENTATION_5P)) or
+        ((strand == "-") and (orientation == ORIENTATION_3P))):
+        for r in read_iter:
+            print 'strand', strand, 'or', orientation, 'r', r.qname, r.pos, r.aend
+            if (r.aend > end) or (r.mpos >= end):
+                qnames.add(r.qname)
+    else:
+        for r in read_iter:
+            print 'strand', strand, 'or', orientation, 'r', r.qname, r.pos, r.aend
+            if (r.pos < start) or (r.mpos < start):
+                qnames.add(r.qname)
+    return qnames
+
+def add_reads_to_clusters(reads, next_cluster_id, concordant_bamfh):
     # insert reads into clusters
     cluster_trees = {("+", ORIENTATION_5P): collections.defaultdict(lambda: ClusterTree(0,1)),
                      ("+", ORIENTATION_3P): collections.defaultdict(lambda: ClusterTree(0,1)),
@@ -63,9 +87,9 @@ def add_reads_to_clusters(reads, next_cluster_id):
         cluster_tree.insert(r.pos, r.aend, i)
     # get read clusters
     clusters = []
-    for strand_orientation, rname_cluster_trees in cluster_trees.iteritems():
+    for strand_orientation, tid_cluster_trees in cluster_trees.iteritems():
         strand, orientation = strand_orientation
-        for rname, cluster_tree in rname_cluster_trees.iteritems():
+        for tid, cluster_tree in tid_cluster_trees.iteritems():
             for start, end, indexes in cluster_tree.getregions():
                 cluster_id = next_cluster_id
                 qnames = []
@@ -76,7 +100,19 @@ def add_reads_to_clusters(reads, next_cluster_id):
                     tagdict = collections.OrderedDict(r.tags)
                     tagdict[DISCORDANT_CLUSTER_TAG] = cluster_id
                     r.tags = tagdict.items()
-                clusters.append((rname, start, end, cluster_id, strand, orientation, qnames))
+                # count wild-type non-chimeric fragments spanning cluster
+                concordant_qnames = get_concordant_frags(concordant_bamfh, 
+                                                         tid, start, end, 
+                                                         strand, orientation)
+                cluster = DiscordantCluster(tid=tid,
+                                            start=start,
+                                            end=end,
+                                            cluster_id=cluster_id,
+                                            strand=strand,
+                                            orientation=orientation,
+                                            qnames=qnames,
+                                            concordant_frags=len(concordant_qnames))
+                clusters.append(cluster)
                 next_cluster_id += 1
     return clusters, next_cluster_id
 
@@ -96,12 +132,15 @@ def cluster_discordant_reads(discordant_bam_file,
     outfh = open(cluster_file, "w")
     next_cluster_id = 0
     for locus_reads in cluster_loci(iter(discordant_bamfh)):
-        locus_clusters, next_cluster_id = add_reads_to_clusters(locus_reads, next_cluster_id)
+        locus_clusters, next_cluster_id = \
+            add_reads_to_clusters(locus_reads, next_cluster_id, 
+                                  concordant_bamfh)
         for cluster in locus_clusters:
-            (rname, start, end, cluster_id, strand, orientation, qnames) = cluster
-            fields = [discordant_bamfh.getrname(rname), start, end, 
-                      cluster_id, strand, len(qnames), orientation, 
-                      ','.join(qnames)]
+            fields = [discordant_bamfh.getrname(cluster.tid), 
+                      cluster.start, cluster.end, cluster.cluster_id, 
+                      cluster.strand, cluster.orientation, 
+                      len(cluster.qnames), cluster.concordant_frags,
+                      ','.join(cluster.qnames)]
             fields = map(str, fields)
             print >>outfh, '\t'.join(fields)
         for r in locus_reads:

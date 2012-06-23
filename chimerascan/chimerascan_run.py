@@ -745,6 +745,13 @@ def run_chimerascan(runconfig):
     # - filter by number of properly paired reads spanning 
     #   possible breakpoint locations
     #
+    return config.JOB_SUCCESS
+    cluster_discordant_reads(discordant_bam_file, 
+                             concordant_bam_file, 
+                             output_bam_file, 
+                             cluster_file,
+                             cluster_pair_file,
+                             tmp_dir)
     
     return config.JOB_SUCCESS
 
