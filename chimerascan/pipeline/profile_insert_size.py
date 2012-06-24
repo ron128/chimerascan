@@ -22,8 +22,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 import logging
 import sys
+import pysam
+
 # local imports
-from chimerascan import pysam
 from chimerascan.lib.fragment_size_distribution import InsertSizeDistribution
 
 def main():

@@ -23,7 +23,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import logging
 import os
 
-from chimerascan import pysam
+import pysam
 
 from chimerascan.lib import config
 from chimerascan.lib.base import LibraryTypes
@@ -93,11 +93,11 @@ def parse_reads_by_rname(bamfh, orientation):
         o = r.opt(ORIENTATION_TAG_NAME)
         if o != orientation:
             continue
-        if prev_rname != r.rname:
+        if prev_rname != r.tid:
             if len(reads) > 0:
                 yield reads
                 reads = []
-            prev_rname = r.rname
+            prev_rname = r.tid
         reads.append(r)
     if len(reads) > 0:
         yield reads
@@ -114,7 +114,7 @@ def parse_sync_chimera_with_bam(chimera_file, bam_file, orientation):
     bamfh = pysam.Samfile(bam_file, "rb")
     try:
         for reads in parse_reads_by_rname(bamfh, orientation):
-            read_tx_name = bamfh.references[reads[0].rname]        
+            read_tx_name = bamfh.references[reads[0].tid]        
             if read_tx_name < chimera_tx_name:
                 continue
             while read_tx_name > chimera_tx_name:

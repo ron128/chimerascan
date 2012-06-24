@@ -7,8 +7,9 @@ import sys
 import logging
 import argparse
 
+import pysam
+
 # local imports
-import chimerascan.pysam as pysam
 from chimerascan.lib import config
 
 def sam_to_bam(input_sam_file, output_bam_file):

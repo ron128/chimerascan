@@ -23,7 +23,8 @@ import os
 import sys
 import collections
 
-from chimerascan import pysam
+import pysam
+
 from chimerascan.lib import config
 from chimerascan.lib.feature import TranscriptFeature
 from chimerascan.lib.chimera import DiscordantRead, Chimera, frags_to_encomp_string

@@ -25,8 +25,9 @@ import collections
 import shutil
 import os
 
+import pysam
+
 # local imports
-from chimerascan import pysam
 from chimerascan.lib.chimera import Chimera, DiscordantRead, \
     DiscordantTags, DISCORDANT_TAG_NAME, \
     OrientationTags, ORIENTATION_TAG_NAME, get_orientation

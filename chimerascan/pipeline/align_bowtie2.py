@@ -64,12 +64,23 @@ def bowtie2_align_transcriptome_pe(transcriptome_index,
     # script that writes a genomic BAM file
     py_script = os.path.join(_pipeline_dir, "transcriptome_to_genome.py")
     args = [sys.executable, py_script, "--library-type", library_type, 
-            "--sam", genome_index, transcript_file, "-", bam_file]
+            "--input-sam", "--output-sam", genome_index, transcript_file, 
+            "-", "-"]
     args = map(str, args)
     logging.debug("Transcriptome to Genome converter args: %s" % 
                   (' '.join(args)))
-    convert_p = subprocess.Popen(args, stdin=aln_p.stdout, stderr=logfh)
+    convert_p = subprocess.Popen(args, stdin=aln_p.stdout, stdout=subprocess.PIPE, stderr=logfh)
+    # pipe the SAM output to a filter that writes in BAM format
+    py_script = os.path.join(_pipeline_dir, "sam_to_bam.py")
+    args = [sys.executable, py_script, "-", bam_file] 
+    logging.debug("SAM to BAM converter args: %s" % (' '.join(args)))
+    sam2bam_p = subprocess.Popen(args, stdin=convert_p.stdout, stderr=logfh)    
     # wait for this to finish
+    retcode = sam2bam_p.wait()
+    if retcode != 0:
+        convert_p.terminate()
+        aln_p.terminate()
+        return config.JOB_ERROR
     retcode = convert_p.wait()
     if retcode != 0:
         aln_p.terminate()

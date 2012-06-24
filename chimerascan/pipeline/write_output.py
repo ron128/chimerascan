@@ -26,7 +26,8 @@ import sys
 import operator
 import collections
 
-from chimerascan import pysam
+import pysam
+
 from chimerascan.lib.chimera import Chimera, get_chimera_type
 from chimerascan.lib.feature import TranscriptFeature
 from chimerascan.lib import config

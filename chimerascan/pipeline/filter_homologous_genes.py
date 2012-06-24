@@ -8,7 +8,8 @@ import os
 import collections
 import subprocess
 
-from chimerascan import pysam
+import pysam
+
 from chimerascan.lib import config
 from chimerascan.lib.chimera import Chimera
 from chimerascan.bx.intersection import IntervalTree, Interval
@@ -80,7 +81,7 @@ def filter_homologous_genes(input_file,
         if r.is_unmapped:
             continue
         # reference name must be in list of 3' chimeras
-        rname = tid_rname_map[r.rname]        
+        rname = tid_rname_map[r.tid]        
         if rname not in interval_trees_3p:
             continue
         # get chimera name from 'qname'

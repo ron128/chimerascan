@@ -22,8 +22,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 import operator
 import collections
+import pysam
 
-from chimerascan import pysam
 from seq import DNA_reverse_complement
 
 #
@@ -93,10 +93,10 @@ def group_read_pairs(pe_reads):
         # index read1 by mate reference name and position
         rdict = collections.defaultdict(lambda: collections.deque())
         for r in paired_reads[0]:
-            rdict[(r.mrnm,r.mpos)].append(r)
+            rdict[(r.rnext,r.pnext)].append(r)
         # iterate through read2 and get mate pairs
         for r2 in paired_reads[1]:
-            r1 = rdict[(r2.rname,r2.pos)].popleft()
+            r1 = rdict[(r2.tid,r2.pos)].popleft()
             pairs.append((r1,r2))
     return pairs, unpaired_reads
 
@@ -167,15 +167,15 @@ def copy_read(r):
     a.qname = r.qname
     a.seq = r.seq
     a.flag = r.flag
-    a.rname = r.rname
+    a.tid = r.tid
     a.pos = r.pos
     a.mapq = r.mapq
     a.cigar = r.cigar
-    a.mrnm = r.mrnm
-    a.mpos = r.mpos
+    a.rnext = r.rnext
+    a.pnext = r.pnext
     a.isize = r.isize
     a.qual = r.qual
-    a.tags = r.tags
+    a.tags = list(r.tags)
     return a
 
 def soft_pad_read(fq, r):
@@ -215,8 +215,8 @@ def pair_reads(r1, r2, tags=None):
     r1.is_read1 = True
     r1.mate_is_reverse = r2.is_reverse
     r1.mate_is_unmapped = r2.is_unmapped
-    r1.mpos = r2.pos
-    r1.mrnm = r2.rname
+    r1.rnext = r2.tid
+    r1.pnext = r2.pos
     tags1 = collections.OrderedDict(r1.tags)
     tags1.update(tags)
     r1.tags = tags1.items()
@@ -226,13 +226,13 @@ def pair_reads(r1, r2, tags=None):
     r2.is_read2 = True
     r2.mate_is_reverse = r1.is_reverse
     r2.mate_is_unmapped = r1.is_unmapped
-    r2.mpos = r1.pos
-    r2.mrnm = r1.rname
+    r2.rnext = r1.tid
+    r2.pnext = r1.pos
     tags2 = collections.OrderedDict(r2.tags)
     tags2.update(tags)
     r2.tags = tags2.items()
     # compute insert size
-    if r1.rname != r2.rname:
+    if r1.tid != r2.tid:
         r1.isize = 0
         r2.isize = 0
     elif r1.pos > r2.pos:

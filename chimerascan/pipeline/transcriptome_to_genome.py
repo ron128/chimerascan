@@ -9,16 +9,16 @@ import argparse
 import collections
 import subprocess
 
-#from chimerascan import pysam
 import pysam
 
+import chimerascan
 from chimerascan.lib import config
 from chimerascan.lib.seq import DNA_reverse_complement
 from chimerascan.lib.base import check_executable, LibraryTypes
 from chimerascan.lib.feature import TranscriptFeature
 from chimerascan.lib.sam import copy_read, parse_pe_reads, group_read_pairs, pair_reads
 
-def get_sam_header_from_bowtie2_index(index):
+def get_references_from_bowtie2_index(index):
     # extract sequence names and lengths from bowtie reference
     args = [config.BOWTIE2_INSPECT_BIN, "-s", index]
     p = subprocess.Popen(args, stdout=subprocess.PIPE)
@@ -26,8 +26,7 @@ def get_sam_header_from_bowtie2_index(index):
     retcode = p.wait()
     if retcode != 0:
         return config.JOB_ERROR, {}
-    # parse index information and build SAM header
-    headerdict = {}
+    # parse index information and format as SAM header
     sqlist = []
     for line in stdoutdata.split('\n'):
         if not line:
@@ -41,10 +40,7 @@ def get_sam_header_from_bowtie2_index(index):
         seqname = fields[1]
         seqlen = int(fields[2])
         sqlist.append((seqname, seqlen))
-    sqlist.sort()
-    sqlist = [{'LN': seqlen, 'SN': seqname} for seqname,seqlen in sqlist]
-    headerdict['SQ'] = sqlist
-    return headerdict
+    return sqlist
 
 def reverse_complement_MD_tag(md):
     digits = []
@@ -157,14 +153,14 @@ def convert_read(r, transcript_tid_map, library_type):
     # copy original read and modify it
     newr = copy_read(r)
     if not r.is_unmapped:
-        genome_tid, negstrand, exons = transcript_tid_map[r.rname]
+        genome_tid, negstrand, exons = transcript_tid_map[r.tid]
         # find genomic start position of transcript
         newpos, eindex, testart, toffset = convert_pos(r.pos, negstrand, exons)
         # parse and convert transcript cigar string
         newcigar, alen, spliced = \
             convert_cigar(r.cigar, negstrand, exons, 
                           eindex, testart, toffset)            
-        newr.rname = genome_tid
+        newr.tid = genome_tid
         newr.cigar = newcigar
         # adjust tags
         tagdict = collections.OrderedDict(newr.tags)
@@ -210,8 +206,8 @@ def convert_read_pairs(pairs, transcript_tid_map, library_type):
         newr2 = convert_read(r2, transcript_tid_map, library_type)
         pair_reads(newr1, newr2)
         # key to identify independent alignments
-        k = (newr1.rname, newr1.pos, newr1.aend, 
-             newr2.rname, newr2.pos, newr2.aend)
+        k = (newr1.tid, newr1.pos, newr1.aend, 
+             newr2.tid, newr2.pos, newr2.aend)
         if k not in pairs_dict:
             pairs_dict[k] = (newr1, newr2)
     # compute number of alignment hits
@@ -238,7 +234,7 @@ def convert_unpaired_reads(pe_reads, transcript_tid_map, library_type):
         for r in reads:
             newr = convert_read(r, transcript_tid_map, library_type)
             # key to identify independent alignments
-            k = (newr.rname, newr.pos, newr.aend)
+            k = (newr.tid, newr.pos, newr.aend)
             if k not in unpaired_reads_dict[rnum]:
                 unpaired_reads_dict[rnum][k] = r
                 if not r.is_unmapped:
@@ -254,27 +250,32 @@ def convert_unpaired_reads(pe_reads, transcript_tid_map, library_type):
             yield r
 
 def _setup_and_open_files(genome_index, transcripts,
-                          input_file, output_bam_file, library_type,
-                          input_is_sam):
+                          input_file, output_file, 
+                          library_type, input_sam, 
+                          output_sam):
     # create SAM header from genome index
     logging.debug("Creating genome SAM header")
     if not check_executable(config.BOWTIE2_INSPECT_BIN):
         logging.error("Cannot find bowtie2-inspect binary")
         return config.JOB_ERROR
-    headerdict = get_sam_header_from_bowtie2_index(genome_index)
+    # get references/lengths from bowtie2
+    ref_list = get_references_from_bowtie2_index(genome_index)
     # open input BAM file and add to header
-    if input_is_sam:
+    if input_sam:
         mode = "r"
     else:
         mode = "rb"
     infh = pysam.Samfile(input_file, mode)
-    inheader = infh.header
-    headerdict['HD'] = inheader['HD']
-    headerdict['PG'] = inheader['PG']
-    # open output BAM file with new header 
-    outbamfh = pysam.Samfile(output_bam_file, "wb", header=headerdict)
+    header_dict = dict(infh.header)
+    header_dict['SQ'] = [{'SN': seqname, 'LN': seqlen} for seqname,seqlen in ref_list]
+    # open output BAM file with new header
+    if output_sam:
+        mode = "wh"
+    else:
+        mode = "wb"
+    outfh = pysam.Samfile(output_file, mode, header=header_dict)
     # setup reference name mappings
-    genome_rname_tid_map = dict((rname,i) for i,rname in enumerate(outbamfh.references))    
+    genome_rname_tid_map = dict((rname,i) for i,rname in enumerate(outfh.references))    
     transcriptome_rname_tid_map = dict((rname,i) for i,rname in enumerate(infh.references))
     # read transcript feature and prepare data structure for conversion
     logging.debug("Creating transcript to genome map")
@@ -287,19 +288,20 @@ def _setup_and_open_files(genome_index, transcripts,
         transcript_tid = transcriptome_rname_tid_map[str(t.tx_id)]
         genome_tid = genome_rname_tid_map[t.chrom]
         transcript_tid_map[transcript_tid] = (genome_tid, negstrand, exons)        
-    return infh, outbamfh, transcript_tid_map
+    return infh, outfh, transcript_tid_map
 
 def transcriptome_to_genome(genome_index,
                             transcripts, 
                             input_file, 
-                            output_bam_file,
+                            output_file,
                             library_type,
-                            input_is_sam):
+                            input_sam,
+                            output_sam):
     # setup and open files
-    infh, outbamfh, transcript_tid_map = \
+    infh, outfh, transcript_tid_map = \
         _setup_and_open_files(genome_index, transcripts,
-                              input_file, output_bam_file, library_type,
-                              input_is_sam)
+                              input_file, output_file, library_type,
+                              input_sam, output_sam)
     # now convert BAM reads
     logging.debug("Converting transcriptome to genome BAM")
     num_paired_frags = 0
@@ -311,17 +313,17 @@ def transcriptome_to_genome(genome_index,
             # convert pairs
             for r1,r2 in convert_read_pairs(pairs, transcript_tid_map, 
                                             library_type):
-                outbamfh.write(r1)
-                outbamfh.write(r2)
+                outfh.write(r1)
+                outfh.write(r2)
         else:
             num_unpaired_frags += 1
             for r in convert_unpaired_reads(unpaired_reads, 
                                             transcript_tid_map, 
                                             library_type):
-                outbamfh.write(r)
+                outfh.write(r)
     logging.debug("Paired fragments: %d" % (num_paired_frags))
     logging.debug("Unpaired fragments: %d" % (num_unpaired_frags))
-    outbamfh.close()
+    outfh.close()
     infh.close()
     return config.JOB_SUCCESS
 
@@ -331,12 +333,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--library-type", dest="library_type",
                         default=LibraryTypes.FR_UNSTRANDED)
-    parser.add_argument("--sam", dest="sam", action="store_true", 
+    parser.add_argument("--input-sam", dest="input_sam", action="store_true", 
+                        default=False)
+    parser.add_argument("--output-sam", dest="output_sam", action="store_true", 
                         default=False)
     parser.add_argument("genome_index")
     parser.add_argument("transcript_feature_file")
     parser.add_argument("input_sam_file")
-    parser.add_argument("output_bam_file") 
+    parser.add_argument("output_sam_file") 
     args = parser.parse_args()
     # read transcript features
     logging.debug("Reading transcript features")
@@ -344,9 +348,10 @@ def main():
     return transcriptome_to_genome(args.genome_index,
                                    transcripts,
                                    args.input_sam_file, 
-                                   args.output_bam_file,
+                                   args.output_sam_file,
                                    args.library_type,
-                                   args.sam)
+                                   args.input_sam,
+                                   args.output_sam)
 
 if __name__ == '__main__':
     sys.exit(main())

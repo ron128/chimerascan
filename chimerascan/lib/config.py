@@ -96,8 +96,14 @@ REALIGNED_UNPAIRED_BAM_FILE = "realigned_unpaired_reads.bam"
 REALIGNED_MULTIMAP_BAM_FILE = "realigned_multimap_reads.bam"
 
 # discordant pairs BAM file
+DISCORDANT_SAM_FILE = "discordant_pairs.sam"
 DISCORDANT_BAM_FILE = "discordant_pairs.bam"
 SORTED_DISCORDANT_BAM_FILE = "discordant_pairs.srt.bam"
+
+# discordant clusters
+DISCORDANT_CLUSTER_FILE = "discordant_clusters.txt"
+DISCORDANT_CLUSTER_PAIR_FILE = "discordant_cluster_pairs.txt"
+SORTED_DISCORDANT_CLUSTER_BAM_FILE = "discordant_pairs.clustered.srt.bam"
 
 # discordant reads BEDPE file
 DISCORDANT_BEDPE_FILE = "discordant_reads.bedpe"

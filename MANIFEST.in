@@ -7,36 +7,7 @@
 include MANIFEST.in
 include COPYING
 include INSTALL
-include KNOWN_BUGS
 include THANKS
 
 # bx-python
 include chimerascan/bx/intervalcluster.h
-
-# pysam
-include chimerascan/pysam/csamtools.pxd
-include chimerascan/pysam/ctabix.pxd
-include chimerascan/pysam/pysam_util.h
-include chimerascan/pysam/samtools/*.h
-include chimerascan/pysam/tabix/*.h
-
-# pysam tests
-include chimerascan/pysam/tests/00README.txt
-include chimerascan/pysam/tests/Makefile
-include chimerascan/pysam/tests/ex1.fa
-include chimerascan/pysam/tests/ex1.sam.gz
-include chimerascan/pysam/tests/ex3.sam
-include chimerascan/pysam/tests/ex4.sam
-include chimerascan/pysam/tests/ex5.sam
-include chimerascan/pysam/tests/ex6.sam
-include chimerascan/pysam/tests/ex7.sam
-include chimerascan/pysam/tests/ex8.sam
-include chimerascan/pysam/tests/example.py
-include chimerascan/pysam/tests/pysam_test.py
-include chimerascan/pysam/tests/segfault_tests.py
-
-# tabix tests
-include chimerascan/pysam/tests/tabix_test.py
-include chimerascan/pysam/tests/example.gtf.gz
-include chimerascan/pysam/tests/example.gtf.gz.tbi
-

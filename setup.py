@@ -8,9 +8,6 @@ Created on Jan 5, 2011
 from distutils.core import setup
 from distutils.extension import Extension
 
-import os
-import glob
-
 # local imports
 import chimerascan
 
@@ -26,7 +23,6 @@ setup_kwargs = {"name": "chimerascan",
                 "platforms": "Linux",
                 "url": "http://chimerascan.googlecode.com",
                 "packages": ["chimerascan",
-                             "chimerascan.pysam",
                              "chimerascan.bx",
                              "chimerascan.pipeline",
                              "chimerascan.lib",
@@ -35,32 +31,11 @@ setup_kwargs = {"name": "chimerascan",
                 "scripts": ["chimerascan/chimerascan_run.py",
                             "chimerascan/chimerascan_index.py",
                             "chimerascan/tools/chimerascan_html_table.py",
-                            "chimerascan/tools/gtf_to_genepred.py",
                             "chimerascan/tools/make_false_positive_file.py"]}
 
 # ---- Extension Modules ----------------------------------------------------
 
 def get_cython_extension_modules():
-    # pysam - samtools
-    samtools = Extension("chimerascan.pysam.csamtools", # name of extension
-                         ["chimerascan/pysam/csamtools.pyx",
-                          "chimerascan/pysam/pysam_util.c"] +\
-                          glob.glob( os.path.join( "chimerascan", "pysam", "samtools", "*.c" )),
-                          library_dirs=[],
-                          include_dirs=[ "chimerascan/pysam/samtools", "chimerascan/pysam" ],
-                          libraries=[ "z", ],
-                          language="c",
-                          define_macros = [('FILE_OFFSET_BITS','64'),
-                                           ('_USE_KNETFILE','')])     
-    # pysam - tabix
-    tabix = Extension("chimerascan.pysam.ctabix", # name of extension
-                      ["chimerascan/pysam/ctabix.pyx" ]  +\
-                      glob.glob(os.path.join("chimerascan", "pysam", "tabix", "*.c")),
-                      library_dirs=[],
-                      include_dirs=[ "chimerascan/pysam/tabix", "chimerascan/pysam" ],
-                      libraries=[ "z", ],
-                      language="c",
-                      )
     # Interval clustering                
     bx_cluster = Extension("chimerascan.bx.cluster", 
                            ["chimerascan/bx/cluster.pyx", "chimerascan/bx/intervalcluster.c"], 
@@ -68,29 +43,9 @@ def get_cython_extension_modules():
     # Interval intersection
     bx_interval = Extension("chimerascan.bx.intersection",
                             ["chimerascan/bx/intersection.pyx" ])
-    return [samtools, tabix, bx_cluster, bx_interval]
+    return [bx_cluster, bx_interval]
 
 def get_c_extension_modules():
-    # pysam - samtools
-    samtools = Extension("chimerascan.pysam.csamtools", # name of extension
-                         ["chimerascan/pysam/csamtools.c",
-                          "chimerascan/pysam/pysam_util.c"] +\
-                          glob.glob( os.path.join( "chimerascan", "pysam", "samtools", "*.c" )),
-                          library_dirs=[],
-                          include_dirs=[ "chimerascan/pysam/samtools", "chimerascan/pysam" ],
-                          libraries=[ "z", ],
-                          language="c",
-                          define_macros = [('FILE_OFFSET_BITS','64'),
-                                           ('_USE_KNETFILE','')])     
-    # pysam - tabix
-    tabix = Extension("chimerascan.pysam.ctabix", # name of extension
-                      ["chimerascan/pysam/ctabix.c" ]  +\
-                      glob.glob(os.path.join("chimerascan", "pysam", "tabix", "*.c")),
-                      library_dirs=[],
-                      include_dirs=[ "chimerascan/pysam/tabix", "chimerascan/pysam" ],
-                      libraries=[ "z", ],
-                      language="c",
-                      )
     # Interval clustering                
     bx_cluster = Extension("chimerascan.bx.cluster", 
                            ["chimerascan/bx/cluster.c", "chimerascan/bx/intervalcluster.c"], 
@@ -98,7 +53,7 @@ def get_c_extension_modules():
     # Interval intersection
     bx_interval = Extension("chimerascan.bx.intersection",
                             ["chimerascan/bx/intersection.c"])
-    return [samtools, tabix, bx_cluster, bx_interval]
+    return [bx_cluster, bx_interval]
 
 def main():
     setup(ext_modules=get_c_extension_modules(),

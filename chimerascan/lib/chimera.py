@@ -118,7 +118,7 @@ class DiscordantRead(object):
         a.hit_index = r.opt('HI')
         a.readnum = 1 if r.is_read2 else 0
         a.seq = r.seq
-        a.tid = r.rname
+        a.tid = r.tid
         a.pos = r.pos
         a.aend = r.aend
         a.clipstart, a.clipend = get_clipped_interval(r)

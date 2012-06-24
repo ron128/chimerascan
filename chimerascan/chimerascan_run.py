@@ -31,21 +31,25 @@ __maintainer__ = "Matthew Iyer"
 __email__ = "mkiyer@med.umich.edu"
 __status__ = "beta"
 
-import logging
-import os
-import subprocess
 import sys
-import shutil
-import argparse
-import xml.etree.ElementTree as etree 
+import logging
 
 # check for python version 2.7.0 or greater
 if sys.version_info < (2,7,1):
     sys.stderr.write("You need python 2.7.1 or later to run chimerascan\n")
     sys.exit(1)
 
+# standard modules
+import os
+import subprocess
+import shutil
+import argparse
+import xml.etree.ElementTree as etree
+
+# third-party modules
+import pysam
+
 # local imports
-from chimerascan import pysam
 import chimerascan.lib.config as config
 from chimerascan.lib.base import LibraryTypes, check_executable, \
     parse_bool, indent_xml, up_to_date
@@ -57,16 +61,18 @@ from chimerascan.pipeline.process_input_reads import process_input_reads
 from chimerascan.pipeline.align_bowtie2 import bowtie2_align_transcriptome_pe, bowtie2_align_pe, bowtie2_align_pe_sr, bowtie2_align_sr
 from chimerascan.pipeline.find_discordant_reads import find_discordant_fragments
 from chimerascan.pipeline.transcriptome_to_genome import transcriptome_to_genome
+from chimerascan.pipeline.sam_to_bam import sam_to_bam
+from chimerascan.pipeline.cluster_discordant_reads import cluster_discordant_reads
 
 #from chimerascan.pipeline.discordant_reads_to_bedpe import discordant_reads_to_bedpe, sort_bedpe
-from chimerascan.pipeline.nominate_chimeras import nominate_chimeras
-from chimerascan.pipeline.chimeras_to_breakpoints import chimeras_to_breakpoints
+#from chimerascan.pipeline.nominate_chimeras import nominate_chimeras
+#from chimerascan.pipeline.chimeras_to_breakpoints import chimeras_to_breakpoints
 #from chimerascan.pipeline.nominate_spanning_reads import nominate_encomp_spanning_reads, extract_single_mapped_reads, nominate_single_mapped_spanning_reads
 #from chimerascan.pipeline.merge_spanning_alignments import merge_spanning_alignments
-from chimerascan.pipeline.resolve_discordant_reads import resolve_discordant_reads
-from chimerascan.pipeline.filter_chimeras import filter_chimeras, filter_highest_coverage_isoforms, filter_encompassing_chimeras
-from chimerascan.pipeline.filter_homologous_genes import filter_homologous_genes
-from chimerascan.pipeline.write_output import write_output
+#from chimerascan.pipeline.resolve_discordant_reads import resolve_discordant_reads
+#from chimerascan.pipeline.filter_chimeras import filter_chimeras, filter_highest_coverage_isoforms, filter_encompassing_chimeras
+#from chimerascan.pipeline.filter_homologous_genes import filter_homologous_genes
+#from chimerascan.pipeline.write_output import write_output
 
 # global default parameters
 DEFAULT_NUM_PROCESSORS = config.BASE_PROCESSORS
@@ -708,12 +714,19 @@ def run_chimerascan(runconfig):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)        
-        retcode = transcriptome_to_genome(genome_index,
-                                          transcripts, 
+        discordant_sam_file = os.path.join(tmp_dir, config.DISCORDANT_SAM_FILE)
+        retcode = transcriptome_to_genome(genome_index, transcripts, 
                                           input_file=realigned_discordant_bam_file, 
-                                          output_bam_file=discordant_bam_file,
+                                          output_file=discordant_sam_file,
                                           library_type=runconfig.library_type,
-                                          input_is_sam=False)
+                                          input_sam=False,
+                                          output_sam=True)
+        if retcode != config.JOB_SUCCESS:
+            logging.error("[FAILED] %s" % (msg))
+            if os.path.exists(discordant_sam_file):
+                os.remove(discordant_sam_file)
+            return config.JOB_ERROR
+        retcode = sam_to_bam(discordant_sam_file, discordant_bam_file)
         if retcode != config.JOB_SUCCESS:
             logging.error("[FAILED] %s" % (msg))
             if os.path.exists(discordant_bam_file):
@@ -741,18 +754,24 @@ def run_chimerascan(runconfig):
         logging.info(msg)
         pysam.index(sorted_discordant_bam_file)
     #
-    # Group discordant reads into chimera candidates
-    # - filter by number of properly paired reads spanning 
-    #   possible breakpoint locations
+    # Cluster discordant reads into chimera candidates
     #
-    return config.JOB_SUCCESS
-    cluster_discordant_reads(discordant_bam_file, 
-                             concordant_bam_file, 
-                             output_bam_file, 
-                             cluster_file,
-                             cluster_pair_file,
-                             tmp_dir)
-    
+    discordant_cluster_file = os.path.join(tmp_dir, config.DISCORDANT_CLUSTER_FILE)
+    discordant_cluster_pair_file = os.path.join(tmp_dir, config.DISCORDANT_CLUSTER_PAIR_FILE)
+    sorted_discordant_cluster_bam_file = os.path.join(tmp_dir, config.SORTED_DISCORDANT_CLUSTER_BAM_FILE)
+    msg = "Clustering discordant reads"
+    if (up_to_date(sorted_discordant_cluster_bam_file, sorted_discordant_bam_file) and
+        up_to_date(discordant_cluster_pair_file, sorted_discordant_bam_file) and
+        up_to_date(discordant_cluster_file, sorted_discordant_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        cluster_discordant_reads(discordant_bam_file=sorted_discordant_bam_file, 
+                                 concordant_bam_file=sorted_transcriptome_bam_file, 
+                                 output_bam_file=sorted_discordant_cluster_bam_file, 
+                                 cluster_file=discordant_cluster_file,
+                                 cluster_pair_file=discordant_cluster_pair_file,
+                                 tmp_dir=tmp_dir)
+
     return config.JOB_SUCCESS
 
     #

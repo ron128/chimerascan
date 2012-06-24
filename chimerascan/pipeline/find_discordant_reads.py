@@ -9,7 +9,8 @@ import os
 import sys
 import argparse
 
-from chimerascan import pysam
+import pysam
+
 from chimerascan.lib import config
 from chimerascan.lib.base import LibraryTypes
 from chimerascan.lib.sam import parse_pe_reads, pair_reads, copy_read, select_best_scoring_pairs
@@ -24,10 +25,10 @@ def count_transcriptome_multimaps(bamfh, reads, tid_tx_genome_map):
         if r.is_unmapped:
             return 0
         # TODO: remove assert statement
-        assert r.rname in tid_tx_genome_map
+        assert r.tid in tid_tx_genome_map
         # use the position that is most 5' relative to genome
-        left_tid, left_strand, left_pos = transcript_to_genome_pos(r.rname, r.pos, tid_tx_genome_map)
-        right_tid, right_strand, right_pos = transcript_to_genome_pos(r.rname, r.aend-1, tid_tx_genome_map)
+        left_tid, left_strand, left_pos = transcript_to_genome_pos(r.tid, r.pos, tid_tx_genome_map)
+        right_tid, right_strand, right_pos = transcript_to_genome_pos(r.tid, r.aend-1, tid_tx_genome_map)
         hits.add((left_tid, left_pos, right_pos))
     return len(hits)
 
@@ -42,13 +43,13 @@ def map_reads_to_references(pe_reads, tid_tx_map):
             if r.is_unmapped:
                 continue 
             # TODO: remove assert statement
-            assert r.rname in tid_tx_map
+            assert r.tid in tid_tx_map
             # add to cluster dict
-            cluster_id = tid_tx_map[r.rname].cluster_id
+            cluster_id = tid_tx_map[r.tid].cluster_id
             pairs = clusterdict[cluster_id]
             pairs[readnum].append(r)
             # add to reference dict
-            pairs = refdict[r.rname]
+            pairs = refdict[r.tid]
             pairs[readnum].append(r)
     return refdict, clusterdict
 

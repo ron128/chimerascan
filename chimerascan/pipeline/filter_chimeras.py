@@ -24,7 +24,8 @@ import logging
 import collections
 import os
 
-from chimerascan import pysam
+import pysam
+
 from chimerascan.lib.transcriptome_to_genome import build_transcript_genome_map, \
     transcript_to_genome_pos, build_transcript_cluster_map
 from chimerascan.lib.chimera import Chimera
@@ -40,12 +41,12 @@ def filter_unique_frags(c, threshold):
 
 def get_wildtype_frags_5p(rname, start, end, bamfh):
     num_wildtype_frags = len(set(r.qname for r in bamfh.fetch(rname, start, end)
-                                 if (not r.mate_is_unmapped) and (r.mpos >= end)))
+                                 if (not r.mate_is_unmapped) and (r.pnext >= end)))
     return num_wildtype_frags
 
 def get_wildtype_frags_3p(rname, start, end, bamfh):
     num_wildtype_frags = len(set(r.qname for r in bamfh.fetch(rname, start, end)
-                                 if (not r.mate_is_unmapped) and (r.mpos < start)))
+                                 if (not r.mate_is_unmapped) and (r.pnext < start)))
     return num_wildtype_frags
 
 def get_wildtype_frags(c, bamfh):

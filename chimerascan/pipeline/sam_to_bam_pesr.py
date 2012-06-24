@@ -12,8 +12,9 @@ import sys
 import logging
 import argparse
 
+import pysam
+
 # local imports
-import chimerascan.pysam as pysam
 from chimerascan.lib import config
 from chimerascan.lib.sam import soft_pad_read
 from chimerascan.lib.seq import parse_fastq_record
