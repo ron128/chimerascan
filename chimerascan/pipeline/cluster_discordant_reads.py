@@ -8,6 +8,7 @@ import argparse
 import sys
 import os
 import collections
+import shelve
 
 import pysam
 
@@ -50,11 +51,10 @@ def cluster_loci(bam_iter):
     if len(window) > 0:
         yield window
 
-def get_concordant_frags(bamfh, tid, start, end, strand, orientation):
+def get_concordant_frags(bamfh, rname, start, end, strand, orientation):
     # TODO: remove assert
     assert strand in ("+", "-")
     qnames = set()
-    rname = bamfh.getrname(tid)
     read_iter = bamfh.fetch(rname, start, end)
     # concordant fragments that extend past the cluster boundary are
     # evidence of non-chimeric transcripts 
@@ -69,7 +69,7 @@ def get_concordant_frags(bamfh, tid, start, end, strand, orientation):
                 qnames.add(r.qname)
     return qnames
 
-def add_reads_to_clusters(reads, next_cluster_id, concordant_bamfh):
+def add_reads_to_clusters(discordant_bamfh, reads, next_cluster_id, concordant_bamfh):
     # insert reads into clusters
     cluster_trees = {("+", ORIENTATION_5P): collections.defaultdict(lambda: ClusterTree(0,1)),
                      ("+", ORIENTATION_3P): collections.defaultdict(lambda: ClusterTree(0,1)),
@@ -88,6 +88,7 @@ def add_reads_to_clusters(reads, next_cluster_id, concordant_bamfh):
     for strand_orientation, tid_cluster_trees in cluster_trees.iteritems():
         strand, orientation = strand_orientation
         for tid, cluster_tree in tid_cluster_trees.iteritems():
+            rname = discordant_bamfh.getrname(tid)
             for start, end, indexes in cluster_tree.getregions():
                 cluster_id = next_cluster_id
                 qnames = []
@@ -100,9 +101,9 @@ def add_reads_to_clusters(reads, next_cluster_id, concordant_bamfh):
                     r.tags = tagdict.items()
                 # count wild-type non-chimeric fragments spanning cluster
                 concordant_qnames = get_concordant_frags(concordant_bamfh, 
-                                                         tid, start, end, 
+                                                         rname, start, end, 
                                                          strand, orientation)
-                cluster = DiscordantCluster(tid=tid,
+                cluster = DiscordantCluster(rname=rname,
                                             start=start,
                                             end=end,
                                             cluster_id=cluster_id,
@@ -118,6 +119,7 @@ def cluster_discordant_reads(discordant_bam_file,
                              concordant_bam_file, 
                              output_bam_file, 
                              cluster_file,
+                             cluster_shelve_file,
                              cluster_pair_file,
                              tmp_dir):
     if tmp_dir is None:
@@ -131,21 +133,25 @@ def cluster_discordant_reads(discordant_bam_file,
     concordant_bamfh = pysam.Samfile(concordant_bam_file, "rb")
     outbamfh = pysam.Samfile(output_bam_file, "wb", template=discordant_bamfh)
     outfh = open(cluster_file, "w")
+    db = shelve.open(cluster_shelve_file)
     next_cluster_id = 0
     for locus_reads in cluster_loci(iter(discordant_bamfh)):
         locus_clusters, next_cluster_id = \
-            add_reads_to_clusters(locus_reads, next_cluster_id, 
-                                  concordant_bamfh)
+            add_reads_to_clusters(discordant_bamfh, locus_reads, 
+                                  next_cluster_id, concordant_bamfh)
         for cluster in locus_clusters:
-            fields = [discordant_bamfh.getrname(cluster.tid), 
-                      cluster.start, cluster.end, cluster.cluster_id, 
-                      cluster.strand, cluster.orientation, 
-                      len(cluster.qnames), cluster.concordant_frags,
-                      ','.join(cluster.qnames)]
+            # write to shelve database
+            db[str(cluster.cluster_id)] = cluster
+            # write as tab-delimited text
+            fields = [cluster.rname, cluster.start, cluster.end, 
+                      cluster.cluster_id, cluster.strand, 
+                      cluster.orientation, len(cluster.qnames), 
+                      cluster.concordant_frags, ','.join(cluster.qnames)]
             fields = map(str, fields)
             print >>outfh, '\t'.join(fields)
         for r in locus_reads:
             outbamfh.write(r)
+    db.close()
     outfh.close()
     outbamfh.close()
     concordant_bamfh.close()
@@ -188,9 +194,11 @@ def cluster_discordant_reads(discordant_bam_file,
     bamfh.close()
     # write cluster pairs
     outfh = open(cluster_pair_file, "w")
+    pair_id = 0
     for idtuple, qnames in cluster_pairs.iteritems():
         id5p, id3p = idtuple
-        print >>outfh, '\t'.join(map(str, [id5p, id3p, ','.join(qnames)]))
+        print >>outfh, '\t'.join(map(str, [pair_id, id5p, id3p, ','.join(qnames)]))
+        pair_id += 1
     outfh.close()
     # remove temporary files
     if os.path.exists(qname_sorted_bam_file):
@@ -205,13 +213,15 @@ def main():
     parser.add_argument("discordant_bam_file") 
     parser.add_argument("concordant_bam_file") 
     parser.add_argument("output_bam_file") 
-    parser.add_argument("cluster_file") 
+    parser.add_argument("cluster_file")
+    parser.add_argument("cluster_shelve_file")
     parser.add_argument("cluster_pair_file") 
     args = parser.parse_args()
     return cluster_discordant_reads(args.discordant_bam_file,
                                     args.concordant_bam_file, 
                                     args.output_bam_file, 
                                     args.cluster_file,
+                                    args.cluster_shelve_file,
                                     args.cluster_pair_file,
                                     tmp_dir=args.tmp_dir)
 

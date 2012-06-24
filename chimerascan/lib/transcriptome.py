@@ -42,15 +42,6 @@ def build_transcript_map(feature_iter):
         tx_map[str(f.tx_id)] = f
     return tx_map
 
-def build_genome_transcript_trees(feature_iter):
-    genome_tx_trees = collections.defaultdict(lambda: IntervalTree())    
-    # build gene and genome data structures for fast lookup
-    for g in feature_iter:
-        # add gene to interval tree
-        interval = Interval(g.tx_start, g.tx_end, strand=g.strand, value=g)
-        genome_tx_trees[g.chrom].insert_interval(interval)
-    return genome_tx_trees
-
 def cluster_transcripts(feature_iter):
     # setup cluster trees
     chrom_strand_cluster_trees = \

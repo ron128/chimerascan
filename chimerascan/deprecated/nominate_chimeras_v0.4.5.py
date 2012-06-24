@@ -28,7 +28,7 @@ import pysam
 from chimerascan.lib import config
 from chimerascan.lib.feature import TranscriptFeature
 from chimerascan.lib.chimera import DiscordantRead, Chimera, frags_to_encomp_string
-from chimerascan.lib.transcriptome_to_genome import build_transcript_map
+from chimerascan.lib.transcriptome import build_transcript_map
 from chimerascan.lib.fragment_size_distribution import InsertSizeDistribution
 from chimerascan.lib.seq import calc_homology
 

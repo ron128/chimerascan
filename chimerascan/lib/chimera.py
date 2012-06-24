@@ -9,6 +9,11 @@ import collections
 from base import parse_string_none, LibraryTypes
 from sam import get_clipped_interval
 
+STRAND_TAG = "XS"
+STRAND_POS = "+"
+STRAND_NEG = "-"
+STRAND_NONE = "."
+
 DISCORDANT_TAG_NAME = "XC"
 class DiscordantTags(object):
     CONCORDANT_TX = 0
@@ -24,18 +29,6 @@ ORIENTATION_TAG = "XD"
 ORIENTATION_NONE = 0
 ORIENTATION_5P = 1
 ORIENTATION_3P = 2
-
-DISCORDANT_CLUSTER_TAG = "XE"
-DiscordantCluster = collections.namedtuple('DiscordantCluster', 
-                                           ('tid', 'start', 'end', 
-                                            'cluster_id', 'strand',
-                                            'orientation', 'qnames',
-                                            'concordant_frags'))
-
-STRAND_TAG = "XS"
-STRAND_POS = "+"
-STRAND_NEG = "-"
-STRAND_NONE = "."
 
 def cmp_orientation(a,b):
     if (a == ORIENTATION_NONE) or (b == ORIENTATION_NONE):
@@ -60,6 +53,26 @@ def get_orientation(r, library_type):
             return ORIENTATION_3P
     logging.error("Unknown library type %s, aborting" % (library_type))
     assert False
+
+
+DISCORDANT_CLUSTER_TAG = "XE"
+DiscordantCluster = collections.namedtuple('DiscordantCluster', 
+                                           ('rname', 'start', 'end', 
+                                            'cluster_id', 'strand',
+                                            'orientation', 'qnames',
+                                            'concordant_frags'))
+
+DiscordantClusterPair = collections.namedtuple('DiscordantClusterPair',
+                                               ('pair_id', 'id5p', 'id3p', 'qnames'))
+
+def parse_discordant_cluster_pair_file(line_iter):
+    for line in line_iter:
+        fields = line.strip().split('\t')
+        pair_id = int(fields[0])
+        id5p = int(fields[1])
+        id3p = int(fields[2])
+        qnames = fields[3].split(',')
+        yield DiscordantClusterPair(pair_id, id5p, id3p, qnames)
 
 # constants
 MULTIMAP_BINS = (1,2,4,8,16,32,64,128)

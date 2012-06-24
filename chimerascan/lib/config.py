@@ -44,7 +44,7 @@ MAX_MULTIMAPPING_FILE = 'max_multihits.txt'
 LOG_DIR = "log"
 TMP_DIR = "tmp"
 
-# constraints for run configuration
+# defaults and constraints for run configuration
 BASE_PROCESSORS = 2
 MIN_SEGMENT_LENGTH = 25
 DEFAULT_MIN_FRAG_LENGTH = 0
@@ -73,12 +73,9 @@ GENOME_UNALIGNED_FASTQ_FILES = ("genome_unaligned.1.fq",
                                 "genome_unaligned.2.fq")
 GENOME_LOG_FILE = "genome_alignment.log"
 
-# sorted aligned reads bam file
-#SORTED_ALIGNED_READS_BAM_FILE = "sorted_aligned_reads.bam"
-
 # insert size estimation parameters
 ISIZE_MIN_SAMPLES = 100
-ISIZE_MAX_SAMPLES = 1e6
+ISIZE_MAX_SAMPLES = 5e6
 ISIZE_DIST_FILE = "isize_dist.txt"
 
 # interleaved segmented paired-end reads file
@@ -90,63 +87,70 @@ REALIGNED_BAM_FILE = "realigned_reads.bam"
 REALIGNED_LOG_FILE = "realigned_reads.log"
 
 # output for different classes of discordant reads
-REALIGNED_PAIRED_BAM_FILE = "realigned_paired_reads.bam"
-REALIGNED_DISCORDANT_BAM_FILE = "realigned_discordant_paired_reads.bam"
-REALIGNED_UNPAIRED_BAM_FILE = "realigned_unpaired_reads.bam"
-REALIGNED_MULTIMAP_BAM_FILE = "realigned_multimap_reads.bam"
+PAIRED_BAM_FILE = "realigned_paired_reads.bam"
+DISCORDANT_BAM_FILE = "realigned_discordant_pairs.bam"
+UNPAIRED_BAM_FILE = "realigned_unpaired_reads.bam"
+UNMAPPED_BAM_FILE = "realigned_unmapped_reads.bam"
+MULTIMAP_BAM_FILE = "realigned_multimap_reads.bam"
+UNRESOLVED_BAM_FILE = "realigned_unresolved_reads.bam"
 
 # discordant pairs BAM file
-DISCORDANT_SAM_FILE = "discordant_pairs.sam"
-DISCORDANT_BAM_FILE = "discordant_pairs.bam"
-SORTED_DISCORDANT_BAM_FILE = "discordant_pairs.srt.bam"
+DISCORDANT_GENOME_SAM_FILE = "realigned_discordant_pairs.genome.sam"
+DISCORDANT_GENOME_BAM_FILE = "realigned_discordant_pairs.genome.bam"
+SORTED_DISCORDANT_GENOME_BAM_FILE = "realigned_discordant_pairs.genome.srt.bam"
 
 # discordant clusters
 DISCORDANT_CLUSTER_FILE = "discordant_clusters.txt"
+DISCORDANT_CLUSTER_SHELVE_FILE = "discordant_clusters.shelve"
 DISCORDANT_CLUSTER_PAIR_FILE = "discordant_cluster_pairs.txt"
-SORTED_DISCORDANT_CLUSTER_BAM_FILE = "discordant_pairs.clustered.srt.bam"
+SORTED_DISCORDANT_GENOME_CLUSTER_BAM_FILE = "realigned_discordant_pairs.genome.clustered.srt.bam"
 
-# discordant reads BEDPE file
-DISCORDANT_BEDPE_FILE = "discordant_reads.bedpe"
-SORTED_DISCORDANT_BEDPE_FILE = "discordant_reads.srt.bedpe"
+# output files
+UNFILTERED_OUTPUT_FILE = "chimeras.unfiltered.bedpe"
+OUTPUT_FILE = "chimeras.bedpe"
 
-# chimera candidates with encompassing read support
-ENCOMPASSING_CHIMERA_FILE = "encompassing_chimeras.txt"
-FILTERED_ENCOMPASSING_CHIMERA_FILE = "encompassing_chimeras.filtered.txt"
-
-# amount of trimming to use to stop reads from overlapping 
-# exon boundaries and going into intronic space
-EXON_JUNCTION_TRIM_BP = 10
-
-# number of homology mismatches in breakpoint sequences 
-# to tolerate when computing homology distance
-BREAKPOINT_HOMOLOGY_MISMATCHES = 2
-BREAKPOINT_CHIMERA_FILE = "encompassing_chimeras.breakpoint_sorted.txt"
-BREAKPOINT_MAP_FILE = "breakpoints.txt"
-BREAKPOINT_FASTA_FILE = "breakpoints.fa"
-BREAKPOINT_INDEX = "breakpoints"
-BREAKPOINT_BOWTIE2_FILES = ((BREAKPOINT_INDEX + x) for x in BOWTIE2_INDEX_FILE_EXTS) 
-
-# reads to remap to breakpoint junction index
-ENCOMP_SPANNING_FASTQ_FILE = "encomp_spanning_reads.fq"
-SINGLE_MAPPED_BAM_FILE = "singlemap_reads.srt.bam"
-SINGLEMAP_SPANNING_FASTQ_FILE = "singlemap_spanning_reads.fq"
-UNALIGNED_SPANNING_FASTQ_FILE = "unaligned_spanning_reads.fq"
-
-# results of aligning reads to breakpoint index
-ENCOMP_SPANNING_BAM_FILE = "encomp_spanning_reads.bam"
-SORTED_ENCOMP_SPANNING_BAM_FILE = "encomp_spanning_reads.srt.bam"
-SINGLEMAP_SPANNING_BAM_FILE = "singlemap_spanning_reads.bam"
-SORTED_SINGLEMAP_SPANNING_BAM_FILE = "singlemap_spanning_reads.srt.bam"
-UNALIGNED_SPANNING_BAM_FILE = "unaligned_spanning_reads.bam"
-SORTED_UNALIGNED_SPANNING_BAM_FILE = "unaligned_spanning_reads.srt.bam"
-
-# results of merging spanning reads into chimera nominations
-SPANNING_CHIMERA_FILE = "spanning_chimeras.txt"
-# results of resolving ambiguous reads
-RESOLVED_SPANNING_CHIMERA_FILE = "spanning_chimeras.resolved.txt"
-# results of filtering chimeras
-FILTERED_CHIMERA_FILE = "spanning_chimeras.resolved.filtered.txt"
-HOMOLOG_FILTERED_CHIMERA_FILE = "spanning_chimeras.resolved.filtered.homolog.txt"
-BEST_FILTERED_CHIMERA_FILE = "spanning_chimeras.resolved.filtered.homolog.best_isoform.txt"
-# output file
-CHIMERA_OUTPUT_FILE = "chimeras.bedpe"
+## discordant reads BEDPE file
+#DISCORDANT_BEDPE_FILE = "discordant_reads.bedpe"
+#SORTED_DISCORDANT_BEDPE_FILE = "discordant_reads.srt.bedpe"
+#
+## chimera candidates with encompassing read support
+#ENCOMPASSING_CHIMERA_FILE = "encompassing_chimeras.txt"
+#FILTERED_ENCOMPASSING_CHIMERA_FILE = "encompassing_chimeras.filtered.txt"
+#
+## amount of trimming to use to stop reads from overlapping 
+## exon boundaries and going into intronic space
+#EXON_JUNCTION_TRIM_BP = 10
+#
+## number of homology mismatches in breakpoint sequences 
+## to tolerate when computing homology distance
+#BREAKPOINT_HOMOLOGY_MISMATCHES = 2
+#BREAKPOINT_CHIMERA_FILE = "encompassing_chimeras.breakpoint_sorted.txt"
+#BREAKPOINT_MAP_FILE = "breakpoints.txt"
+#BREAKPOINT_FASTA_FILE = "breakpoints.fa"
+#BREAKPOINT_INDEX = "breakpoints"
+#BREAKPOINT_BOWTIE2_FILES = ((BREAKPOINT_INDEX + x) for x in BOWTIE2_INDEX_FILE_EXTS) 
+#
+## reads to remap to breakpoint junction index
+#ENCOMP_SPANNING_FASTQ_FILE = "encomp_spanning_reads.fq"
+#SINGLE_MAPPED_BAM_FILE = "singlemap_reads.srt.bam"
+#SINGLEMAP_SPANNING_FASTQ_FILE = "singlemap_spanning_reads.fq"
+#UNALIGNED_SPANNING_FASTQ_FILE = "unaligned_spanning_reads.fq"
+#
+## results of aligning reads to breakpoint index
+#ENCOMP_SPANNING_BAM_FILE = "encomp_spanning_reads.bam"
+#SORTED_ENCOMP_SPANNING_BAM_FILE = "encomp_spanning_reads.srt.bam"
+#SINGLEMAP_SPANNING_BAM_FILE = "singlemap_spanning_reads.bam"
+#SORTED_SINGLEMAP_SPANNING_BAM_FILE = "singlemap_spanning_reads.srt.bam"
+#UNALIGNED_SPANNING_BAM_FILE = "unaligned_spanning_reads.bam"
+#SORTED_UNALIGNED_SPANNING_BAM_FILE = "unaligned_spanning_reads.srt.bam"
+#
+## results of merging spanning reads into chimera nominations
+#SPANNING_CHIMERA_FILE = "spanning_chimeras.txt"
+## results of resolving ambiguous reads
+#RESOLVED_SPANNING_CHIMERA_FILE = "spanning_chimeras.resolved.txt"
+## results of filtering chimeras
+#FILTERED_CHIMERA_FILE = "spanning_chimeras.resolved.filtered.txt"
+#HOMOLOG_FILTERED_CHIMERA_FILE = "spanning_chimeras.resolved.filtered.homolog.txt"
+#BEST_FILTERED_CHIMERA_FILE = "spanning_chimeras.resolved.filtered.homolog.best_isoform.txt"
+## output file
+#CHIMERA_OUTPUT_FILE = "chimeras.bedpe"

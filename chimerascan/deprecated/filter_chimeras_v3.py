@@ -23,12 +23,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import logging
 import collections
 import os
-import argparse
 
 import pysam
 
 from chimerascan.lib.transcriptome import build_transcript_genome_map, \
-    transcript_to_genome_pos
+    transcript_to_genome_pos, build_transcript_cluster_map
 from chimerascan.lib.chimera import Chimera
 from chimerascan.lib.feature import TranscriptFeature
 from chimerascan.lib import config
@@ -186,19 +185,29 @@ def filter_highest_coverage_isoforms(index_dir, input_file, output_file):
     return config.JOB_SUCCESS
 
 def main():
+    from optparse import OptionParser
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--filter-frags", dest="filter_frags", 
-                        type=float, default=2.0)
-    parser.add_argument("--allele-fraction", dest="allele_fraction", 
-                        type=float, default=0.01, metavar="X",
-                        help="Filter chimeras with expression ratio "
-                        " less than X (0.0-1.0) relative to the wild-type "
-                        "5' transcript level [default=%(default)s]")
-    parser.add_argument("input_file")
-    parser.add_argument("output_file")
-    args = parser.parse_args()
+    parser = OptionParser("usage: %prog [options] <index_dir> "
+                          "<sorted_aligned_reads.bam> <in.txt> <out.txt>")
+    parser.add_option("--unique-frags", type="float", default=2.0,
+                      dest="unique_frags", metavar="N",
+                      help="Filter chimeras with less than N unique "
+                      "aligned fragments [default=%default]")
+    parser.add_option("--isoform-fraction", type="float", 
+                      default=0.10, metavar="X",
+                      help="Filter chimeras with expression ratio "
+                      " less than X (0.0-1.0) relative to the wild-type "
+                      "5' transcript level [default=%default]")
+    parser.add_option("--false-pos", dest="false_pos_file",
+                      default=None, 
+                      help="File containing known false positive "
+                      "transcript pairs to subtract from output")
+    options, args = parser.parse_args()
+    index_dir = args[0]
+    bam_file = args[1]
+    input_file = args[2]
+    output_file = args[3]
     return filter_chimeras(input_file, output_file, index_dir, bam_file,
                            unique_frags=options.unique_frags,
                            isoform_fraction=options.isoform_fraction,

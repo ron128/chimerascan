@@ -63,16 +63,7 @@ from chimerascan.pipeline.find_discordant_reads import find_discordant_fragments
 from chimerascan.pipeline.transcriptome_to_genome import transcriptome_to_genome
 from chimerascan.pipeline.sam_to_bam import sam_to_bam
 from chimerascan.pipeline.cluster_discordant_reads import cluster_discordant_reads
-
-#from chimerascan.pipeline.discordant_reads_to_bedpe import discordant_reads_to_bedpe, sort_bedpe
-#from chimerascan.pipeline.nominate_chimeras import nominate_chimeras
-#from chimerascan.pipeline.chimeras_to_breakpoints import chimeras_to_breakpoints
-#from chimerascan.pipeline.nominate_spanning_reads import nominate_encomp_spanning_reads, extract_single_mapped_reads, nominate_single_mapped_spanning_reads
-#from chimerascan.pipeline.merge_spanning_alignments import merge_spanning_alignments
-#from chimerascan.pipeline.resolve_discordant_reads import resolve_discordant_reads
-#from chimerascan.pipeline.filter_chimeras import filter_chimeras, filter_highest_coverage_isoforms, filter_encompassing_chimeras
-#from chimerascan.pipeline.filter_homologous_genes import filter_homologous_genes
-#from chimerascan.pipeline.write_output import write_output
+from chimerascan.pipeline.write_output import write_output
 
 # global default parameters
 DEFAULT_NUM_PROCESSORS = config.BASE_PROCESSORS
@@ -85,21 +76,17 @@ DEFAULT_ISIZE_MEAN = 200
 DEFAULT_ISIZE_STDEV = 40
 DEFAULT_FRAG_SIZE_SENSITIVITY = 5.0
 
-# bowtie2 default arguments
-DEFAULT_BOWTIE2_ARGS = ["--end-to-end",
-                        "--very-sensitive",
-                        "--reorder"]
-
-# defaults for bowtie
+# defaults for alignment
 DEFAULT_TRIM5 = 0
 DEFAULT_TRIM3 = 0
 DEFAULT_SEGMENT_LENGTH = None
-DEFAULT_HOMOLOGY_MISMATCHES = config.BREAKPOINT_HOMOLOGY_MISMATCHES
+DEFAULT_FILTER_FRAGS = 2.0
+
+DEFAULT_HOMOLOGY_MISMATCHES = None
 DEFAULT_ANCHOR_MIN = 4
 DEFAULT_ANCHOR_LENGTH = 8
 DEFAULT_ANCHOR_MISMATCHES = 0
 DEFAULT_FILTER_ISIZE_PROB = 0.01
-DEFAULT_FILTER_UNIQUE_FRAGS = 2.0
 DEFAULT_FILTER_ISOFORM_FRACTION = 0.01
 
 class RunConfig(object):
@@ -116,11 +103,11 @@ class RunConfig(object):
              ("trim3", int, DEFAULT_TRIM3),
              ("segment_length", int, DEFAULT_SEGMENT_LENGTH),
              ("max_multihits", int, config.DEFAULT_MAX_MULTIHITS),
+             ("filter_frags", float, DEFAULT_FILTER_FRAGS),
              ("homology_mismatches", int, DEFAULT_HOMOLOGY_MISMATCHES),
              ("anchor_min", int, DEFAULT_ANCHOR_MIN),
              ("anchor_length", int, DEFAULT_ANCHOR_LENGTH),
              ("anchor_mismatches", int, DEFAULT_ANCHOR_MISMATCHES),
-             ("filter_unique_frags", float, DEFAULT_FILTER_UNIQUE_FRAGS),
              ("filter_isize_prob", float, DEFAULT_FILTER_ISIZE_PROB),
              ("filter_isoform_fraction", float, DEFAULT_FILTER_ISOFORM_FRACTION),
              ("filter_false_pos_file", float, ""))
@@ -258,6 +245,11 @@ class RunConfig(object):
                             help="Override size of soft-clipped read "
                             "segments during discordant alignment phase "
                             "(determined empirically by default)")
+        parser.add_argument("--filter-frags", type=float,
+                            default=DEFAULT_FILTER_FRAGS,
+                            dest="filter_frags", metavar="N",
+                            help="Filter chimeras with less than N "
+                            "aligned fragments [default=%(default)s]")
         # filtering options
         group = parser.add_argument_group('Filtering options')
         group.add_argument("--homology-mismatches", type=int, 
@@ -280,11 +272,6 @@ class RunConfig(object):
                            metavar="N",
                            help="Number of mismatches allowed within anchor "
                            "region [default=%(default)s]")
-        group.add_argument("--filter-unique-frags", type=float,
-                           default=DEFAULT_FILTER_UNIQUE_FRAGS,
-                           dest="filter_unique_frags", metavar="N",
-                           help="Filter chimeras with less than N unique "
-                           "aligned fragments [default=%(default)s]")
         group.add_argument("--filter-isize-prob", type=float,
                            default=DEFAULT_FILTER_ISIZE_PROB,
                            dest="filter_isize_prob", metavar="X",
@@ -673,105 +660,145 @@ def run_chimerascan(runconfig):
     # concordant, discordant within a gene (isoforms), discordant
     # between different genes, and discordant in the genome
     #
-    realigned_paired_bam_file = os.path.join(tmp_dir, config.REALIGNED_PAIRED_BAM_FILE)
-    realigned_discordant_bam_file = os.path.join(tmp_dir, config.REALIGNED_DISCORDANT_BAM_FILE)
-    realigned_unpaired_bam_file = os.path.join(tmp_dir, config.REALIGNED_UNPAIRED_BAM_FILE)
-    realigned_multimap_bam_file = os.path.join(tmp_dir, config.REALIGNED_MULTIMAP_BAM_FILE)
+    paired_bam_file = os.path.join(tmp_dir, config.PAIRED_BAM_FILE)
+    discordant_bam_file = os.path.join(tmp_dir, config.DISCORDANT_BAM_FILE)
+    unpaired_bam_file = os.path.join(tmp_dir, config.UNPAIRED_BAM_FILE)
+    unmapped_bam_file = os.path.join(tmp_dir, config.UNMAPPED_BAM_FILE)
+    multimap_bam_file = os.path.join(tmp_dir, config.MULTIMAP_BAM_FILE)
+    unresolved_bam_file = os.path.join(tmp_dir, config.UNRESOLVED_BAM_FILE)
+    input_files = (paired_bam_file, discordant_bam_file, unpaired_bam_file,
+                   unmapped_bam_file, multimap_bam_file, unresolved_bam_file)
     msg = "Classifying concordant and discordant read pairs"
-    if (up_to_date(realigned_paired_bam_file, realigned_bam_file) and
-        up_to_date(realigned_unpaired_bam_file, realigned_bam_file) and
-        up_to_date(realigned_discordant_bam_file, realigned_bam_file) and 
-        up_to_date(realigned_multimap_bam_file, realigned_bam_file)):
+    if (all(up_to_date(f, realigned_bam_file) for f in input_files)):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)
         retcode = find_discordant_fragments(transcripts=transcripts,
-                                            input_bam_file=realigned_bam_file, 
-                                            paired_bam_file=realigned_paired_bam_file, 
-                                            discordant_bam_file=realigned_discordant_bam_file,
-                                            unpaired_bam_file=realigned_unpaired_bam_file,
-                                            multimap_bam_file=realigned_multimap_bam_file,
+                                            input_bam_file=realigned_bam_file,
+                                            paired_bam_file=paired_bam_file,
+                                            discordant_bam_file=discordant_bam_file,
+                                            unpaired_bam_file=unpaired_bam_file,
+                                            unmapped_bam_file=unmapped_bam_file,
+                                            multimap_bam_file=multimap_bam_file,
+                                            unresolved_bam_file=unresolved_bam_file,
                                             max_isize=runconfig.max_fragment_length,
                                             max_multihits=runconfig.max_multihits,
                                             library_type=runconfig.library_type)
         if retcode != config.JOB_SUCCESS:
             logging.error("[FAILED] %s" % (msg))
-            if os.path.exists(realigned_paired_bam_file):
-                os.remove(realigned_paired_bam_file)
-            if os.path.exists(realigned_discordant_bam_file):
-                os.remove(realigned_discordant_bam_file)
-            if os.path.exists(realigned_unpaired_bam_file):
-                os.remove(realigned_unpaired_bam_file)
-            if os.path.exists(realigned_multimap_bam_file):
-                os.remove(realigned_multimap_bam_file)
+            for f in input_files:
+                if os.path.exists(f):
+                    os.remove(f)
             return config.JOB_ERROR
     #
     # Convert discordant transcriptome reads to genome coordinates
     #
-    discordant_bam_file = os.path.join(tmp_dir, config.DISCORDANT_BAM_FILE)
+    discordant_genome_bam_file = os.path.join(tmp_dir, config.DISCORDANT_GENOME_BAM_FILE)
     msg = "Converting discordant transcriptome hits to genomic coordinates"
-    if (up_to_date(discordant_bam_file, realigned_paired_bam_file)):
+    if (up_to_date(discordant_genome_bam_file, paired_bam_file)):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)        
-        discordant_sam_file = os.path.join(tmp_dir, config.DISCORDANT_SAM_FILE)
+        discordant_genome_sam_file = os.path.join(tmp_dir, config.DISCORDANT_GENOME_SAM_FILE)
         retcode = transcriptome_to_genome(genome_index, transcripts, 
-                                          input_file=realigned_discordant_bam_file, 
-                                          output_file=discordant_sam_file,
+                                          input_file=discordant_bam_file, 
+                                          output_file=discordant_genome_sam_file,
                                           library_type=runconfig.library_type,
                                           input_sam=False,
                                           output_sam=True)
         if retcode != config.JOB_SUCCESS:
             logging.error("[FAILED] %s" % (msg))
-            if os.path.exists(discordant_sam_file):
-                os.remove(discordant_sam_file)
+            if os.path.exists(discordant_genome_sam_file):
+                os.remove(discordant_genome_sam_file)
             return config.JOB_ERROR
-        retcode = sam_to_bam(discordant_sam_file, discordant_bam_file)
+        retcode = sam_to_bam(discordant_genome_sam_file, discordant_genome_bam_file)
         if retcode != config.JOB_SUCCESS:
             logging.error("[FAILED] %s" % (msg))
-            if os.path.exists(discordant_bam_file):
-                os.remove(discordant_bam_file)
+            if os.path.exists(discordant_genome_bam_file):
+                os.remove(discordant_genome_bam_file)
             return config.JOB_ERROR
     #
     # Sort discordant reads by position
     #
     msg = "Sorting discordant BAM file"
-    sorted_discordant_bam_file = os.path.join(runconfig.output_dir, config.SORTED_DISCORDANT_BAM_FILE)
-    if (up_to_date(sorted_discordant_bam_file, discordant_bam_file)):
+    sorted_discordant_genome_bam_file = os.path.join(tmp_dir, config.SORTED_DISCORDANT_GENOME_BAM_FILE)
+    if (up_to_date(sorted_discordant_genome_bam_file, discordant_genome_bam_file)):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)
-        bam_prefix = os.path.splitext(sorted_discordant_bam_file)[0]
-        pysam.sort("-m", str(int(1e9)), discordant_bam_file, bam_prefix)
+        bam_prefix = os.path.splitext(sorted_discordant_genome_bam_file)[0]
+        pysam.sort("-m", str(int(1e9)), discordant_genome_bam_file, bam_prefix)
     #
     # Index BAM file
     #
     msg = "Indexing BAM file"
-    sorted_discordant_bam_index_file = sorted_discordant_bam_file + ".bai"
-    if (up_to_date(sorted_discordant_bam_index_file, sorted_discordant_bam_file)):
+    sorted_discordant_bam_index_file = sorted_discordant_genome_bam_file + ".bai"
+    if (up_to_date(sorted_discordant_bam_index_file, sorted_discordant_genome_bam_file)):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)
-        pysam.index(sorted_discordant_bam_file)
+        pysam.index(sorted_discordant_genome_bam_file)
     #
     # Cluster discordant reads into chimera candidates
     #
-    discordant_cluster_file = os.path.join(tmp_dir, config.DISCORDANT_CLUSTER_FILE)
-    discordant_cluster_pair_file = os.path.join(tmp_dir, config.DISCORDANT_CLUSTER_PAIR_FILE)
-    sorted_discordant_cluster_bam_file = os.path.join(tmp_dir, config.SORTED_DISCORDANT_CLUSTER_BAM_FILE)
+    cluster_file = os.path.join(tmp_dir, config.DISCORDANT_CLUSTER_FILE)
+    cluster_shelve_file = os.path.join(tmp_dir, config.DISCORDANT_CLUSTER_SHELVE_FILE)
+    cluster_pair_file = os.path.join(tmp_dir, config.DISCORDANT_CLUSTER_PAIR_FILE)
+    sorted_discordant_genome_cluster_bam_file = os.path.join(runconfig.output_dir, config.SORTED_DISCORDANT_GENOME_CLUSTER_BAM_FILE)
+    input_files = (cluster_file, cluster_shelve_file,                      
+                   cluster_pair_file, sorted_discordant_genome_cluster_bam_file)
     msg = "Clustering discordant reads"
-    if (up_to_date(sorted_discordant_cluster_bam_file, sorted_discordant_bam_file) and
-        up_to_date(discordant_cluster_pair_file, sorted_discordant_bam_file) and
-        up_to_date(discordant_cluster_file, sorted_discordant_bam_file)):
+    if all(up_to_date(f, sorted_discordant_genome_cluster_bam_file) for f in input_files):
         logging.info("[SKIPPED] %s" % (msg))
     else:
-        cluster_discordant_reads(discordant_bam_file=sorted_discordant_bam_file, 
-                                 concordant_bam_file=sorted_transcriptome_bam_file, 
-                                 output_bam_file=sorted_discordant_cluster_bam_file, 
-                                 cluster_file=discordant_cluster_file,
-                                 cluster_pair_file=discordant_cluster_pair_file,
-                                 tmp_dir=tmp_dir)
+        retcode = cluster_discordant_reads(discordant_bam_file=sorted_discordant_genome_bam_file, 
+                                           concordant_bam_file=sorted_transcriptome_bam_file, 
+                                           output_bam_file=sorted_discordant_genome_cluster_bam_file, 
+                                           cluster_file=cluster_file,
+                                           cluster_shelve_file=cluster_shelve_file,                                          
+                                           cluster_pair_file=cluster_pair_file,
+                                           tmp_dir=tmp_dir)
+        if retcode != config.JOB_SUCCESS:
+            logging.error("[FAILED] %s" % (msg))
+            for f in input_files:
+                if os.path.exists(f):
+                    os.remove(f)
+    #
+    # Write output file
+    # 
+    unfiltered_output_file = os.path.join(runconfig.output_dir, config.UNFILTERED_OUTPUT_FILE)
+    msg = "Writing unfiltered chimeras to file %s" % (unfiltered_output_file)
+    if (up_to_date(unfiltered_output_file, cluster_pair_file) and
+        up_to_date(unfiltered_output_file, cluster_shelve_file)):                
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        retcode = write_output(transcripts, 
+                               cluster_shelve_file=cluster_shelve_file, 
+                               cluster_pair_file=cluster_pair_file, 
+                               read_name_dbm_file=read_name_dbm_file, 
+                               output_file=unfiltered_output_file, 
+                               annotation_source="ensembl")
+        if retcode != config.JOB_SUCCESS:
+            if os.path.exists(unfiltered_output_file):
+                os.remove(unfiltered_output_file)
+    #
+    # Filter chimeras with few supporting fragments
+    #
+    filtered_output_file = os.path.join(tmp_dir, config.OUTPUT_FILE)
+    msg = "Filtering chimeras"
+    if (up_to_date(filtered_output_file, unfiltered_output_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:        
+        logging.info(msg)
+        retcode = filter_encompassing_chimeras(encompassing_chimera_file,
+                                               filtered_encompassing_chimera_file,
+                                               runconfig.filter_unique_frags)
+        if retcode != config.JOB_SUCCESS:
+            logging.error("Failed with error code %d" % (retcode))
+            return config.JOB_ERROR   
 
+    
     return config.JOB_SUCCESS
 
     #

@@ -15,7 +15,7 @@ from chimerascan.lib import config
 from chimerascan.lib.base import LibraryTypes
 from chimerascan.lib.sam import parse_pe_reads, pair_reads, copy_read, select_best_scoring_pairs
 from chimerascan.lib.feature import TranscriptFeature
-from chimerascan.lib.transcriptome_to_genome import build_tid_transcript_map, build_tid_transcript_genome_map, transcript_to_genome_pos
+from chimerascan.lib.transcriptome import build_tid_transcript_map, build_tid_transcript_genome_map, transcript_to_genome_pos
 from chimerascan.lib.chimera import DiscordantTags, DISCORDANT_TAG_NAME, \
     ORIENTATION_TAG, ORIENTATION_5P, ORIENTATION_3P, get_orientation
 
@@ -198,9 +198,9 @@ def classify_read_pairs(pe_reads, max_isize,
         gene_pairs = select_best_scoring_pairs(gene_pairs)
         return gene_pairs, []
     # 
-    # no valid pairs could be found suggesting that these mappings are
-    # either mapping artifacts or that the current gene annotation set
-    # lacks annotations support this pair
+    # no valid pairs could be found suggesting that these alignments are
+    # either artifacts or that the current transcript annotations do not
+    # support this pair
     # 
     return [], pe_reads
 
@@ -229,7 +229,9 @@ def find_discordant_fragments(transcripts,
                               paired_bam_file, 
                               discordant_bam_file,
                               unpaired_bam_file,
+                              unmapped_bam_file,
                               multimap_bam_file,
+                              unresolved_bam_file,
                               max_isize, 
                               max_multihits,
                               library_type):
@@ -239,39 +241,53 @@ def find_discordant_fragments(transcripts,
     - discordant within gene (splicing isoforms)
     - discordant between different genes (chimeras)
     """
-    logging.info("Finding discordant read pair combinations")
+    logging.debug("Finding discordant read pair combinations")
     logging.debug("\tInput file: %s" % (input_bam_file))
     logging.debug("\tMax insert size: '%d'" % (max_isize))
     logging.debug("\tLibrary type: '%s'" % (library_type))
     logging.debug("\tPaired BAM file: %s" % (paired_bam_file))
     logging.debug("\tUnpaired BAM file: %s" % (unpaired_bam_file))
+    logging.debug("\tUnmapped BAM file: %s" % (unmapped_bam_file))
     logging.debug("\tMultimap BAM file: %s" % (multimap_bam_file))
+    logging.debug("\tUnresolved BAM file: %s" % (unresolved_bam_file))
     # setup input and output files
     bamfh = pysam.Samfile(input_bam_file, "rb")
     pairedfh = pysam.Samfile(paired_bam_file, "wb", template=bamfh)
     discordantfh = pysam.Samfile(discordant_bam_file, "wb", template=bamfh)
     unpairedfh = pysam.Samfile(unpaired_bam_file, "wb", template=bamfh)
+    unmappedfh = pysam.Samfile(unmapped_bam_file, "wb", template=bamfh)
     multimapfh = pysam.Samfile(multimap_bam_file, "wb", template=bamfh)
+    unresolvedfh = pysam.Samfile(unresolved_bam_file, "wb", template=bamfh)
     # build a lookup table from bam tid index to transcript object
     logging.debug("Building transcript lookup tables")
     tid_tx_map = build_tid_transcript_map(bamfh, transcripts)
     tid_tx_genome_map = build_tid_transcript_genome_map(bamfh, transcripts)
     # build a transcript to genome coordinate map
     logging.debug("Parsing reads")
+    num_unmapped = 0
+    num_unpaired = 0
+    num_multimap = 0
+    num_paired = 0
+    num_unresolved = 0
     for pe_reads in parse_pe_reads(bamfh):
         # count multimapping
         mate_num_hits = [0, 0]
         for rnum,reads in enumerate(pe_reads):
             num_hits = count_transcriptome_multimaps(bamfh, reads, tid_tx_genome_map)
             mate_num_hits[rnum] = num_hits
-        if min(mate_num_hits) == 0:
-            # if either mate is unmapped then write the reads to the
-            # unpaired bam file
-            write_pe_reads(unpairedfh, pe_reads)
-        elif max(mate_num_hits) > max_multihits:
+        if max(mate_num_hits) > max_multihits:
             # if either mate has many genome mappings then write
             # the reads to the multimapping bam file
             write_pe_reads(multimapfh, pe_reads)
+            num_multimap += 1
+        elif max(mate_num_hits) == 0:
+            # if both mates unmapped write to unmapped bam file
+            write_pe_reads(unmappedfh, pe_reads)
+            num_unmapped += 1
+        elif min(mate_num_hits) == 0:
+            # if one or other mate unmapped then write to the unpaired bam file
+            write_pe_reads(unpairedfh, pe_reads)
+            num_unpaired += 1
         else:
             # examine all read pairing combinations and rule out invalid pairings
             gene_pairs, unpaired_reads = classify_read_pairs(pe_reads, 
@@ -280,13 +296,25 @@ def find_discordant_fragments(transcripts,
                                                              tid_tx_map)        
             if len(gene_pairs) > 0:
                 write_pairs(gene_pairs, pairedfh, discordantfh)
+                num_paired += 1
             else:
-                write_pe_reads(unpaired_reads, unpairedfh)
+                # both reads in the pair mapped, but no pairings could 
+                # be resolved
+                write_pe_reads(unpaired_reads, unresolvedfh)
+                num_unresolved += 1
     pairedfh.close()
+    discordantfh.close()
     unpairedfh.close()
+    unmappedfh.close()
     multimapfh.close()
-    bamfh.close()  
-    logging.info("Finished pairing reads")
+    unresolvedfh.close()
+    bamfh.close()
+    logging.debug("Finished pairing reads")
+    logging.debug("\tUnmapped fragments: %d" % (num_unmapped))
+    logging.debug("\tMultimapping fragments: %d" % (num_multimap))
+    logging.debug("\tUnpaired fragments: %d" % (num_unpaired))
+    logging.debug("\tUnresolvable mapped fragments: %d" % (num_unresolved))
+    logging.debug("\tPaired fragments: %d" % (num_paired))
     return config.JOB_SUCCESS
 
 def main():
@@ -304,7 +332,9 @@ def main():
     parser.add_argument("paired_bam_file")
     parser.add_argument("discordant_bam_file")
     parser.add_argument("unpaired_bam_file")
+    parser.add_argument("unmapped_bam_file")
     parser.add_argument("multimap_bam_file")
+    parser.add_argument("unresolved_bam_file")
     args = parser.parse_args()    
     # read transcript features
     logging.debug("Reading transcript features")
@@ -313,8 +343,10 @@ def main():
                                      args.input_bam_file, 
                                      args.paired_bam_file,
                                      args.discordant_bam_file,
-                                     args.unpaired_bam_file, 
+                                     args.unpaired_bam_file,
+                                     args.unmapped_bam_file, 
                                      args.multimap_bam_file,
+                                     args.unresolved_bam_file,
                                      max_isize=args.max_fragment_length,
                                      max_multihits=args.max_multihits,
                                      library_type=args.library_type)
