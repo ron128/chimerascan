@@ -20,7 +20,6 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
-import logging
 import itertools
 import collections
 import operator
@@ -208,21 +207,3 @@ class TranscriptFeature(object):
                 transcripts.append(g)
         return transcripts
 
-    def get_exon_interval(self, pos):
-        """
-        returns a tuple containing the exon number and start/end
-        coordinates relative to the transcript
-        """
-        exon_iter = reversed(self.exons) if self.strand == '-' else iter(self.exons)
-        exon_pos = 0
-        exon_num = 0
-        for exon_start, exon_end in exon_iter:
-            exon_size = exon_end - exon_start
-            if exon_pos + exon_size >= pos:
-                break
-            exon_pos += exon_size
-            exon_num += 1    
-        if exon_pos + exon_size < pos:
-            logging.warning("exon_pos %d + exon_size %d < pos %d - clipping to "
-                            "end of gene" % (exon_pos, exon_size, pos))
-        return exon_num, exon_pos, exon_pos + exon_size

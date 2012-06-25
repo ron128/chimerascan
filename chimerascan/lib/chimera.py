@@ -6,8 +6,7 @@ Created on Jun 3, 2011
 import logging
 import collections
 
-from base import parse_string_none, LibraryTypes
-from sam import get_clipped_interval
+from base import LibraryTypes
 
 STRAND_TAG = "XS"
 STRAND_POS = "+"
@@ -74,12 +73,73 @@ def parse_discordant_cluster_pair_file(line_iter):
         qnames = fields[3].split(',')
         yield DiscordantClusterPair(pair_id, id5p, id3p, qnames)
 
-# constants
-MULTIMAP_BINS = (1,2,4,8,16,32,64,128)
-CHIMERA_SEP = "|"
-# amount of trimming to use to stop reads from overlapping 
-# exon boundaries and going into intronic space
-EXON_JUNCTION_TRIM_BP = 10
+class Chimera(object):
+    _fields = ('rname5p', 'start5p', 'end5p',
+               'rname3p', 'start3p', 'end3p',
+               'chimera_id', 'num_frags',
+               'strand5p', 'strand3p',
+               'chimera_type', 'distance',
+               'num_discordant_frags_5p',
+               'num_discordant_frags_3p',
+               'num_concordant_frags_5p',
+               'num_concordant_frags_3p',
+               'biotypes_5p', 'biotypes_3p',
+               'genes_5p', 'genes_3p',
+               'transcripts_5p', 'transcripts_3p')
+    
+    def __str__(self):
+        fields = [self.rname5p, self.start5p, self.end5p,
+                  self.rname3p, self.start3p, self.end3p,
+                  self.chimera_id, self.num_frags,
+                  self.strand5p, self.strand3p,
+                  self.chimera_type, self.distance,
+                  self.num_discordant_frags_5p,
+                  self.num_discordant_frags_3p,
+                  self.num_concordant_frags_5p,
+                  self.num_concordant_frags_3p,
+                  ','.join(self.biotypes_5p), 
+                  ','.join(self.biotypes_3p),
+                  ','.join(self.genes_5p),
+                  ','.join(self.genes_3p),
+                  ','.join(self.transcripts_5p),
+                  ','.join(self.transcripts_3p)]
+        return '\t'.join(map(str, fields))
+
+    @staticmethod
+    def from_string(line):
+        fields = line.strip().split('\t')
+        # format transcript information
+        c = Chimera()
+        c.rname5p = fields[0]
+        c.start5p = int(fields[1])
+        c.end5p = int(fields[2])
+        c.rname3p = fields[3]
+        c.start3p = int(fields[4])
+        c.end3p = int(fields[5])
+        c.chimera_id = fields[6]
+        c.num_frags = int(fields[7])
+        c.strand5p = fields[8]
+        c.strand3p = fields[9]
+        c.chimera_type = fields[10]
+        c.distance = int(fields[11])
+        c.num_discordant_frags_5p = int(fields[12])
+        c.num_discordant_frags_3p = int(fields[13])
+        c.num_concordant_frags_5p = int(fields[14])
+        c.num_concordant_frags_3p = int(fields[15])
+        c.biotypes_5p = fields[16].split(',')
+        c.biotypes_3p = fields[17].split(',')
+        c.genes_5p = fields[18].split(',')
+        c.genes_3p = fields[19].split(',')
+        c.transcripts_5p = fields[20].split(',')
+        c.transcripts_3p = fields[21].split(',')
+        return c
+    
+    @staticmethod
+    def parse(line_iter):
+        for line in line_iter:
+            if line.startswith('#'):
+                continue
+            yield Chimera.from_string(line)
 
 class ChimeraTypes(object):
     """
@@ -100,105 +160,23 @@ class ChimeraTypes(object):
     INTRA_COMPLEX = "Intrachromosomal_Complex"
     UNKNOWN = "Undetermined"
 
-class DiscordantRead(object):
-    """
-    stores read alignment information needed to nominate 
-    chimeric transcripts
-
-    (this is a subset of what is kept in SAM file)
-    """
-    def __init__(self):
-        self.qname = ""
-        self.hit_index = -1
-        self.readnum = -1
-        self.seq = ""
-        self.tid = -1
-        self.pos = -1
-        self.aend = -1
-        self.clipstart = -1
-        self.clipend = -1
-        self.is_reverse = False
-        self.numhits = 0
-        self.mismatches = 0
-        self.discordant_type = 0
-        self.orientation = 0
-        self.is_spanning = False
-
-    @staticmethod
-    def from_read(r):
-        a = DiscordantRead()
-        a.qname = r.qname
-        a.hit_index = r.opt('HI')
-        a.readnum = 1 if r.is_read2 else 0
-        a.seq = r.seq
-        a.tid = r.tid
-        a.pos = r.pos
-        a.aend = r.aend
-        a.clipstart, a.clipend = get_clipped_interval(r)
-        a.is_reverse = r.is_reverse
-        a.numhits = r.opt('NH')
-        a.mismatches = r.opt('NM')
-        a.discordant_type = r.opt(DISCORDANT_TAG_NAME)
-        a.orientation = r.opt(ORIENTATION_TAG)
-        a.is_spanning = False
-        return a
-
-    @staticmethod
-    def from_list(fields):
-        a = DiscordantRead()
-        a.qname = fields[0]
-        a.hit_index = int(fields[1])
-        a.readnum = int(fields[2])
-        a.seq = fields[3]
-        a.tid = int(fields[4])
-        a.pos = int(fields[5])
-        a.aend = int(fields[6])
-        a.clipstart = int(fields[7])
-        a.clipend = int(fields[8])
-        a.is_reverse = True if int(fields[9]) == 1 else False
-        a.numhits = int(fields[10])
-        a.mismatches = int(fields[11])
-        a.discordant_type = int(fields[12])
-        a.orientation = int(fields[13])
-        a.is_spanning = True if int(fields[14]) == 1 else False
-        return a
-
-    def to_list(self):
-        return [self.qname, self.hit_index, self.readnum, self.seq, 
-                self.tid, self.pos, self.aend, self.clipstart, 
-                self.clipend, int(self.is_reverse), self.numhits, 
-                self.mismatches, self.discordant_type, 
-                self.orientation, int(self.is_spanning)]
-
-
-def frags_to_encomp_string(frags):
-    if len(frags) == 0:
-        return "None"
-    # encompassing read pairs
-    encomp_frags = []
-    for frag in frags:
-        r5p = Chimera.FIELD_DELIM.join(map(str,frag[0].to_list()))
-        r3p = Chimera.FIELD_DELIM.join(map(str,frag[1].to_list()))                        
-        pair_fields = Chimera.PAIR_DELIM.join([r5p,r3p])
-        encomp_frags.append(pair_fields)
-    return Chimera.READ_DELIM.join(encomp_frags)
-
-def get_chimera_type(fiveprime_gene, threeprime_gene, gene_trees):
+def get_chimera_type(cluster5p, cluster3p, 
+                     transcripts5p, transcripts3p, 
+                     transcript_dict, genome_tx_trees):
     """
     return tuple containing ChimeraType and distance 
     between 5' and 3' genes 
     """
-    # get gene information
-    chrom5p, start5p, end5p, strand5p = fiveprime_gene.chrom, fiveprime_gene.tx_start, fiveprime_gene.tx_end, fiveprime_gene.strand
-    chrom3p, start3p, end3p, strand3p = threeprime_gene.chrom, threeprime_gene.tx_start, threeprime_gene.tx_end, threeprime_gene.strand
+    chrom5p, start5p, end5p, strand5p = cluster5p.rname, cluster5p.start, cluster5p.end, cluster5p.strand
+    chrom3p, start3p, end3p, strand3p = cluster3p.rname, cluster3p.start, cluster3p.end, cluster3p.strand
     # interchromosomal
     if chrom5p != chrom3p:
-        return ChimeraTypes.INTERCHROMOSOMAL, None
-    # gene orientation
+        return ChimeraTypes.INTERCHROMOSOMAL, -1    
+    # strandedness
     same_strand = (strand5p == strand3p)
     # partner orientation
     partners_oriented = ((start5p <= start3p and strand5p == "+") or
-                         (start5p > start3p and strand5p == "-"))    
+                         (start5p > start3p and strand5p == "-")) 
     # genes on same chromosome so check overlap
     is_overlapping = (start5p < end3p) and (start3p < end5p)            
     if is_overlapping:
@@ -222,19 +200,26 @@ def get_chimera_type(fiveprime_gene, threeprime_gene, gene_trees):
         between_start,between_end = end3p,start5p
     # check whether there are genes intervening between the
     # chimera candidates
-    genes_between = []
-    genes_between_same_strand = []
-    for hit in gene_trees[chrom5p].find(between_start,
-                                        between_end):
+    my_tx_ids = set([t.tx_id for t in transcripts5p])
+    my_tx_ids.update([t.tx_id for t in transcripts3p])
+    tx_ids = set()
+    for hit in genome_tx_trees[chrom5p].find(between_start, between_end):
+        if hit.value in my_tx_ids:
+            continue 
         if (hit.start > between_start and
-            hit.end < between_end):             
-            genes_between.append(hit)
-            if hit.strand == strand5p:
-                genes_between_same_strand.append(hit)
+            hit.end < between_end):
+            tx_ids.add(hit.value)
+    between = []
+    between_same_strand = []
+    for tx_id in tx_ids:
+        t = transcript_dict[tx_id]
+        between.append(hit)
+        if t.strand == strand5p:
+            between_same_strand.append(hit)
     # logic for determining chimera type
     if same_strand:
         if partners_oriented:
-            if len(genes_between_same_strand) == 0:
+            if len(between_same_strand) == 0:
                 # genes on same strand, no intervening genes, and 
                 # 5' -> 3' partners match gene orientation
                 return ChimeraTypes.READTHROUGH, distance
@@ -243,7 +228,7 @@ def get_chimera_type(fiveprime_gene, threeprime_gene, gene_trees):
                 # intervening genes
                 return ChimeraTypes.INTRACHROMOSOMAL, distance
         else:
-            if len(genes_between) == 0:
+            if len(between) == 0:
                 # no intervening genes but partners in opposite orientations
                 return (ChimeraTypes.ADJ_COMPLEX, distance)
             else:
@@ -252,7 +237,7 @@ def get_chimera_type(fiveprime_gene, threeprime_gene, gene_trees):
     else:        
         # genes on opposite strands so has to be a complex rearrangement 
         # of some kind
-        if len(genes_between) == 0:
+        if len(between) == 0:
             if partners_oriented:
                 # 5' -> 3' genomic orientation maintained
                 return (ChimeraTypes.ADJ_CONVERGE, distance)
@@ -265,166 +250,3 @@ def get_chimera_type(fiveprime_gene, threeprime_gene, gene_trees):
                 return (ChimeraTypes.INTRA_CONVERGE, distance)
             else:
                 return (ChimeraTypes.INTRA_DIVERGE, distance)
-
-
-class Chimera(object):
-    FIELD_DELIM = "|"
-    PAIR_DELIM = "||" 
-    READ_DELIM = ";"
-    TX_NAME_3P_FIELD = 3
-    NAME_FIELD = 6
-    BREAKPOINT_NAME_FIELD = 14
-
-    def __init__(self):
-        self.tx_name_5p = None
-        self.tx_start_5p = 0
-        self.tx_end_5p = 0
-        self.tx_name_3p = None
-        self.tx_start_3p = 0
-        self.tx_end_3p = 0
-        self.name = None
-        self.score = 0.0
-        self.tx_strand_5p = "."
-        self.tx_strand_3p = "."
-        self.gene_name_5p = None
-        self.gene_name_3p = None
-        self.exons_5p = None
-        self.exons_3p = None
-        self.breakpoint_name = None
-        self.breakpoint_seq_5p = None
-        self.breakpoint_seq_3p = None
-        self.homology_left = None
-        self.homology_right = None
-        self.encomp_frags = []
-        self.spanning_reads = []
-
-    @staticmethod
-    def from_list(fields):
-        c = Chimera()
-        c.tx_name_5p = fields[0]
-        c.tx_start_5p = int(fields[1])
-        c.tx_end_5p = int(fields[2])
-        c.tx_name_3p = fields[3]
-        c.tx_start_3p = int(fields[4])
-        c.tx_end_3p = int(fields[5])
-        c.name = fields[6]
-        c.score = fields[7]
-        c.tx_strand_5p = fields[8]
-        c.tx_strand_3p = fields[9]
-        c.gene_name_5p = fields[10]
-        c.gene_name_3p = fields[11]
-        c.exons_5p = map(int, fields[12].split("-"))
-        c.exons_3p = map(int, fields[13].split("-"))
-        c.breakpoint_name = fields[14]
-        c.breakpoint_seq_5p = fields[15]
-        c.breakpoint_seq_3p = fields[16]
-        c.homology_left = int(fields[17])
-        c.homology_right = int(fields[18])
-        c.encomp_frags = []
-        c.spanning_reads = []
-        # raw encompassing read information
-        encomp_reads_field = parse_string_none(fields[19])
-        if encomp_reads_field is not None:
-            for read_pair_fields in encomp_reads_field.split(c.READ_DELIM):
-                dreads = []
-                for read_fields in read_pair_fields.split(c.PAIR_DELIM):
-                    dreads.append(DiscordantRead.from_list(read_fields.split(c.FIELD_DELIM)))
-                c.encomp_frags.append(dreads)
-        # raw spanning read information
-        spanning_reads_field = parse_string_none(fields[20])
-        if spanning_reads_field is not None:
-            for read_fields in spanning_reads_field.split(c.READ_DELIM):
-                c.spanning_reads.append(DiscordantRead.from_list(read_fields.split(c.FIELD_DELIM)))        
-        return c
-
-    @staticmethod
-    def parse(line_iter):
-        for line in line_iter:
-            if line.startswith("#"):
-                continue            
-            fields = line.strip().split('\t')
-            yield Chimera.from_list(fields)
-
-    def to_list(self):
-        # reads
-        if len(self.spanning_reads) == 0:
-            span_string = None
-        else:
-            span_string = Chimera.READ_DELIM.join(Chimera.FIELD_DELIM.join(map(str,r.to_list())) 
-                                                  for r in self.spanning_reads)
-        return [self.tx_name_5p, self.tx_start_5p, self.tx_end_5p,
-                self.tx_name_3p, self.tx_start_3p, self.tx_end_3p,
-                self.name, self.score, 
-                self.tx_strand_5p, self.tx_strand_3p,
-                self.gene_name_5p, self.gene_name_3p,
-                "%d-%d" % (self.exons_5p[0], self.exons_5p[1]),
-                "%d-%d" % (self.exons_3p[0], self.exons_3p[1]),
-                self.breakpoint_name,
-                self.breakpoint_seq_5p,
-                self.breakpoint_seq_3p,
-                self.homology_left,
-                self.homology_right,
-                frags_to_encomp_string(self.encomp_frags),
-                span_string]
-
-    def get_num_unique_positions(self):
-        """
-        calculates total number of unique read alignment
-        positions supporting chimera
-        """
-        # find all unique alignment positions and read names
-        encomp_pos = set()
-        qnames = set()
-        for pair in self.encomp_frags:
-            if pair[0].qname not in qnames:
-                qnames.add(pair[0].qname)
-                encomp_pos.add((pair[0].pos, pair[1].pos))
-        # add spanning reads
-        spanning_pos = set()
-        for dr in self.spanning_reads:
-            if dr.qname not in qnames:
-                qnames.add(dr.qname)
-                spanning_pos.add(dr.pos)
-        return len(encomp_pos) + len(spanning_pos)
-
-    def get_num_frags(self, maxnumhits=0):
-        """
-        number of unique fragments supporting the 
-        chimera (by read name)
-        """
-        qnames = set()
-        for pair in self.encomp_frags:
-            if (maxnumhits > 0) and (min(pair[0].numhits, pair[1].numhits) > maxnumhits):
-                continue
-            qnames.add(pair[0].qname)
-        for dr in self.spanning_reads:
-            if (maxnumhits > 0) and (dr.numhits > maxnumhits):
-                continue
-            qnames.add(dr.qname)
-        return len(qnames)
-
-    def get_num_spanning_frags(self, maxnumhits=0):
-        """
-        number of unique spanning fragments supporting the 
-        chimera (by read name)
-        """
-        qnames = set()
-        for dpair in self.encomp_frags:
-            if (maxnumhits > 0) and (min(dpair[0].numhits, dpair[1].numhits) > maxnumhits):
-                continue
-            if any(dr.is_spanning for dr in dpair):
-                qnames.add(dpair[0].qname)            
-        for dr in self.spanning_reads:
-            if (maxnumhits > 0) and (dr.numhits > maxnumhits):
-                continue
-            qnames.add(dr.qname)
-        return len(qnames)  
-
-    def get_spanning_reads(self):
-        for dpair in self.encomp_frags:
-            if dpair[0].is_spanning:
-                yield dpair[0]
-            if dpair[1].is_spanning:
-                yield dpair[1]
-        for dr in self.spanning_reads:
-            yield dr

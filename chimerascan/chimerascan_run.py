@@ -64,6 +64,7 @@ from chimerascan.pipeline.transcriptome_to_genome import transcriptome_to_genome
 from chimerascan.pipeline.sam_to_bam import sam_to_bam
 from chimerascan.pipeline.cluster_discordant_reads import cluster_discordant_reads
 from chimerascan.pipeline.write_output import write_output
+from chimerascan.pipeline.filter_chimeras import filter_chimeras
 
 # global default parameters
 DEFAULT_NUM_PROCESSORS = config.BASE_PROCESSORS
@@ -75,19 +76,10 @@ DEFAULT_LIBRARY_TYPE = LibraryTypes.FR_UNSTRANDED
 DEFAULT_ISIZE_MEAN = 200
 DEFAULT_ISIZE_STDEV = 40
 DEFAULT_FRAG_SIZE_SENSITIVITY = 5.0
-
 # defaults for alignment
 DEFAULT_TRIM5 = 0
 DEFAULT_TRIM3 = 0
 DEFAULT_SEGMENT_LENGTH = None
-DEFAULT_FILTER_FRAGS = 2.0
-
-DEFAULT_HOMOLOGY_MISMATCHES = None
-DEFAULT_ANCHOR_MIN = 4
-DEFAULT_ANCHOR_LENGTH = 8
-DEFAULT_ANCHOR_MISMATCHES = 0
-DEFAULT_FILTER_ISIZE_PROB = 0.01
-DEFAULT_FILTER_ISOFORM_FRACTION = 0.01
 
 class RunConfig(object):
     
@@ -103,14 +95,10 @@ class RunConfig(object):
              ("trim3", int, DEFAULT_TRIM3),
              ("segment_length", int, DEFAULT_SEGMENT_LENGTH),
              ("max_multihits", int, config.DEFAULT_MAX_MULTIHITS),
-             ("filter_frags", float, DEFAULT_FILTER_FRAGS),
-             ("homology_mismatches", int, DEFAULT_HOMOLOGY_MISMATCHES),
-             ("anchor_min", int, DEFAULT_ANCHOR_MIN),
-             ("anchor_length", int, DEFAULT_ANCHOR_LENGTH),
-             ("anchor_mismatches", int, DEFAULT_ANCHOR_MISMATCHES),
-             ("filter_isize_prob", float, DEFAULT_FILTER_ISIZE_PROB),
-             ("filter_isoform_fraction", float, DEFAULT_FILTER_ISOFORM_FRACTION),
-             ("filter_false_pos_file", float, ""))
+             ("filter_num_frags", float, config.DEFAULT_FILTER_FRAGS),
+             ("filter_allele_fraction", float, config.DEFAULT_FILTER_ALLELE_FRACTION),
+             ("mask_biotypes_file", str, ""),
+             ("mask_rnames_file", str, ""))
 
     def __init__(self):
         self.output_dir = None
@@ -245,48 +233,28 @@ class RunConfig(object):
                             help="Override size of soft-clipped read "
                             "segments during discordant alignment phase "
                             "(determined empirically by default)")
-        parser.add_argument("--filter-frags", type=float,
-                            default=DEFAULT_FILTER_FRAGS,
-                            dest="filter_frags", metavar="N",
-                            help="Filter chimeras with less than N "
-                            "aligned fragments [default=%(default)s]")
         # filtering options
         group = parser.add_argument_group('Filtering options')
-        group.add_argument("--homology-mismatches", type=int, 
-                           dest="homology_mismatches",
-                           default=DEFAULT_HOMOLOGY_MISMATCHES,
-                           help="Number of mismatches to tolerate at "
-                           "breakpoints when computing homology "
-                           "[default=%(default)s]", metavar="N")
-        group.add_argument("--anchor-min", type=int, dest="anchor_min", 
-                           default=DEFAULT_ANCHOR_MIN, metavar="N",
-                           help="Minimum breakpoint overlap (bp) required "
-                           "to call spanning reads [default=%(default)s]")
-        group.add_argument("--anchor-length", type=int, dest="anchor_length", 
-                           default=DEFAULT_ANCHOR_LENGTH, metavar="N",
-                           help="Size (bp) of anchor region where mismatch "
-                           "checks are enforced [default=%(default)s]")
-        group.add_argument("--anchor-mismatches", type=int, 
-                           dest="anchor_mismatches", 
-                           default=DEFAULT_ANCHOR_MISMATCHES,
-                           metavar="N",
-                           help="Number of mismatches allowed within anchor "
-                           "region [default=%(default)s]")
-        group.add_argument("--filter-isize-prob", type=float,
-                           default=DEFAULT_FILTER_ISIZE_PROB,
-                           dest="filter_isize_prob", metavar="X",
-                           help="Filter chimeras when probability of "
-                           "observing the putative insert size is less "
-                           "than X (0.0-1.0) [default=%(default)s]")
-        group.add_argument("--filter-isoform-fraction", type=float, 
-                           default=DEFAULT_FILTER_ISOFORM_FRACTION, metavar="X",
-                           help="Filter chimeras with expression ratio "
-                           "less than X (0.0-1.0) relative to the wild-type "
-                           "transcript levels [default=%(default)s]")
-        group.add_argument("--filter-false-pos", default="",
-                           dest="filter_false_pos_file",
-                           help="File containing known false positive "
-                           "chimeric transcript pairs to filter out")
+        group.add_argument("--filter-num-frags", type=float,
+                           default=config.DEFAULT_FILTER_FRAGS,
+                           dest="filter_num_frags", metavar="N",
+                           help="Filter chimeras with less than N "
+                           "aligned fragments [default=%(default)s]")
+        group.add_argument("--filter-allele-fraction", type=float, 
+                           default=config.DEFAULT_FILTER_ALLELE_FRACTION, 
+                           dest="filter_allele_fraction", metavar="X",
+                           help="Filter chimeras with expression less than "
+                           "the specified fraction of the total expression "
+                           "level [default=%(default)s")            
+        group.add_argument("--mask-biotypes-file", default="",
+                           dest="mask_biotypes_file",
+                           help="File containing list of gene biotypes "
+                           "to ignore (ex. pseudogenes, rRNA)")
+        group.add_argument("--mask-rnames-file", default="",
+                           dest="mask_rnames_file",
+                           help="File containing list of reference names "
+                           "to ignore (ex. MT or chrM)")
+        # filtering options
         return parser
 
     def from_args(self, args, parser=None):
@@ -443,6 +411,17 @@ def run_chimerascan(runconfig):
     # minimum fragment length cannot be smaller than the trimmed read length
     trimmed_read_length = (original_read_length - runconfig.trim5 - runconfig.trim3)
     min_fragment_length = max(runconfig.min_fragment_length, trimmed_read_length)
+    # mask biotypes and references
+    mask_biotypes = set()
+    if runconfig.mask_biotypes_file:
+        logging.info("Reading biotypes mask file")
+        mask_biotypes.update([line.strip() for line in open(runconfig.mask_biotypes_file)])
+        logging.info("\tread %d biotypes" % (len(mask_biotypes)))
+    mask_rnames = set()
+    if runconfig.mask_rnames_file:
+        logging.info("Reading references mask file")
+        mask_rnames.update([line.strip() for line in open(runconfig.mask_rnames_file)])
+        logging.info("\tread %d references" % (len(mask_rnames)))
     # 
     # Process and inspect the FASTQ files, performing several alterations 
     # to the reads:
@@ -666,10 +645,10 @@ def run_chimerascan(runconfig):
     unmapped_bam_file = os.path.join(tmp_dir, config.UNMAPPED_BAM_FILE)
     multimap_bam_file = os.path.join(tmp_dir, config.MULTIMAP_BAM_FILE)
     unresolved_bam_file = os.path.join(tmp_dir, config.UNRESOLVED_BAM_FILE)
-    input_files = (paired_bam_file, discordant_bam_file, unpaired_bam_file,
-                   unmapped_bam_file, multimap_bam_file, unresolved_bam_file)
+    output_files = (paired_bam_file, discordant_bam_file, unpaired_bam_file,
+                    unmapped_bam_file, multimap_bam_file, unresolved_bam_file)
     msg = "Classifying concordant and discordant read pairs"
-    if (all(up_to_date(f, realigned_bam_file) for f in input_files)):
+    if (all(up_to_date(f, realigned_bam_file) for f in output_files)):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)
@@ -686,7 +665,7 @@ def run_chimerascan(runconfig):
                                             library_type=runconfig.library_type)
         if retcode != config.JOB_SUCCESS:
             logging.error("[FAILED] %s" % (msg))
-            for f in input_files:
+            for f in output_files:
                 if os.path.exists(f):
                     os.remove(f)
             return config.JOB_ERROR
@@ -745,12 +724,13 @@ def run_chimerascan(runconfig):
     cluster_shelve_file = os.path.join(tmp_dir, config.DISCORDANT_CLUSTER_SHELVE_FILE)
     cluster_pair_file = os.path.join(tmp_dir, config.DISCORDANT_CLUSTER_PAIR_FILE)
     sorted_discordant_genome_cluster_bam_file = os.path.join(runconfig.output_dir, config.SORTED_DISCORDANT_GENOME_CLUSTER_BAM_FILE)
-    input_files = (cluster_file, cluster_shelve_file,                      
-                   cluster_pair_file, sorted_discordant_genome_cluster_bam_file)
+    output_files = (cluster_file, cluster_shelve_file,                      
+                    cluster_pair_file, sorted_discordant_genome_cluster_bam_file)
     msg = "Clustering discordant reads"
-    if all(up_to_date(f, sorted_discordant_genome_cluster_bam_file) for f in input_files):
+    if all(up_to_date(f, sorted_discordant_genome_bam_file) for f in output_files):
         logging.info("[SKIPPED] %s" % (msg))
     else:
+        logging.debug(msg)
         retcode = cluster_discordant_reads(discordant_bam_file=sorted_discordant_genome_bam_file, 
                                            concordant_bam_file=sorted_transcriptome_bam_file, 
                                            output_bam_file=sorted_discordant_genome_cluster_bam_file, 
@@ -760,16 +740,16 @@ def run_chimerascan(runconfig):
                                            tmp_dir=tmp_dir)
         if retcode != config.JOB_SUCCESS:
             logging.error("[FAILED] %s" % (msg))
-            for f in input_files:
+            for f in output_files:
                 if os.path.exists(f):
                     os.remove(f)
     #
-    # Write output file
+    # Write chimera file
     # 
-    unfiltered_output_file = os.path.join(runconfig.output_dir, config.UNFILTERED_OUTPUT_FILE)
-    msg = "Writing unfiltered chimeras to file %s" % (unfiltered_output_file)
-    if (up_to_date(unfiltered_output_file, cluster_pair_file) and
-        up_to_date(unfiltered_output_file, cluster_shelve_file)):                
+    unfiltered_chimera_bedpe_file = os.path.join(tmp_dir, config.UNFILTERED_CHIMERA_BEDPE_FILE)
+    msg = "Writing unfiltered chimeras to file %s" % (unfiltered_chimera_bedpe_file)
+    if (up_to_date(unfiltered_chimera_bedpe_file, cluster_pair_file) and
+        up_to_date(unfiltered_chimera_bedpe_file, cluster_shelve_file)):                
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)
@@ -777,365 +757,31 @@ def run_chimerascan(runconfig):
                                cluster_shelve_file=cluster_shelve_file, 
                                cluster_pair_file=cluster_pair_file, 
                                read_name_dbm_file=read_name_dbm_file, 
-                               output_file=unfiltered_output_file, 
+                               output_file=unfiltered_chimera_bedpe_file, 
                                annotation_source="ensembl")
         if retcode != config.JOB_SUCCESS:
-            if os.path.exists(unfiltered_output_file):
-                os.remove(unfiltered_output_file)
-    #
-    # Filter chimeras with few supporting fragments
-    #
-    filtered_output_file = os.path.join(tmp_dir, config.OUTPUT_FILE)
-    msg = "Filtering chimeras"
-    if (up_to_date(filtered_output_file, unfiltered_output_file)):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:        
-        logging.info(msg)
-        retcode = filter_encompassing_chimeras(encompassing_chimera_file,
-                                               filtered_encompassing_chimera_file,
-                                               runconfig.filter_unique_frags)
-        if retcode != config.JOB_SUCCESS:
-            logging.error("Failed with error code %d" % (retcode))
-            return config.JOB_ERROR   
-
-    
-    return config.JOB_SUCCESS
-
-    #
-    # Write a BEDPE file from discordant reads
-    #
-    discordant_bedpe_file = os.path.join(tmp_dir, config.DISCORDANT_BEDPE_FILE)
-    msg = "Converting discordant reads to BEDPE format"
-    if (up_to_date(discordant_bedpe_file, realigned_paired_bam_file)):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        discordant_reads_to_bedpe(runconfig.index_dir,
-                                  realigned_paired_bam_file,
-                                  discordant_bedpe_file)
-    #
-    # Sort BEDPE file
-    #
-    sorted_discordant_bedpe_file = os.path.join(tmp_dir, config.SORTED_DISCORDANT_BEDPE_FILE)
-    msg = "Sorting BEDPE file"
-    if (up_to_date(sorted_discordant_bedpe_file, discordant_bedpe_file)):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        # sort BEDPE file by paired chromosome/position
-        sort_bedpe(input_file=discordant_bedpe_file,
-                   output_file=sorted_discordant_bedpe_file,
-                   tmp_dir=tmp_dir)
-    #
-    # Nominate chimeric genes
-    #
-    # iterate through pairs of reads and nominate chimeras
-    #
-    encompassing_chimera_file = os.path.join(tmp_dir, config.ENCOMPASSING_CHIMERA_FILE)
-    msg = "Nominating chimeras from discordant reads"
-    if (up_to_date(encompassing_chimera_file, sorted_discordant_bedpe_file)):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:        
-        logging.info(msg)
-        retcode = nominate_chimeras(runconfig.index_dir,
-                                    isize_dist_file=isize_dist_file,
-                                    input_file=sorted_discordant_bedpe_file,
-                                    output_file=encompassing_chimera_file,
-                                    trim_bp=config.EXON_JUNCTION_TRIM_BP,
-                                    max_read_length=trimmed_read_length,
-                                    homology_mismatches=runconfig.homology_mismatches)
-        if retcode != config.JOB_SUCCESS:
-            logging.error("Failed with error code %d" % (retcode))
-            return config.JOB_ERROR
-    #
-    # Filter chimeras with few supporting fragments
-    #
-    filtered_encompassing_chimera_file = os.path.join(tmp_dir, config.FILTERED_ENCOMPASSING_CHIMERA_FILE)
-    msg = "Filtering encompassing chimeras with few supporting reads"
-    if (up_to_date(filtered_encompassing_chimera_file, encompassing_chimera_file)):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:        
-        logging.info(msg)
-        retcode = filter_encompassing_chimeras(encompassing_chimera_file,
-                                               filtered_encompassing_chimera_file,
-                                               runconfig.filter_unique_frags)
-        if retcode != config.JOB_SUCCESS:
-            logging.error("Failed with error code %d" % (retcode))
-            return config.JOB_ERROR   
-    #
-    # Make a breakpoint FASTA file and map of breakpoints to chimeras
-    # for use in spanning read alignment
-    #
-    breakpoint_chimera_file = os.path.join(tmp_dir, config.BREAKPOINT_CHIMERA_FILE)
-    breakpoint_map_file = os.path.join(tmp_dir, config.BREAKPOINT_MAP_FILE)
-    breakpoint_fasta_file = os.path.join(tmp_dir, config.BREAKPOINT_FASTA_FILE)
-    msg = "Extracting breakpoint sequences from chimeras"
-    if (up_to_date(breakpoint_chimera_file, filtered_encompassing_chimera_file) and
-        up_to_date(breakpoint_map_file, filtered_encompassing_chimera_file) and
-        up_to_date(breakpoint_fasta_file, filtered_encompassing_chimera_file)):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        chimeras_to_breakpoints(input_file=filtered_encompassing_chimera_file,
-                                breakpoint_sorted_chimera_file=breakpoint_chimera_file, 
-                                breakpoint_map_file=breakpoint_map_file, 
-                                breakpoint_fasta_file=breakpoint_fasta_file,
-                                tmp_dir=tmp_dir)
-    #
-    # Build a bowtie index to align and detect spanning reads
-    #
-    breakpoint_index = os.path.join(tmp_dir, config.BREAKPOINT_INDEX)
-    breakpoint_index_files = (os.path.join(tmp_dir, f) for f in config.BREAKPOINT_BOWTIE2_FILES)
-    msg = "Building bowtie index of breakpoint spanning sequences"
-    skip = False
-    if all(up_to_date(f, breakpoint_fasta_file) for f in breakpoint_index_files):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        args = [config.BOWTIE2_BUILD_BIN, 
-                breakpoint_fasta_file, 
-                breakpoint_index]
-        f = open(os.path.join(log_dir, "breakpoint_bowtie_index.log"), "w")
-        retcode = subprocess.call(args, stdout=f, stderr=f)
-        f.close()
-        if retcode != config.JOB_SUCCESS:
-            logging.error("'bowtie-build' failed to create breakpoint index")
-            for f in breakpoint_index_files:
-                if os.path.exists(f):
-                    os.remove(f)
-            return config.JOB_ERROR
-    #
-    # Extract reads that were encompassing when trimmed but may span
-    # breakpoints when extended.
-    #
-    encomp_spanning_fastq_file = os.path.join(tmp_dir, config.ENCOMP_SPANNING_FASTQ_FILE)
-    msg = "Extracting encompassing reads that may extend past breakpoints"
-    if (up_to_date(encomp_spanning_fastq_file, filtered_encompassing_chimera_file)):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)    
-        retcode = nominate_encomp_spanning_reads(filtered_encompassing_chimera_file, 
-                                                 encomp_spanning_fastq_file)
-        if retcode != config.JOB_SUCCESS:
-            logging.error("Failed to extract breakpoint-spanning reads")
-            if os.path.exists(encomp_spanning_fastq_file):
-                os.remove(encomp_spanning_fastq_file)
-            return config.JOB_ERROR
-    #
-    # Process unmapped reads to predict spanning reads where one read
-    # maps to a chimera and the other is unmapped
-    #
-    # First, annotate the single-mapped reads in the BAM file
-    #
-    single_mapped_bam_file = os.path.join(tmp_dir, config.SINGLE_MAPPED_BAM_FILE)
-    unaligned_spanning_fastq_file = os.path.join(tmp_dir, config.UNALIGNED_SPANNING_FASTQ_FILE)
-    msg = "Separating unmapped and single-mapping reads that may span breakpoints"
-    if (up_to_date(single_mapped_bam_file, realigned_unmapped_bam_file) and
-        up_to_date(single_mapped_bam_file, filtered_encompassing_chimera_file) and
-        up_to_date(unaligned_spanning_fastq_file, filtered_encompassing_chimera_file, nzsize=False)):        
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        retcode = extract_single_mapped_reads(chimera_file=filtered_encompassing_chimera_file, 
-                                              unmapped_bam_file=realigned_unmapped_bam_file,
-                                              single_mapped_bam_file=single_mapped_bam_file,
-                                              unmapped_fastq_file=unaligned_spanning_fastq_file,
-                                              library_type=runconfig.library_type,
-                                              tmp_dir=tmp_dir)
-        if retcode != config.JOB_SUCCESS:
-            logging.error("\tFailed")
-            if os.path.exists(unaligned_spanning_fastq_file):
-                os.remove(unaligned_spanning_fastq_file)
-            if os.path.exists(single_mapped_bam_file):
-                os.remove(single_mapped_bam_file)
-            return config.JOB_ERROR
-    #
-    # Parse the single-mapped reads and choose putative spanning reads
-    #
-    msg = "Extracting single-mapped reads that may span breakpoints"
-    single_mapped_spanning_fastq_file = os.path.join(tmp_dir, config.SINGLEMAP_SPANNING_FASTQ_FILE)
-    if (up_to_date(single_mapped_spanning_fastq_file, filtered_encompassing_chimera_file, nzsize=False)):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        retcode = nominate_single_mapped_spanning_reads(chimera_file=filtered_encompassing_chimera_file, 
-                                                        single_mapped_bam_file=single_mapped_bam_file,
-                                                        single_mapped_fastq_file=single_mapped_spanning_fastq_file,
-                                                        tmp_dir=tmp_dir)
-        if retcode != config.JOB_SUCCESS:
-            logging.error("Failed to extract unmapped reads")
-            if os.path.exists(single_mapped_spanning_fastq_file):
-                os.remove(single_mapped_spanning_fastq_file)
-            return config.JOB_ERROR
-    #
-    # Re-align encompassing reads that overlap breakpoint junctions
-    # 
-    encomp_spanning_bam_file = os.path.join(tmp_dir, config.ENCOMP_SPANNING_BAM_FILE)
-    encomp_spanning_log_file = os.path.join(log_dir, "bowtie_encomp_spanning.log")
-    msg = "Realigning encompassing reads to breakpoints"
-    skip = all(up_to_date(encomp_spanning_bam_file, f) for f in breakpoint_index_files)
-    skip = skip and up_to_date(encomp_spanning_bam_file, encomp_spanning_fastq_file)
-    if skip:
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        retcode = bowtie2_align_sr(index=breakpoint_index,
-                                   fastq_file=encomp_spanning_fastq_file,
-                                   bam_file=encomp_spanning_bam_file,
-                                   log_file=encomp_spanning_log_file,
-                                   library_type=runconfig.library_type,
-                                   max_hits=max_hits,
-                                   num_processors=runconfig.num_processors)
-        if retcode != config.JOB_SUCCESS:
-            logging.error("Bowtie failed with error code %d" % (retcode))    
-            if os.path.exists(encomp_spanning_bam_file):
-                os.remove(encomp_spanning_bam_file)
-            return config.JOB_ERROR
-    #
-    # Sort encomp/spanning reads by reference/position
-    #
-    msg = "Sorting/indexing encompassing/spanning alignments"
-    sorted_encomp_spanning_bam_file = os.path.join(tmp_dir, config.SORTED_ENCOMP_SPANNING_BAM_FILE)
-    if (up_to_date(sorted_encomp_spanning_bam_file, encomp_spanning_bam_file)):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        sorted_encomp_spanning_bam_prefix = os.path.splitext(sorted_encomp_spanning_bam_file)[0]
-        pysam.sort("-m", str(int(1e9)), encomp_spanning_bam_file, sorted_encomp_spanning_bam_prefix)
-        pysam.index(sorted_encomp_spanning_bam_file)
-    #
-    # Align single-mapping reads that may overlap breakpoint junctions
-    #
-    singlemap_spanning_bam_file = os.path.join(tmp_dir, config.SINGLEMAP_SPANNING_BAM_FILE)
-    singlemap_spanning_log_file = os.path.join(log_dir, "bowtie_singlemap_spanning.log")
-    msg = "Realigning single-mapping reads to breakpoints"
-    skip = all(up_to_date(singlemap_spanning_bam_file, f) for f in breakpoint_index_files)
-    skip = skip and up_to_date(singlemap_spanning_bam_file, single_mapped_spanning_fastq_file)
-    if skip:
-        logging.info("[SKIPPED] %s" % (msg))
-    else:            
-        logging.info(msg)
-        retcode = bowtie2_align_sr(index=breakpoint_index,
-                                   fastq_file=single_mapped_spanning_fastq_file,
-                                   bam_file=singlemap_spanning_bam_file,
-                                   log_file=singlemap_spanning_log_file,
-                                   library_type=runconfig.library_type,
-                                   max_hits=max_hits,
-                                   num_processors=runconfig.num_processors)
-        if retcode != config.JOB_SUCCESS:
-            logging.error("Bowtie failed with error code %d" % (retcode))
-            if os.path.exists(singlemap_spanning_bam_file):
-                os.remove(singlemap_spanning_bam_file)    
-            return config.JOB_ERROR
-    #
-    # Sort encomp/spanning reads by reference/position
-    #
-    msg = "Sorting/indexing single-mapping/spanning alignments"
-    sorted_singlemap_spanning_bam_file = os.path.join(tmp_dir, config.SORTED_SINGLEMAP_SPANNING_BAM_FILE)
-    if (up_to_date(sorted_singlemap_spanning_bam_file, singlemap_spanning_bam_file)):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        sorted_singlemap_spanning_bam_prefix = os.path.splitext(sorted_singlemap_spanning_bam_file)[0]
-        pysam.sort("-m", str(int(1e9)), singlemap_spanning_bam_file, sorted_singlemap_spanning_bam_prefix)
-        pysam.index(sorted_singlemap_spanning_bam_file)
-    #
-    # Merge spanning read alignment information
-    #
-    spanning_chimera_file = os.path.join(tmp_dir, config.SPANNING_CHIMERA_FILE)
-    msg = "Merging spanning read information"
-    if (up_to_date(spanning_chimera_file, breakpoint_chimera_file) and
-        up_to_date(spanning_chimera_file, encomp_spanning_bam_file) and
-        up_to_date(spanning_chimera_file, sorted_singlemap_spanning_bam_file)):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)        
-        merge_spanning_alignments(breakpoint_chimera_file=breakpoint_chimera_file,
-                                  encomp_bam_file=sorted_encomp_spanning_bam_file,
-                                  singlemap_bam_file=sorted_singlemap_spanning_bam_file,
-                                  output_chimera_file=spanning_chimera_file,
-                                  anchor_min=runconfig.anchor_min,
-                                  anchor_length=runconfig.anchor_length,
-                                  anchor_mismatches=runconfig.anchor_mismatches,
-                                  library_type=runconfig.library_type,
-                                  tmp_dir=tmp_dir)
-    #
-    # Resolve reads mapping to multiple chimeras
-    # TODO: work in progress
-    #
-    resolved_spanning_chimera_file = os.path.join(tmp_dir, config.RESOLVED_SPANNING_CHIMERA_FILE)
-    msg = "Resolving ambiguous read mappings"
-    if (up_to_date(resolved_spanning_chimera_file, spanning_chimera_file)):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)        
-        resolve_discordant_reads(input_file=spanning_chimera_file,
-                                 output_file=resolved_spanning_chimera_file,
-                                 isize_dist=isize_dist,
-                                 min_isize_prob=runconfig.filter_isize_prob,
-                                 tmp_dir=tmp_dir)
+            logging.error("[FAILED] %s" % (msg))
+            if os.path.exists(unfiltered_chimera_bedpe_file):
+                os.remove(unfiltered_chimera_bedpe_file)
     #
     # Filter chimeras
-    # 
-    filtered_chimera_file = os.path.join(tmp_dir, config.FILTERED_CHIMERA_FILE)
+    #
+    chimera_bedpe_file = os.path.join(runconfig.output_dir, config.CHIMERA_BEDPE_FILE)
     msg = "Filtering chimeras"
-    if up_to_date(filtered_chimera_file, resolved_spanning_chimera_file):
+    if (up_to_date(chimera_bedpe_file, unfiltered_chimera_bedpe_file)):
         logging.info("[SKIPPED] %s" % (msg))
-    else:
+    else:        
         logging.info(msg)
-        # get insert size at prob    
-        filter_chimeras(input_file=resolved_spanning_chimera_file, 
-                        output_file=filtered_chimera_file,
-                        index_dir=runconfig.index_dir,
-                        bam_file=sorted_transcriptome_bam_file,
-                        unique_frags=runconfig.filter_unique_frags,
-                        isoform_fraction=runconfig.filter_isoform_fraction,
-                        false_pos_file=runconfig.filter_false_pos_file)
-    #
-    # Filter homologous genes
-    # 
-    homolog_filtered_chimera_file = os.path.join(tmp_dir, config.HOMOLOG_FILTERED_CHIMERA_FILE)
-    msg = "Filtering homologous chimeras"
-    if up_to_date(homolog_filtered_chimera_file, filtered_chimera_file):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        min_isize = isize_dist.isize_at_percentile(1.0)
-        max_isize = isize_dist.isize_at_percentile(99.0)
-        filter_homologous_genes(input_file=filtered_chimera_file, 
-                                output_file=homolog_filtered_chimera_file,
-                                index_dir=runconfig.index_dir,
-                                homolog_segment_length=segment_length-1,
-                                min_isize=min_isize,
-                                max_isize=max_isize,
-                                max_hits=max_hits,
-                                num_processors=runconfig.num_processors,
-                                tmp_dir=tmp_dir)
-    #
-    # Choose best isoform for chimeras that share the same breakpoint 
-    # 
-    best_isoform_chimera_file = os.path.join(tmp_dir, config.BEST_FILTERED_CHIMERA_FILE)
-    msg = "Choosing best isoform for each chimera"
-    if up_to_date(best_isoform_chimera_file, homolog_filtered_chimera_file):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        retcode = filter_highest_coverage_isoforms(index_dir=runconfig.index_dir, 
-                                                   input_file=homolog_filtered_chimera_file, 
-                                                   output_file=best_isoform_chimera_file)
-    #
-    # Write user-friendly output file
-    # 
-    chimera_output_file = os.path.join(runconfig.output_dir, config.CHIMERA_OUTPUT_FILE)
-    msg = "Writing chimeras to file %s" % (chimera_output_file)
-    if up_to_date(chimera_output_file, best_isoform_chimera_file):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        write_output(best_isoform_chimera_file,
-                     bam_file=sorted_transcriptome_bam_file, 
-                     output_file=chimera_output_file,
-                     index_dir=runconfig.index_dir)
+        retcode = filter_chimeras(input_file=unfiltered_chimera_bedpe_file, 
+                                  output_file=chimera_bedpe_file,
+                                  filter_num_frags=runconfig.filter_num_frags,
+                                  filter_allele_fraction=runconfig.filter_allele_fraction,
+                                  mask_biotypes=mask_biotypes,
+                                  mask_rnames=mask_rnames)
+        if retcode != config.JOB_SUCCESS:
+            logging.error("[FAILED] %s" % (msg))
+            if os.path.exists(chimera_bedpe_file):
+                os.remove(chimera_bedpe_file)
     #
     # Cleanup
     # 

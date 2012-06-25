@@ -20,9 +20,10 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
+import sys
+import os
 import logging
 import collections
-import os
 import argparse
 
 import pysam
@@ -92,50 +93,6 @@ def filter_encompassing_chimeras(input_file, output_file, min_frags):
     logging.debug("\tfiltered chimeras: %d" % (num_filtered_chimeras))
     return config.JOB_SUCCESS
 
-def filter_chimeras(input_file, output_file,
-                    index_dir, bam_file,
-                    unique_frags,
-                    isoform_fraction,
-                    false_pos_file):
-    logging.debug("Parameters")
-    logging.debug("\tunique fragments: %f" % (unique_frags))
-    logging.debug("\tfraction of wild-type isoform: %f" % (isoform_fraction))
-    logging.debug("\tfalse positive chimeras file: %s" % (false_pos_file))
-    # get false positive chimera list
-    if (false_pos_file is not None) and (false_pos_file is not ""):
-        logging.debug("Loading false positive chimeras")
-        false_pos_pairs = read_false_pos_file(false_pos_file)
-    else:
-        false_pos_pairs = set()
-    # open BAM file for checking wild-type isoform
-    bamfh = pysam.Samfile(bam_file, "rb")
-    # filter chimeras
-    logging.debug("Filtering chimeras")
-    num_chimeras = 0
-    num_filtered_chimeras = 0    
-    f = open(output_file, "w")   
-    for c in Chimera.parse(open(input_file)):
-        num_chimeras += 1
-        good = filter_unique_frags(c, unique_frags)
-        if not good:
-            continue          
-        false_pos_key = (c.tx_name_5p, c.tx_end_5p, 
-                         c.tx_name_3p, c.tx_start_3p)
-        good = good and (false_pos_key not in false_pos_pairs)
-        if not good:
-            continue
-        good = good and filter_chimeric_isoform_fraction(c, isoform_fraction, bamfh)        
-        if good:
-            print >>f, '\t'.join(map(str, c.to_list()))
-            num_filtered_chimeras += 1
-    f.close()
-    logging.debug("Total chimeras: %d" % num_chimeras)
-    logging.debug("Filtered chimeras: %d" % num_filtered_chimeras)
-    # cleanup memory for false positive chimeras
-    del false_pos_pairs
-    bamfh.close()
-    return config.JOB_SUCCESS
-
 def get_highest_coverage_isoforms(input_file, transcripts):
     # build lookup from transcript name to cluster id
     transcript_cluster_map = dict((str(t.tx_id),t.cluster_id) for t in transcripts)
@@ -185,24 +142,75 @@ def filter_highest_coverage_isoforms(index_dir, input_file, output_file):
                   num_filtered_chimeras)
     return config.JOB_SUCCESS
 
+def filter_chimeras(input_file, output_file,
+                    filter_num_frags,
+                    filter_allele_fraction,
+                    mask_biotypes,
+                    mask_rnames):
+    logging.debug("Filtering chimeras")
+    logging.debug("\tfragments: %f" % (filter_num_frags))
+    logging.debug("\tallele fraction: %f" % (filter_allele_fraction))
+    logging.debug("\tmask biotypes: %s" % (','.join(sorted(mask_biotypes))))
+    logging.debug("\tmask references: %s" % (','.join(sorted(mask_rnames))))
+    # filter chimeras
+    num_chimeras = 0
+    num_kept_chimeras = 0    
+    f = open(output_file, "w")   
+    for c in Chimera.parse(open(input_file)):
+        num_chimeras += 1
+        # number of fragments
+        if c.num_frags < filter_num_frags:
+            continue
+        # allele fraction
+        allele_fraction_5p = float(c.num_frags) / (c.num_discordant_frags_5p + c.num_concordant_frags_5p)
+        allele_fraction_3p = float(c.num_frags) / (c.num_discordant_frags_3p + c.num_concordant_frags_3p)
+        allele_fraction = min(allele_fraction_5p, allele_fraction_3p)
+        if allele_fraction < filter_allele_fraction:
+            continue
+        # masked biotypes and references
+        if len(mask_biotypes.intersection(c.biotypes_5p)) > 0:
+            continue
+        if len(mask_biotypes.intersection(c.biotypes_3p)) > 0:
+            continue
+        if c.rname5p in mask_rnames:
+            continue
+        if c.rname3p in mask_rnames:
+            continue
+        print >>f, str(c)
+        num_kept_chimeras += 1
+    f.close()
+    logging.debug("Total chimeras: %d" % num_chimeras)
+    logging.debug("Kept chimeras: %d" % num_kept_chimeras)
+    return config.JOB_SUCCESS
+
 def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
-    parser.add_argument("--filter-frags", dest="filter_frags", 
-                        type=float, default=2.0)
-    parser.add_argument("--allele-fraction", dest="allele_fraction", 
-                        type=float, default=0.01, metavar="X",
-                        help="Filter chimeras with expression ratio "
-                        " less than X (0.0-1.0) relative to the wild-type "
-                        "5' transcript level [default=%(default)s]")
+    parser.add_argument("--num-frags", dest="num_frags", 
+                        type=float, default=config.DEFAULT_FILTER_FRAGS)
+    parser.add_argument("--allele-fraction", type=float, 
+                        default=config.DEFAULT_FILTER_ALLELE_FRACTION, 
+                        dest="allele_fraction", metavar="X",
+                        help="Filter chimeras with expression less than "
+                        "the specified fraction of the total expression "
+                        "level [default=%(default)s")
+    parser.add_argument("--mask-biotypes-file", dest="mask_biotypes_file", default=None) 
+    parser.add_argument("--mask-rnames-file", dest="mask_rnames_file", default=None)
     parser.add_argument("input_file")
     parser.add_argument("output_file")
     args = parser.parse_args()
-    return filter_chimeras(input_file, output_file, index_dir, bam_file,
-                           unique_frags=options.unique_frags,
-                           isoform_fraction=options.isoform_fraction,
-                           false_pos_file=options.false_pos_file)
+    mask_biotypes = set()
+    if args.mask_biotypes_file is not None:
+        mask_biotypes.update([line.strip() for line in open(args.mask_biotypes_file)])
+    mask_rnames = set()
+    if args.mask_rnames_file is not None:
+        mask_rnames.update([line.strip() for line in open(args.mask_rnames_file)])
+    return filter_chimeras(args.input_file, args.output_file,
+                           filter_num_frags=args.num_frags,
+                           filter_allele_fraction=args.allele_fraction,
+                           mask_biotypes=mask_biotypes,
+                           mask_rnames=mask_rnames)
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

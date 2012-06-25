@@ -45,12 +45,14 @@ LOG_DIR = "log"
 TMP_DIR = "tmp"
 
 # defaults and constraints for run configuration
+RUNCONFIG_XML_FILE = "runconfig.xml"
 BASE_PROCESSORS = 2
 MIN_SEGMENT_LENGTH = 25
 DEFAULT_MIN_FRAG_LENGTH = 0
 DEFAULT_MAX_FRAG_LENGTH = 1000
 DEFAULT_MAX_MULTIHITS = 1
-RUNCONFIG_XML_FILE = "runconfig.xml"
+DEFAULT_FILTER_FRAGS = 2.0
+DEFAULT_FILTER_ALLELE_FRACTION = 0.0
 
 # output after read inspection, name conversion, and 
 # quality score conversion
@@ -106,8 +108,8 @@ DISCORDANT_CLUSTER_PAIR_FILE = "discordant_cluster_pairs.txt"
 SORTED_DISCORDANT_GENOME_CLUSTER_BAM_FILE = "realigned_discordant_pairs.genome.clustered.srt.bam"
 
 # output files
-UNFILTERED_OUTPUT_FILE = "chimeras.unfiltered.bedpe"
-OUTPUT_FILE = "chimeras.bedpe"
+UNFILTERED_CHIMERA_BEDPE_FILE = "chimeras.unfiltered.bedpe"
+CHIMERA_BEDPE_FILE = "chimeras.bedpe"
 
 ## discordant reads BEDPE file
 #DISCORDANT_BEDPE_FILE = "discordant_reads.bedpe"
