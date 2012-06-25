@@ -15,9 +15,18 @@ from chimerascan.lib import config
 from chimerascan.lib.base import LibraryTypes
 from chimerascan.lib.sam import parse_pe_reads, pair_reads, copy_read, select_best_scoring_pairs
 from chimerascan.lib.feature import TranscriptFeature
-from chimerascan.lib.transcriptome import build_tid_transcript_map, build_tid_transcript_genome_map, transcript_to_genome_pos
+from chimerascan.lib.transcriptome import build_tid_transcript_genome_map, transcript_to_genome_pos
 from chimerascan.lib.chimera import DiscordantTags, DISCORDANT_TAG_NAME, \
     ORIENTATION_TAG, ORIENTATION_5P, ORIENTATION_3P, get_orientation
+
+def build_tid_transcript_map(bamfh, feature_iter):
+    rname_tid_map = dict((rname,tid) for tid,rname in enumerate(bamfh.references))
+    tid_tx_map = {}
+    # build gene and genome data structures for fast lookup
+    for f in feature_iter:
+        tid = rname_tid_map[str(f.tx_id)]
+        tid_tx_map[tid] = f
+    return tid_tx_map
 
 def count_transcriptome_multimaps(bamfh, reads, tid_tx_genome_map):
     hits = set()

@@ -26,22 +26,6 @@ import collections
 from chimerascan.bx.cluster import ClusterTree
 from chimerascan.bx.intersection import Interval, IntervalTree
 
-def build_tid_transcript_map(bamfh, feature_iter):
-    rname_tid_map = dict((rname,tid) for tid,rname in enumerate(bamfh.references))
-    tid_tx_map = {}
-    # build gene and genome data structures for fast lookup
-    for f in feature_iter:
-        tid = rname_tid_map[str(f.tx_id)]
-        tid_tx_map[tid] = f
-    return tid_tx_map
-
-def build_transcript_map(feature_iter):
-    tx_map = {}
-    # build gene and genome data structures for fast lookup
-    for f in feature_iter:
-        tx_map[str(f.tx_id)] = f
-    return tx_map
-
 def cluster_transcripts(feature_iter):
     # setup cluster trees
     chrom_strand_cluster_trees = \
@@ -78,29 +62,6 @@ def cluster_transcripts(feature_iter):
             clusters.add(clust)
     for clust in sorted(clusters):
         yield tuple(transcripts[i] for i in clust)
-
-def build_transcript_cluster_map(feature_iter):
-    transcript_cluster_map = {}
-    for cluster_id, transcripts in enumerate(cluster_transcripts(feature_iter)):
-        for t in transcripts:        
-            transcript_cluster_map[str(t.tx_id)] = cluster_id
-    return transcript_cluster_map
-
-def build_transcript_tid_cluster_map(bamfh, feature_iter):
-    # make the standard cluster map
-    transcript_cluster_map = build_transcript_cluster_map(feature_iter)
-    # map reference name to tid
-    transcript_tid_map = {}
-    for tid,rname in enumerate(bamfh.references):
-        transcript_tid_map[rname] = tid
-    # remake the cluster map
-    tid_cluster_map = {}
-    for rname, cluster_id in transcript_cluster_map.iteritems():
-        if rname not in transcript_tid_map:
-            continue
-        tid = transcript_tid_map[rname]
-        tid_cluster_map[tid] = cluster_id
-    return tid_cluster_map
 
 def build_transcript_genome_map(feature_iter):
     # create arrays to map genes in bed file to genome 
