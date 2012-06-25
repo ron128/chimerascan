@@ -396,10 +396,22 @@ def run_chimerascan(runconfig):
     fh = open(runconfig_xml_file, "w")
     print >>fh, xmlstring
     fh.close()
+    # mask biotypes and references
+    mask_biotypes = set()
+    if runconfig.mask_biotypes_file:
+        logging.info("Reading biotypes mask file")
+        mask_biotypes.update([line.strip() for line in open(runconfig.mask_biotypes_file)])
+        logging.info("\tread biotypes: %s" % (','.join(sorted(mask_biotypes))))
+    mask_rnames = set()
+    if runconfig.mask_rnames_file:
+        logging.info("Reading references mask file")
+        mask_rnames.update([line.strip() for line in open(runconfig.mask_rnames_file)])
+        logging.info("\tread references: %s" % (','.join(sorted(mask_rnames))))
     # read transcripts
     logging.info("Reading transcript features")
     transcript_file = os.path.join(runconfig.index_dir, config.TRANSCRIPT_FEATURE_FILE)
     transcripts = list(TranscriptFeature.parse(open(transcript_file)))
+    logging.info("\tread %d transcripts" % (len(transcripts)))
     # setup alignment indexes
     genome_index = os.path.join(runconfig.index_dir, config.GENOME_INDEX)
     transcriptome_index = os.path.join(runconfig.index_dir, config.TRANSCRIPTOME_INDEX)
@@ -411,17 +423,6 @@ def run_chimerascan(runconfig):
     # minimum fragment length cannot be smaller than the trimmed read length
     trimmed_read_length = (original_read_length - runconfig.trim5 - runconfig.trim3)
     min_fragment_length = max(runconfig.min_fragment_length, trimmed_read_length)
-    # mask biotypes and references
-    mask_biotypes = set()
-    if runconfig.mask_biotypes_file:
-        logging.info("Reading biotypes mask file")
-        mask_biotypes.update([line.strip() for line in open(runconfig.mask_biotypes_file)])
-        logging.info("\tread %d biotypes" % (len(mask_biotypes)))
-    mask_rnames = set()
-    if runconfig.mask_rnames_file:
-        logging.info("Reading references mask file")
-        mask_rnames.update([line.strip() for line in open(runconfig.mask_rnames_file)])
-        logging.info("\tread %d references" % (len(mask_rnames)))
     # 
     # Process and inspect the FASTQ files, performing several alterations 
     # to the reads:

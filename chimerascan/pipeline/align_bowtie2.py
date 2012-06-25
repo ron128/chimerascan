@@ -41,12 +41,19 @@ def bowtie2_align_transcriptome_pe(transcriptome_index,
     align reads to a transcriptome index, convert SAM to BAM,
     and translate alignments to genomic coordinates
     """
+    # check num processors
+    if num_processors < 2:
+        logging.warning("Transcriptome alignment uses a piping approach to "
+                        "reduce file I/O and improve overall runtime. This "
+                        "requires at least 2 cpu cores. Please set "
+                        "num_processors >= 2")
+        num_processors = 2
     # setup bowtie2 library type param
     library_type_param = get_bowtie_library_type(library_type)
     # setup bowtie2 command line args
     args = [config.BOWTIE2_BIN]
     args.extend(_bowtie2_pe_args)
-    args.extend(['-p', num_processors, 
+    args.extend(['-p', num_processors-1, 
                  '-M', max_transcriptome_hits,
                  '-I', min_fragment_length,
                  '-X', max_fragment_length,
