@@ -29,7 +29,7 @@ import operator
 
 from chimerascan.lib import config
 from chimerascan.lib.feature import TranscriptFeature
-from chimerascan.lib.transcriptome_to_genome import cluster_transcripts
+from chimerascan.lib.transcriptome import cluster_transcripts
 
 def build_transcriptome_annotation(gtf_files, output_file):
     # read gtf files and store transcripts
@@ -99,7 +99,6 @@ def main():
     parser.add_argument("--gtf", dest="gtf_files", action="append")
     parser.add_argument("output_file")
     args = parser.parse_args()
-    print args.output_file
     return build_transcriptome_annotation(args.gtf_files, args.output_file)
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
 * Release 0.5.0
   * Uses bowtie2 instead of bowtie1 for alignment
   * Unbundled the 'pysam' library.  Users must now install it separately
-  * Converted code to support pysam 0.6 (samtools 0.1.18)
+  * Code now supports pysam 0.6 (samtools 0.1.18)
