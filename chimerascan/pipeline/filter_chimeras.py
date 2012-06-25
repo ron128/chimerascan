@@ -33,7 +33,6 @@ def filter_chimeras(input_file, output_file,
                     filter_allele_fraction,
                     mask_biotypes,
                     mask_rnames):
-    logging.debug("Filtering chimeras")
     logging.debug("\tfragments: %f" % (filter_num_frags))
     logging.debug("\tallele fraction: %f" % (filter_allele_fraction))
     logging.debug("\tmask biotypes: %s" % (','.join(sorted(mask_biotypes))))
