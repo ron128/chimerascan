@@ -59,7 +59,7 @@ DEFAULT_FILTER_ALLELE_FRACTION = 0.0
 CONVERTED_FASTQ_PREFIX = "reads"
 CONVERTED_FASTQ_FILES = tuple(CONVERTED_FASTQ_PREFIX + "_%d.fq" % (x+1) 
                               for x in xrange(2))
-READ_NAME_DBM_FILE = CONVERTED_FASTQ_PREFIX + ".dbm"
+READ_NAME_TXT_FILE = CONVERTED_FASTQ_PREFIX + ".txt"
 
 # output from initial alignment
 TRANSCRIPTOME_BAM_FILE = "transcriptome_reads.bam"

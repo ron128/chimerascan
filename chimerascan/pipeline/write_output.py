@@ -120,11 +120,11 @@ def make_chimera(cluster_pair,
     return c
 
 def write_output(transcripts, cluster_shelve_file, cluster_pair_file, 
-                 read_name_dbm_file, output_file, 
+                 read_name_file, output_file, 
                  annotation_source="ensembl"):
     # load cluster and read name database files
     cluster_shelve = shelve.open(cluster_shelve_file, 'r')
-    read_name_dbm = anydbm.open(read_name_dbm_file, 'r')   
+    read_name_fh = open(read_name_file, 'r')   
     # map genome coordinates to transcripts
     logging.debug("Creating mapping between genome coordinates and transcripts")
     transcript_dict, genome_tx_trees = build_genome_transcript_trees(transcripts)
@@ -137,7 +137,7 @@ def write_output(transcripts, cluster_shelve_file, cluster_pair_file,
         print >>outfh, str(c)
     # cleanup
     outfh.close()
-    read_name_dbm.close()
+    read_name_fh.close()
     cluster_shelve.close()
     return config.JOB_SUCCESS
 

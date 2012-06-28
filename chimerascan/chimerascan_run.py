@@ -435,11 +435,11 @@ def run_chimerascan(runconfig):
     # 
     converted_fastq_files = [os.path.join(tmp_dir, fq) 
                              for fq in config.CONVERTED_FASTQ_FILES]
-    read_name_dbm_file = os.path.join(tmp_dir, config.READ_NAME_DBM_FILE)
+    read_name_file = os.path.join(tmp_dir, config.READ_NAME_TXT_FILE)
     msg = "Processing FASTQ files"
     skip = all(up_to_date(cfq, fq) for cfq,fq in 
                zip(converted_fastq_files, runconfig.fastq_files))
-    skip = skip and up_to_date(read_name_dbm_file, runconfig.fastq_files[0])
+    skip = skip and up_to_date(read_name_file, runconfig.fastq_files[0])
     if skip:
         logging.info("[SKIPPED] %s" % (msg))
     else:
@@ -757,7 +757,7 @@ def run_chimerascan(runconfig):
         retcode = write_output(transcripts, 
                                cluster_shelve_file=cluster_shelve_file, 
                                cluster_pair_file=cluster_pair_file, 
-                               read_name_dbm_file=read_name_dbm_file, 
+                               read_name_file=read_name_file, 
                                output_file=unfiltered_chimera_bedpe_file, 
                                annotation_source="ensembl")
         if retcode != config.JOB_SUCCESS:

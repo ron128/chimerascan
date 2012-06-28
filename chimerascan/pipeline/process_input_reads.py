@@ -22,7 +22,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 import logging
 import os
-import anydbm
 import argparse
 
 from chimerascan.lib.seq import get_qual_conversion_func
@@ -41,8 +40,8 @@ def process_input_reads(fastq_files, output_prefix, quals, trim5, trim3):
     output_files = [(output_prefix + "_%d.fq" % (x+1)) 
                     for x in xrange(len(fastq_files))]
     outfhs = [open(f, "w") for f in output_files]
-    read_name_dbm_file = output_prefix + ".dbm"
-    dbmh = anydbm.open(read_name_dbm_file, "c")
+    read_name_file = output_prefix + ".txt"
+    read_name_fh = open(read_name_file, 'w')
     # get quality score conversion function
     qual_func = get_qual_conversion_func(quals)
     linenum = 1
@@ -54,7 +53,7 @@ def process_input_reads(fastq_files, output_prefix, quals, trim5, trim3):
             # remove whitespace and/or read number tags /1 or /2
             read1_name = read1_name.split()[0].split("/")[0]
             # write to read name database
-            dbmh[str(linenum)] = read1_name
+            print >>read_name_fh, read1_name
             # convert reads
             for i,lines in enumerate(pelines):
                 # rename read using line number
@@ -74,18 +73,21 @@ def process_input_reads(fastq_files, output_prefix, quals, trim5, trim3):
         pass
     except:
         logging.error("Unexpected error during FASTQ file processing")
+        for fh in outfhs:
+            fh.close()
+        read_name_fh.close()
         for f in output_files:
             if os.path.exists(f):
                 os.remove(f)
-        if os.path.exists(read_name_dbm_file):
-            os.remove(read_name_dbm_file)
+        if os.path.exists(read_name_file):
+            os.remove(read_name_file)
         return config.JOB_ERROR
     # cleanup
     for fh in infhs:
         fh.close()
     for fh in outfhs:
         fh.close()
-    dbmh.close()
+    read_name_fh.close()
     logging.debug("Inspected %d fragments" % (linenum))
     return config.JOB_SUCCESS
 
