@@ -63,6 +63,7 @@ from chimerascan.pipeline.find_discordant_reads import find_discordant_fragments
 from chimerascan.pipeline.transcriptome_to_genome import transcriptome_to_genome
 from chimerascan.pipeline.sam_to_bam import sam_to_bam
 from chimerascan.pipeline.cluster_discordant_reads import cluster_discordant_reads
+from chimerascan.pipeline.pair_clusters import pair_discordant_clusters
 from chimerascan.pipeline.write_output import write_output
 from chimerascan.pipeline.filter_chimeras import filter_chimeras
 
@@ -774,22 +775,48 @@ def run_chimerascan(runconfig):
     # Cluster discordant reads into chimera candidates
     #
     cluster_file = os.path.join(tmp_dir, config.DISCORDANT_CLUSTER_FILE)
-    cluster_shelve_file = os.path.join(tmp_dir, config.DISCORDANT_CLUSTER_SHELVE_FILE)
-    cluster_pair_file = os.path.join(tmp_dir, config.DISCORDANT_CLUSTER_PAIR_FILE)
-    sorted_discordant_genome_cluster_bam_file = os.path.join(runconfig.output_dir, config.SORTED_DISCORDANT_GENOME_CLUSTER_BAM_FILE)
+    cluster_shelve_file = \
+        os.path.join(tmp_dir, config.DISCORDANT_CLUSTER_SHELVE_FILE)
+    sorted_discordant_genome_cluster_bam_file = \
+        os.path.join(runconfig.output_dir, 
+                     config.SORTED_DISCORDANT_GENOME_CLUSTER_BAM_FILE)
+    input_files = (sorted_discordant_genome_bam_file, 
+                   sorted_unpaired_genome_bam_file)
     output_files = (cluster_file, cluster_shelve_file,                      
-                    cluster_pair_file, sorted_discordant_genome_cluster_bam_file)
+                    sorted_discordant_genome_cluster_bam_file)
     msg = "Clustering discordant reads"
-    if all(up_to_date(f, sorted_discordant_genome_bam_file) for f in output_files):
+    skip = True
+    for input_file in input_files:
+        for output_file in output_files:
+            skip = skip and up_to_date(output_file, input_file)
+    if skip:
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.debug(msg)
         retcode = cluster_discordant_reads(discordant_bam_file=sorted_discordant_genome_bam_file, 
+                                           unpaired_bam_file=sorted_unpaired_genome_bam_file, 
                                            concordant_bam_file=sorted_transcriptome_bam_file, 
                                            output_bam_file=sorted_discordant_genome_cluster_bam_file, 
                                            cluster_file=cluster_file,
-                                           cluster_shelve_file=cluster_shelve_file,                                          
-                                           cluster_pair_file=cluster_pair_file,
+                                           cluster_shelve_file=cluster_shelve_file)
+        if retcode != config.JOB_SUCCESS:
+            logging.error("[FAILED] %s" % (msg))
+            for f in output_files:
+                if os.path.exists(f):
+                    os.remove(f)
+    #
+    # Pair discordant clusters
+    #
+    cluster_pair_file = \
+        os.path.join(tmp_dir, config.DISCORDANT_CLUSTER_PAIR_FILE)
+    msg = "Pairing discordant clusters"
+    output_files = (cluster_pair_file,)
+    if up_to_date(cluster_pair_file, sorted_discordant_genome_cluster_bam_file):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.debug(msg)
+        retcode = pair_discordant_clusters(discordant_bam_file=sorted_discordant_genome_cluster_bam_file, 
+                                           cluster_pair_file=cluster_pair_file, 
                                            tmp_dir=tmp_dir)
         if retcode != config.JOB_SUCCESS:
             logging.error("[FAILED] %s" % (msg))

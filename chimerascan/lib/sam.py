@@ -36,6 +36,9 @@ CIGAR_N = 3 #skip  Skipped region from the reference
 CIGAR_S = 4 #softclip  Soft clip on the read (clipped sequence present in <seq>)
 CIGAR_H = 5 #hardclip  Hard clip on the read (clipped sequence NOT present in <seq>)
 CIGAR_P = 6 #padding  Padding (silent deletion from the padded reference sequence)
+CIGAR_E = 7 # sequence match
+CIGAR_X = 8 # sequence mismatch
+REF_ADVANCING_CIGAR_CODES = frozenset((CIGAR_M, CIGAR_D, CIGAR_N, CIGAR_E, CIGAR_X))
 
 def parse_reads_by_qname(samfh):
     """
@@ -235,3 +238,19 @@ def get_clipped_interval(r):
             padend += cigar[-1][1]
     return padstart, padend
 
+def get_aligned_intervals(read):
+    intervals = []
+    astart = read.pos
+    aend = astart
+    for op,length in read.cigar:
+        if ((op == CIGAR_M) or (op == CIGAR_D) or 
+            (op == CIGAR_E) or (op == CIGAR_X)):
+            aend += length
+        elif (op == CIGAR_N):
+            if aend > astart:
+                intervals.append((astart, aend))
+            astart = aend + length
+            aend = astart
+    if aend > astart:
+        intervals.append((astart, aend))
+    return intervals

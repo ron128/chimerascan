@@ -57,9 +57,27 @@ def get_orientation(r, library_type):
 DISCORDANT_CLUSTER_TAG = "XE"
 DiscordantCluster = collections.namedtuple('DiscordantCluster', 
                                            ('rname', 'start', 'end', 
-                                            'cluster_id', 'strand',
-                                            'orientation', 'qnames',
+                                            'cluster_id', 
+                                            'strand',
+                                            'orientation',
+                                            'exons', 
+                                            'qnames',
+                                            'unpaired_qnames',
                                             'concordant_frags'))
+
+def discordant_cluster_to_string(cluster):
+    fields = [cluster.rname, cluster.start, cluster.end, 
+              cluster.cluster_id, cluster.strand, cluster.orientation,
+              len(cluster.exons),
+              ','.join(map(str, (e[0] for e in cluster.exons))),
+              ','.join(map(str, (e[1] for e in cluster.exons))),
+              len(cluster.qnames), 
+              len(cluster.unpaired_qnames),
+              cluster.concordant_frags, 
+              ','.join(cluster.qnames),
+              ','.join(cluster.unpaired_qnames)]
+    fields = map(str, fields)
+    return '\t'.join(fields)
 
 DiscordantClusterPair = collections.namedtuple('DiscordantClusterPair',
                                                ('pair_id', 'id5p', 'id3p', 'qnames'))

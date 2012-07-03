@@ -219,7 +219,7 @@ def write_pe_reads(pe_reads, bamfh):
         for r in reads:
             bamfh.write(r)
 
-def write_unpaired_reads(pe_reads, mate_num_hits, bamfh):
+def write_unpaired_reads(pe_reads, mate_num_hits, library_type, bamfh):
     """
     write reads that have one mate mapped and the other unmapped. this 
     function adds the 'R2' and 'Q2' SAM tags to the mapped mate alignments
@@ -233,9 +233,12 @@ def write_unpaired_reads(pe_reads, mate_num_hits, bamfh):
         unmapped_read = pe_reads[1][0]
         mapped_reads = pe_reads[0]
     for r in mapped_reads:
+        # find whether read is 5' or 3' orientation
+        orientation = get_orientation(r, library_type)
         # add tags containing the seq and quals of the mate
         r.tags = r.tags + [('R2', unmapped_read.seq),
-                           ('Q2', unmapped_read.qual)]
+                           ('Q2', unmapped_read.qual),
+                           (ORIENTATION_TAG, orientation)]                           
         bamfh.write(r)
 
 def write_pairs(pairs, bamfh):
@@ -306,7 +309,7 @@ def find_discordant_fragments(transcripts,
             num_unmapped += 1
         elif min(mate_num_hits) == 0:
             # if one or other mate unmapped then write to the unpaired bam file
-            write_unpaired_reads(pe_reads, mate_num_hits, unpairedfh)
+            write_unpaired_reads(pe_reads, mate_num_hits, library_type, unpairedfh)
             num_unpaired += 1
         else:
             # examine all read pairing combinations and rule out invalid pairings
