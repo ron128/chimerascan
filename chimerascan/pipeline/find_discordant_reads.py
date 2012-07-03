@@ -112,9 +112,10 @@ def classify_read_pairs(pe_reads, max_isize,
     annotates all read pairs with an integer tag corresponding to a value
     in the DiscordantTags class
     
-    returns a tuple with the following lists:
-    1) pairs (r1,r2) aligning to genes (pairs may be discordant)
-    3) unpaired reads, if any
+    returns a tuple containing 3 lists:
+    1) concordant (r1,r2) pairs
+    2) discordant (r1,r2) pairs
+    3) unpaired reads
     """
     # to satisfy library type reads must either be on 
     # same strand or opposite strands
@@ -184,7 +185,7 @@ def classify_read_pairs(pe_reads, max_isize,
     elif len(concordant_cluster_pairs) > 0:
         gene_pairs = concordant_cluster_pairs
     if len(gene_pairs) > 0:
-        return gene_pairs, []
+        return gene_pairs, [], []
     # if no concordant reads in transcripts, return any discordant reads 
     # that may violate strand requirements but still remain colocalized 
     # on the same gene/chromosome
@@ -194,44 +195,53 @@ def classify_read_pairs(pe_reads, max_isize,
     elif len(discordant_cluster_pairs) > 0:
         gene_pairs = discordant_cluster_pairs    
     if len(gene_pairs) > 0:
-        return gene_pairs, []
+        return gene_pairs, [], []
     #
     # at this point, no read pairings were found so the read is 
     # assumed to be discordant. now we can create all valid 
     # combinations of read1/read2 as putative discordant read pairs 
     #    
-    gene_pairs = find_discordant_pairs(pe_reads, library_type)
-    if len(gene_pairs) > 0:        
+    pairs = find_discordant_pairs(pe_reads, library_type)
+    if len(pairs) > 0:        
         # sort valid pairs by sum of alignment score and retain the best 
         # scoring pairs
-        gene_pairs = select_best_scoring_pairs(gene_pairs)
-        return gene_pairs, []
+        pairs = select_best_scoring_pairs(pairs)
+        return [], pairs, []
     # 
     # no valid pairs could be found suggesting that these alignments are
     # either artifacts or that the current transcript annotations do not
     # support this pair
     # 
-    return [], pe_reads
+    return [], [], pe_reads
 
 def write_pe_reads(pe_reads, bamfh):
     for reads in pe_reads:
         for r in reads:
             bamfh.write(r)
 
-def write_pairs(pairs, pairedfh, discordantfh):
+def write_unpaired_reads(pe_reads, mate_num_hits, bamfh):
+    """
+    write reads that have one mate mapped and the other unmapped. this 
+    function adds the 'R2' and 'Q2' SAM tags to the mapped mate alignments
+    in order to capture the unmapped mate information and does not write
+    the unmapped mate reads
+    """
+    if mate_num_hits[0] == 0:
+        unmapped_read = pe_reads[0][0]
+        mapped_reads = pe_reads[1]
+    else:
+        unmapped_read = pe_reads[1][0]
+        mapped_reads = pe_reads[0]
+    for r in mapped_reads:
+        # add tags containing the seq and quals of the mate
+        r.tags = r.tags + [('R2', unmapped_read.seq),
+                           ('Q2', unmapped_read.qual)]
+        bamfh.write(r)
+
+def write_pairs(pairs, bamfh):
     for r1,r2 in pairs:
-        # TODO: for now we are only going to deal with gene-gene
-        # chimeras and leave other chimeras for study at a 
-        # later time
-        dr1 = r1.opt(DISCORDANT_TAG_NAME)
-        dr2 = r2.opt(DISCORDANT_TAG_NAME)
-        if (dr1 != DiscordantTags.DISCORDANT_GENE or
-            dr2 != DiscordantTags.DISCORDANT_GENE):            
-            pairedfh.write(r1)
-            pairedfh.write(r2)
-        else:
-            discordantfh.write(r1)
-            discordantfh.write(r2)
+        bamfh.write(r1)
+        bamfh.write(r2)
 
 def find_discordant_fragments(transcripts,
                               input_bam_file, 
@@ -272,11 +282,12 @@ def find_discordant_fragments(transcripts,
     tid_tx_map = build_tid_transcript_map(bamfh, transcripts)
     tid_tx_genome_map = build_tid_transcript_genome_map(bamfh, transcripts)
     # build a transcript to genome coordinate map
-    logging.debug("Parsing reads")
+    logging.debug("Parsing and classifying reads")
     num_unmapped = 0
     num_unpaired = 0
     num_multimap = 0
     num_paired = 0
+    num_discordant = 0
     num_unresolved = 0
     for pe_reads in parse_pe_reads(bamfh):
         # count multimapping
@@ -295,17 +306,19 @@ def find_discordant_fragments(transcripts,
             num_unmapped += 1
         elif min(mate_num_hits) == 0:
             # if one or other mate unmapped then write to the unpaired bam file
-            write_pe_reads(unpairedfh, pe_reads)
+            write_unpaired_reads(pe_reads, mate_num_hits, unpairedfh)
             num_unpaired += 1
         else:
             # examine all read pairing combinations and rule out invalid pairings
-            gene_pairs, unpaired_reads = classify_read_pairs(pe_reads, 
-                                                             max_isize,
-                                                             library_type, 
-                                                             tid_tx_map)        
-            if len(gene_pairs) > 0:
-                write_pairs(gene_pairs, pairedfh, discordantfh)
+            concordant_pairs, discordant_pairs, unpaired_reads = \
+                classify_read_pairs(pe_reads, max_isize, library_type, 
+                                    tid_tx_map)             
+            if len(concordant_pairs) > 0:
+                write_pairs(concordant_pairs, pairedfh)
                 num_paired += 1
+            elif len(discordant_pairs) > 0:
+                write_pairs(discordant_pairs, discordantfh)
+                num_discordant += 1
             else:
                 # both reads in the pair mapped, but no pairings could 
                 # be resolved
@@ -323,6 +336,7 @@ def find_discordant_fragments(transcripts,
     logging.debug("\tMultimapping fragments: %d" % (num_multimap))
     logging.debug("\tUnpaired fragments: %d" % (num_unpaired))
     logging.debug("\tUnresolvable mapped fragments: %d" % (num_unresolved))
+    logging.debug("\tDiscordant fragments: %d" % (num_discordant))
     logging.debug("\tPaired fragments: %d" % (num_paired))
     return config.JOB_SUCCESS
 

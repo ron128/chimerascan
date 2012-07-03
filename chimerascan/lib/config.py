@@ -96,7 +96,12 @@ UNMAPPED_BAM_FILE = "realigned_unmapped_reads.bam"
 MULTIMAP_BAM_FILE = "realigned_multimap_reads.bam"
 UNRESOLVED_BAM_FILE = "realigned_unresolved_reads.bam"
 
-# discordant pairs BAM file
+# unpaired alignment files
+UNPAIRED_GENOME_SAM_FILE = "realigned_unpaired_reads.genome.sam"
+UNPAIRED_GENOME_BAM_FILE = "realigned_unpaired_reads.genome.bam"
+SORTED_UNPAIRED_GENOME_BAM_FILE = "realigned_unpaired_reads.genome.srt.bam"
+
+# discordant pairs files
 DISCORDANT_GENOME_SAM_FILE = "realigned_discordant_pairs.genome.sam"
 DISCORDANT_GENOME_BAM_FILE = "realigned_discordant_pairs.genome.bam"
 SORTED_DISCORDANT_GENOME_BAM_FILE = "realigned_discordant_pairs.genome.srt.bam"

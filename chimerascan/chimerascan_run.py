@@ -498,41 +498,6 @@ def run_chimerascan(runconfig):
                     os.remove(f)
             return config.JOB_ERROR
     #
-    # Genome alignment step
-    #
-    # Align any unaligned transcriptome reads to genome in paired-end mode.
-    # Resolve as many reads as possible.
-    #
-    genome_bam_file = os.path.join(tmp_dir, config.GENOME_BAM_FILE)
-    genome_unaligned_path = os.path.join(tmp_dir, config.GENOME_UNALIGNED_PATH)
-    genome_unaligned_fastq_files = tuple(os.path.join(tmp_dir, fq) for fq in config.GENOME_UNALIGNED_FASTQ_FILES)
-    msg = "Realigning unaligned paired-end reads to genome"
-    if (all(up_to_date(genome_bam_file, fq) for fq in converted_fastq_files) and 
-        all(up_to_date(a,b) for a,b in zip(genome_unaligned_fastq_files, converted_fastq_files))):
-        logging.info("[SKIPPED] %s" % (msg))
-    else:
-        logging.info(msg)
-        log_file = os.path.join(log_dir, config.GENOME_LOG_FILE)
-        retcode = bowtie2_align_pe(index=genome_index,
-                                   fastq_files=transcriptome_unaligned_fastq_files,
-                                   unaligned_path=genome_unaligned_path,
-                                   bam_file=genome_bam_file,
-                                   log_file=log_file,
-                                   library_type=runconfig.library_type,
-                                   min_fragment_length=min_fragment_length,
-                                   max_fragment_length=runconfig.max_fragment_length,
-                                   max_hits=max_transcriptome_hits,
-                                   num_processors=runconfig.num_processors)
-        # cleanup if job failed
-        if retcode != config.JOB_SUCCESS:
-            logging.error("[FAILED] %s" % (msg))
-            if os.path.exists(genome_bam_file):
-                os.remove(genome_bam_file)
-            for f in genome_unaligned_fastq_files:
-                if os.path.exists(f):
-                    os.remove(f)
-            return config.JOB_ERROR
-    #
     # Sort transcriptome reads by position
     #
     msg = "Sorting transcriptome reads"
@@ -607,6 +572,41 @@ def run_chimerascan(runconfig):
         logging.debug("\tOverriding auto segment length and using segment length of %d" % (runconfig.segment_length))
         segment_length = runconfig.segment_length
     #
+    # Genome alignment step
+    #
+    # Align any unaligned transcriptome reads to genome in paired-end mode.
+    # Resolve as many reads as possible.
+    #
+    genome_bam_file = os.path.join(tmp_dir, config.GENOME_BAM_FILE)
+    genome_unaligned_path = os.path.join(tmp_dir, config.GENOME_UNALIGNED_PATH)
+    genome_unaligned_fastq_files = tuple(os.path.join(tmp_dir, fq) for fq in config.GENOME_UNALIGNED_FASTQ_FILES)
+    msg = "Realigning unaligned paired-end reads to genome"
+    if (all(up_to_date(genome_bam_file, fq) for fq in converted_fastq_files) and 
+        all(up_to_date(a,b) for a,b in zip(genome_unaligned_fastq_files, converted_fastq_files))):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        log_file = os.path.join(log_dir, config.GENOME_LOG_FILE)
+        retcode = bowtie2_align_pe(index=genome_index,
+                                   fastq_files=transcriptome_unaligned_fastq_files,
+                                   unaligned_path=genome_unaligned_path,
+                                   bam_file=genome_bam_file,
+                                   log_file=log_file,
+                                   library_type=runconfig.library_type,
+                                   min_fragment_length=min_fragment_length,
+                                   max_fragment_length=runconfig.max_fragment_length,
+                                   max_hits=max_transcriptome_hits,
+                                   num_processors=runconfig.num_processors)
+        # cleanup if job failed
+        if retcode != config.JOB_SUCCESS:
+            logging.error("[FAILED] %s" % (msg))
+            if os.path.exists(genome_bam_file):
+                os.remove(genome_bam_file)
+            for f in genome_unaligned_fastq_files:
+                if os.path.exists(f):
+                    os.remove(f)
+            return config.JOB_ERROR
+    #
     # Realignment step
     #
     # trim and realign all the initially unaligned reads in order to
@@ -675,7 +675,7 @@ def run_chimerascan(runconfig):
     #
     discordant_genome_bam_file = os.path.join(tmp_dir, config.DISCORDANT_GENOME_BAM_FILE)
     msg = "Converting discordant transcriptome hits to genomic coordinates"
-    if (up_to_date(discordant_genome_bam_file, paired_bam_file)):
+    if (up_to_date(discordant_genome_bam_file, discordant_bam_file)):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)        
@@ -697,6 +697,8 @@ def run_chimerascan(runconfig):
             if os.path.exists(discordant_genome_bam_file):
                 os.remove(discordant_genome_bam_file)
             return config.JOB_ERROR
+        if os.path.exists(discordant_genome_sam_file):
+            os.remove(discordant_genome_sam_file)
     #
     # Sort discordant reads by position
     #
@@ -711,13 +713,63 @@ def run_chimerascan(runconfig):
     #
     # Index BAM file
     #
-    msg = "Indexing BAM file"
+    msg = "Indexing discordant BAM file"
     sorted_discordant_bam_index_file = sorted_discordant_genome_bam_file + ".bai"
     if (up_to_date(sorted_discordant_bam_index_file, sorted_discordant_genome_bam_file)):
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)
         pysam.index(sorted_discordant_genome_bam_file)
+    #
+    # Convert unpaired transcriptome reads to genome coordinates
+    #
+    unpaired_genome_bam_file = os.path.join(tmp_dir, config.UNPAIRED_GENOME_BAM_FILE)
+    msg = "Converting unpaired transcriptome hits to genomic coordinates"
+    if (up_to_date(unpaired_genome_bam_file, unpaired_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)        
+        unpaired_genome_sam_file = os.path.join(tmp_dir, config.UNPAIRED_GENOME_SAM_FILE)
+        retcode = transcriptome_to_genome(genome_index, transcripts, 
+                                          input_file=unpaired_bam_file, 
+                                          output_file=unpaired_genome_sam_file,
+                                          library_type=runconfig.library_type,
+                                          input_sam=False,
+                                          output_sam=True)
+        if retcode != config.JOB_SUCCESS:
+            logging.error("[FAILED] %s" % (msg))
+            if os.path.exists(unpaired_genome_sam_file):
+                os.remove(unpaired_genome_sam_file)
+            return config.JOB_ERROR
+        retcode = sam_to_bam(unpaired_genome_sam_file, unpaired_genome_bam_file)
+        if retcode != config.JOB_SUCCESS:
+            logging.error("[FAILED] %s" % (msg))
+            if os.path.exists(unpaired_genome_bam_file):
+                os.remove(unpaired_genome_bam_file)
+            return config.JOB_ERROR
+        if os.path.exists(unpaired_genome_sam_file):
+            os.remove(unpaired_genome_sam_file)        
+    #
+    # Sort unpaired reads by position
+    #
+    msg = "Sorting unpaired BAM file"
+    sorted_unpaired_genome_bam_file = os.path.join(tmp_dir, config.SORTED_UNPAIRED_GENOME_BAM_FILE)
+    if (up_to_date(sorted_unpaired_genome_bam_file, unpaired_genome_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        bam_prefix = os.path.splitext(sorted_unpaired_genome_bam_file)[0]
+        pysam.sort("-m", str(int(1e9)), unpaired_genome_bam_file, bam_prefix)
+    #
+    # Index BAM file
+    #
+    msg = "Indexing unpaired BAM file"
+    sorted_unpaired_bam_index_file = sorted_unpaired_genome_bam_file + ".bai"
+    if (up_to_date(sorted_unpaired_bam_index_file, sorted_unpaired_genome_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        pysam.index(sorted_unpaired_genome_bam_file)
     #
     # Cluster discordant reads into chimera candidates
     #

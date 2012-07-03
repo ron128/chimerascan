@@ -67,15 +67,15 @@ _library_type_strand_map = ({LibraryTypes.FR_UNSTRANDED: {True: '.', False: '.'}
                             {LibraryTypes.FR_UNSTRANDED: {True: '.', False: '.'},
                              LibraryTypes.FR_FIRSTSTRAND: {True: '-', False: '+'},
                              LibraryTypes.FR_SECONDSTRAND: {True: '+', False: '-'}})
-def get_read_strand(r, negstrand, library_type):
+def get_read_strand(is_read2, is_reverse, negstrand, library_type):
     if library_type == LibraryTypes.FR_UNSTRANDED:
         if negstrand:
             strand = '-'
         else:
             strand = '+'
     else:
-        rnum = int(r.is_read2)
-        strand = _library_type_strand_map[rnum][library_type][r.is_reverse]
+        rnum = int(is_read2)
+        strand = _library_type_strand_map[rnum][library_type][is_reverse]
     return strand 
 
 #
@@ -150,53 +150,57 @@ def convert_cigar(cigar, negstrand, exons, eindex, testart, toffset):
     return newcigar, alen, spliced
 
 def convert_read(r, transcript_tid_map, library_type):
-    # copy original read and modify it
-    newr = copy_read(r)
-    if not r.is_unmapped:
-        genome_tid, negstrand, exons = transcript_tid_map[r.tid]
-        # find genomic start position of transcript
-        newpos, eindex, testart, toffset = convert_pos(r.pos, negstrand, exons)
-        # parse and convert transcript cigar string
-        newcigar, alen, spliced = \
-            convert_cigar(r.cigar, negstrand, exons, 
-                          eindex, testart, toffset)            
-        newr.tid = genome_tid
-        newr.cigar = newcigar
-        # adjust tags
-        tagdict = collections.OrderedDict(newr.tags)
-        if 'XS' in tagdict:
-            del tagdict['XS']
-        if 'NH' in tagdict:
-            del tagdict['NH']
-        if negstrand:
-            # set position to left end of transcript
-            newr.pos = newpos - alen + 1            
-            # flip is_reverse flag
-            newr.is_reverse = (not newr.is_reverse)
-            # reverse complement seq and quals
-            seq = newr.seq
-            qual = newr.qual
-            newr.seq = DNA_reverse_complement(seq)
-            newr.qual = qual[::-1]
-            # flip MD tag
-            if 'MD' in tagdict:
-                tagdict['MD'] = reverse_complement_MD_tag(tagdict['MD'])
-            # TODO: for unstranded libraries, do we only set strand if 
-            # spliced? or use transcriptome annotation to determine strand? 
-            # this is an open question, but currently we use the transcript
-            # annotation to set the strand and hence the following code is
-            # commented out
-            #if spliced:
-            #    tagdict['XS'] = '-'
-        else:
-            newr.pos = newpos
-            #if spliced:
-            #    tagdict['XS'] = '+'
-        # add XS tag
-        strand = get_read_strand(newr, negstrand, library_type)
-        tagdict['XS'] = strand
-        newr.tags = tagdict.items()
-    return newr
+    if r.is_unmapped:
+        # return copy of original read
+        return copy_read(r)
+    # copy and modify tags
+    tagdict = collections.OrderedDict(r.tags)
+    if 'XS' in tagdict:
+        del tagdict['XS']
+    if 'NH' in tagdict:
+        del tagdict['NH']
+    # convert transcript reference to genome
+    genome_tid, negstrand, exons = transcript_tid_map[r.tid]
+    # find genomic start position of transcript
+    newpos, eindex, testart, toffset = convert_pos(r.pos, negstrand, exons)
+    # parse and convert transcript cigar string
+    newcigar, alen, spliced = \
+        convert_cigar(r.cigar, negstrand, exons, 
+                      eindex, testart, toffset)            
+    if negstrand:
+        # set position to left end of transcript
+        newpos = newpos - alen + 1            
+        # flip is_reverse flag
+        is_reverse = (not r.is_reverse)
+        # reverse complement seq and quals
+        seq = DNA_reverse_complement(r.seq)
+        qual = r.qual[::-1]
+        # flip MD tag
+        if 'MD' in tagdict:
+            tagdict['MD'] = reverse_complement_MD_tag(tagdict['MD'])
+    else:
+        is_reverse = r.is_reverse
+        seq = r.seq
+        qual = r.qual
+    # add XS tag
+    strand = get_read_strand(r.is_read2, is_reverse, negstrand, library_type)
+    tagdict['XS'] = strand
+    # create copy of read
+    a = pysam.AlignedRead()
+    a.qname = r.qname
+    a.flag = r.flag
+    a.seq = seq
+    a.qual = qual
+    a.is_reverse = is_reverse
+    a.tid = genome_tid
+    a.pos = newpos
+    a.cigar = newcigar
+    a.mapq = r.mapq
+    a.rnext = r.rnext
+    a.pnext = r.pnext
+    a.tlen = r.tlen
+    a.tags = tuple(tagdict.iteritems())
+    return a
 
 def convert_read_pairs(pairs, transcript_tid_map, library_type):
     # convert pairs
@@ -236,7 +240,7 @@ def convert_unpaired_reads(pe_reads, transcript_tid_map, library_type):
             # key to identify independent alignments
             k = (newr.tid, newr.pos, newr.aend)
             if k not in unpaired_reads_dict[rnum]:
-                unpaired_reads_dict[rnum][k] = r
+                unpaired_reads_dict[rnum][k] = newr
                 if not r.is_unmapped:
                     mate_num_hits[rnum] += 1
     # compute number of alignment hits
@@ -246,7 +250,7 @@ def convert_unpaired_reads(pe_reads, transcript_tid_map, library_type):
             # annotate multihits
             tagdict['NH'] = mate_num_hits[rnum]
             # annotate multihits
-            r.tags = tagdict.items()
+            r.tags = tuple(tagdict.iteritems())
             yield r
 
 def _setup_and_open_files(genome_index, transcripts,
