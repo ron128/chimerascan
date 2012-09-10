@@ -25,7 +25,6 @@ import logging
 import os
 import sys
 import collections
-import anydbm
 import shelve
 
 from chimerascan.bx.intersection import Interval, IntervalTree
@@ -102,11 +101,15 @@ def make_chimera(cluster_pair,
     c.start3p = cluster3p.start
     c.end3p = cluster3p.end
     c.chimera_id = "CHIMERA%d" % (cluster_pair.pair_id)
-    c.num_frags = len(cluster_pair.qnames)
+    frags = set(cluster_pair.qnames)
+    frags.update(cluster_pair.spanning_qnames)
+    c.num_frags = len(frags)
     c.strand5p = cluster5p.strand
     c.strand3p = cluster3p.strand
     c.chimera_type = chimera_type
     c.distance = distance
+    c.num_discordant_frags = len(cluster_pair.qnames)
+    c.num_spanning_frags = len(cluster_pair.spanning_qnames)
     c.num_discordant_frags_5p = len(cluster5p.qnames)
     c.num_discordant_frags_3p = len(cluster3p.qnames)
     c.num_concordant_frags_5p = cluster5p.concordant_frags
@@ -149,7 +152,7 @@ def main():
     parser.add_argument("transcript_file")
     parser.add_argument("cluster_shelve_file")
     parser.add_argument("cluster_pair_file")
-    parser.add_argument("read_name_dbm_file")
+    parser.add_argument("read_name_file")
     parser.add_argument("output_file")
     args = parser.parse_args()    
     # read transcript features
@@ -157,7 +160,7 @@ def main():
     transcripts = list(TranscriptFeature.parse(open(args.transcript_file)))
     # run main function
     retcode = write_output(transcripts, args.cluster_shelve_file, 
-                           args.cluster_pair_file, args.read_name_dbm_file, 
+                           args.cluster_pair_file, args.read_name_file, 
                            args.output_file, args.annotation_source)
     return retcode
 

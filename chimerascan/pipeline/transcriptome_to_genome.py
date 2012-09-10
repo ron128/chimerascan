@@ -174,7 +174,7 @@ def convert_read(r, transcript_tid_map, library_type):
         is_reverse = (not r.is_reverse)
         # reverse complement seq and quals
         seq = DNA_reverse_complement(r.seq)
-        qual = r.qual[::-1]
+        qual = None if r.qual is None else r.qual[::-1]
         # flip MD tag
         if 'MD' in tagdict:
             tagdict['MD'] = reverse_complement_MD_tag(tagdict['MD'])

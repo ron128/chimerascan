@@ -7,12 +7,9 @@ import logging
 import argparse
 import sys
 import os
-import collections
-import shelve
 
 import pysam
 
-from chimerascan.bx.cluster import ClusterTree
 from chimerascan.lib import config
 from chimerascan.lib.batch_sort import batch_sort
 from chimerascan.lib.sam import parse_pe_reads

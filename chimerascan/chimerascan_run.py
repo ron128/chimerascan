@@ -58,12 +58,13 @@ from chimerascan.lib.fragment_size_distribution import InsertSizeDistribution
 from chimerascan.lib.feature import TranscriptFeature
 
 from chimerascan.pipeline.process_input_reads import process_input_reads
-from chimerascan.pipeline.align_bowtie2 import bowtie2_align_transcriptome_pe, bowtie2_align_pe, bowtie2_align_pe_sr, bowtie2_align_sr
+from chimerascan.pipeline.align_bowtie2 import bowtie2_align_transcriptome_pe, bowtie2_align_pe, bowtie2_align_pe_sr
 from chimerascan.pipeline.find_discordant_reads import find_discordant_fragments
 from chimerascan.pipeline.transcriptome_to_genome import transcriptome_to_genome
 from chimerascan.pipeline.sam_to_bam import sam_to_bam
 from chimerascan.pipeline.cluster_discordant_reads import cluster_discordant_reads
 from chimerascan.pipeline.pair_clusters import pair_discordant_clusters
+from chimerascan.pipeline.breakpoint_realignment import realign_across_breakpoints
 from chimerascan.pipeline.write_output import write_output
 from chimerascan.pipeline.filter_chimeras import filter_chimeras
 
@@ -824,18 +825,84 @@ def run_chimerascan(runconfig):
                 if os.path.exists(f):
                     os.remove(f)
     #
+    # Perform realignment across putative fusion breakpoints
+    #
+    spanning_sam_file = os.path.join(tmp_dir, config.SPANNING_SAM_FILE)
+    spanning_bam_file = os.path.join(tmp_dir, config.SPANNING_BAM_FILE)
+    spanning_cluster_pair_file = os.path.join(tmp_dir, config.SPANNING_CLUSTER_PAIR_FILE)
+    msg = "Realigning to find breakpoint-spanning reads"
+    input_files = (sorted_discordant_genome_bam_file, 
+                   sorted_unpaired_genome_bam_file, 
+                   cluster_shelve_file, 
+                   cluster_pair_file)
+    output_files = (spanning_bam_file,
+                    spanning_cluster_pair_file)
+    skip = True
+    for inp in input_files:
+        for outp in output_files:
+            if not up_to_date(outp, inp):
+                skip = False
+    if skip:
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.debug(msg)
+        retcode = realign_across_breakpoints(index_dir=runconfig.index_dir,
+                                             discordant_bam_file=sorted_discordant_genome_bam_file,
+                                             unpaired_bam_file=sorted_unpaired_genome_bam_file,
+                                             cluster_shelve_file=cluster_shelve_file,
+                                             cluster_pair_file=cluster_pair_file,
+                                             output_sam_file=spanning_sam_file,
+                                             output_cluster_pair_file=spanning_cluster_pair_file,
+                                             log_dir=log_dir,
+                                             tmp_dir=tmp_dir,
+                                             num_processors=runconfig.num_processors)
+        if retcode != config.JOB_SUCCESS:
+            logging.error("[FAILED] %s" % (msg))
+            for f in output_files:
+                if os.path.exists(f):
+                    os.remove(f)
+        retcode = sam_to_bam(spanning_sam_file, spanning_bam_file)
+        if retcode != config.JOB_SUCCESS:
+            logging.error("[FAILED] %s" % (msg))
+            if os.path.exists(spanning_bam_file):
+                os.remove(spanning_bam_file)
+            return config.JOB_ERROR
+        if os.path.exists(spanning_sam_file):
+            os.remove(spanning_sam_file)        
+    #
+    # Sort unpaired reads by position
+    #
+    msg = "Sorting spanning BAM file"
+    sorted_spanning_bam_file = os.path.join(runconfig.output_dir, config.SORTED_SPANNING_BAM_FILE)
+    if (up_to_date(sorted_spanning_bam_file, spanning_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        bam_prefix = os.path.splitext(sorted_spanning_bam_file)[0]
+        pysam.sort("-m", str(int(1e9)), spanning_bam_file, bam_prefix)
+    #
+    # Index BAM file
+    #
+    msg = "Indexing spanning BAM file"
+    sorted_spanning_bam_index_file = sorted_unpaired_genome_bam_file + ".bai"
+    if (up_to_date(sorted_spanning_bam_index_file, sorted_spanning_bam_file)):
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        pysam.index(sorted_spanning_bam_file)
+    #
     # Write chimera file
     # 
     unfiltered_chimera_bedpe_file = os.path.join(tmp_dir, config.UNFILTERED_CHIMERA_BEDPE_FILE)
     msg = "Writing unfiltered chimeras to file %s" % (unfiltered_chimera_bedpe_file)
-    if (up_to_date(unfiltered_chimera_bedpe_file, cluster_pair_file) and
+    if (up_to_date(unfiltered_chimera_bedpe_file, spanning_cluster_pair_file) and
         up_to_date(unfiltered_chimera_bedpe_file, cluster_shelve_file)):                
         logging.info("[SKIPPED] %s" % (msg))
     else:
         logging.info(msg)
         retcode = write_output(transcripts, 
                                cluster_shelve_file=cluster_shelve_file, 
-                               cluster_pair_file=cluster_pair_file, 
+                               cluster_pair_file=spanning_cluster_pair_file, 
                                read_name_file=read_name_file, 
                                output_file=unfiltered_chimera_bedpe_file, 
                                annotation_source="ensembl")

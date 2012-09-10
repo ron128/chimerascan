@@ -9,6 +9,8 @@ import subprocess
 import logging
 
 from chimerascan.lib import config
+from chimerascan.lib.base import LibraryTypes
+
 import chimerascan.pipeline
 
 _pipeline_dir = chimerascan.pipeline.__path__[0]
@@ -227,6 +229,77 @@ def bowtie2_align_pe_sr(index,
         return config.JOB_ERROR        
     logfh.close()
     return retcode
+
+def bowtie2_align_local(transcriptome_index,
+                        genome_index,
+                        transcript_file,                                   
+                        fastq_file,
+                        bam_file,
+                        log_file,
+                        num_processors=1):
+    """
+    align reads to a transcriptome index, convert SAM to BAM,
+    and translate alignments to genomic coordinates
+    """
+    # check num processors
+    if num_processors < 2:
+        logging.warning("Transcriptome alignment uses a piping approach to "
+                        "reduce file I/O and improve overall runtime. This "
+                        "requires at least 2 cpu cores. Please set "
+                        "num_processors >= 2")
+        num_processors = 2
+    # setup bowtie2 command line args
+    args = [config.BOWTIE2_BIN,
+            '-q',
+            '--phred33',
+            '--reorder',
+            '--local',
+            '-a',
+            '--score-min', 'C,30,0',
+            '-R', '2',
+            '-N', '0',
+            '-L', '20',
+            '-i', 'C,1,0',
+            '-p', num_processors-1,             
+            '-x', transcriptome_index,
+            '-U', fastq_file]
+    args = map(str, args)
+    logging.debug("Alignment args: %s" % (' '.join(args)))    
+    # kickoff alignment process
+    logfh = open(log_file, "w")
+    aln_p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=logfh)
+    # pipe the bowtie SAM output to a transcriptome to genome conversion
+    # script that writes a genomic BAM file
+    py_script = os.path.join(_pipeline_dir, "transcriptome_to_genome.py")
+    args = [sys.executable, py_script, 
+            "--library-type", LibraryTypes.FR_UNSTRANDED,
+            "--input-sam", "--output-sam", genome_index, transcript_file, 
+            "-", "-"]
+    args = map(str, args)
+    logging.debug("Transcriptome to Genome converter args: %s" % 
+                  (' '.join(args)))
+    convert_p = subprocess.Popen(args, stdin=aln_p.stdout, stdout=subprocess.PIPE, stderr=logfh)
+    # pipe the SAM output to a filter that writes in BAM format
+    py_script = os.path.join(_pipeline_dir, "sam_to_bam.py")
+    args = [sys.executable, py_script, "-", bam_file] 
+    logging.debug("SAM to BAM converter args: %s" % (' '.join(args)))
+    sam2bam_p = subprocess.Popen(args, stdin=convert_p.stdout, stderr=logfh)    
+    # wait for this to finish
+    retcode = sam2bam_p.wait()
+    if retcode != 0:
+        convert_p.terminate()
+        aln_p.terminate()
+        return config.JOB_ERROR
+    retcode = convert_p.wait()
+    if retcode != 0:
+        aln_p.terminate()
+        return config.JOB_ERROR
+    retcode = aln_p.wait()
+    if retcode != 0:
+        return config.JOB_ERROR        
+    logfh.close()
+    return retcode
+
 
 def bowtie2_align_sr(index,
                      fastq_file,

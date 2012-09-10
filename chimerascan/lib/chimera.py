@@ -80,7 +80,7 @@ def discordant_cluster_to_string(cluster):
     return '\t'.join(fields)
 
 DiscordantClusterPair = collections.namedtuple('DiscordantClusterPair',
-                                               ('pair_id', 'id5p', 'id3p', 'qnames'))
+                                               ('pair_id', 'id5p', 'id3p', 'qnames', 'spanning_qnames'))
 
 def parse_discordant_cluster_pair_file(line_iter):
     for line in line_iter:
@@ -89,14 +89,20 @@ def parse_discordant_cluster_pair_file(line_iter):
         id5p = int(fields[1])
         id3p = int(fields[2])
         qnames = fields[3].split(',')
-        yield DiscordantClusterPair(pair_id, id5p, id3p, qnames)
+        if len(fields) < 5:
+            spanning_qnames = []
+        else:
+            spanning_qnames = fields[4].split(',')
+        yield DiscordantClusterPair(pair_id, id5p, id3p, qnames, spanning_qnames)
 
 class Chimera(object):
     _fields = ('rname5p', 'start5p', 'end5p',
                'rname3p', 'start3p', 'end3p',
-               'chimera_id', 'num_frags',
+               'chimera_id', 'num_frags', 
                'strand5p', 'strand3p',
                'chimera_type', 'distance',
+               'num_discordant_frags', 
+               'num_spanning_frags',
                'num_discordant_frags_5p',
                'num_discordant_frags_3p',
                'num_concordant_frags_5p',
@@ -111,6 +117,8 @@ class Chimera(object):
                   self.chimera_id, self.num_frags,
                   self.strand5p, self.strand3p,
                   self.chimera_type, self.distance,
+                  self.num_discordant_frags, 
+                  self.num_spanning_frags,
                   self.num_discordant_frags_5p,
                   self.num_discordant_frags_3p,
                   self.num_concordant_frags_5p,
@@ -140,16 +148,18 @@ class Chimera(object):
         c.strand3p = fields[9]
         c.chimera_type = fields[10]
         c.distance = int(fields[11])
-        c.num_discordant_frags_5p = int(fields[12])
-        c.num_discordant_frags_3p = int(fields[13])
-        c.num_concordant_frags_5p = int(fields[14])
-        c.num_concordant_frags_3p = int(fields[15])
-        c.biotypes_5p = fields[16].split(',')
-        c.biotypes_3p = fields[17].split(',')
-        c.genes_5p = fields[18].split(',')
-        c.genes_3p = fields[19].split(',')
-        c.transcripts_5p = fields[20].split(',')
-        c.transcripts_3p = fields[21].split(',')
+        c.num_discordant_frags = int(fields[12])
+        c.num_spanning_frags = int(fields[13])
+        c.num_discordant_frags_5p = int(fields[14])
+        c.num_discordant_frags_3p = int(fields[15])
+        c.num_concordant_frags_5p = int(fields[16])
+        c.num_concordant_frags_3p = int(fields[17])
+        c.biotypes_5p = fields[18].split(',')
+        c.biotypes_3p = fields[19].split(',')
+        c.genes_5p = fields[20].split(',')
+        c.genes_3p = fields[21].split(',')
+        c.transcripts_5p = fields[22].split(',')
+        c.transcripts_3p = fields[23].split(',')
         return c
     
     @staticmethod

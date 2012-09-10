@@ -112,6 +112,17 @@ DISCORDANT_CLUSTER_SHELVE_FILE = "discordant_clusters.shelve"
 DISCORDANT_CLUSTER_PAIR_FILE = "discordant_cluster_pairs.txt"
 SORTED_DISCORDANT_GENOME_CLUSTER_BAM_FILE = "realigned_discordant_pairs.genome.clustered.srt.bam"
 
+# breakpoint fastq file
+BREAKPOINT_FASTQ_FILE = "breakpoint_sequences.fq"
+BREAKPOINT_BAM_FILE = "breakpoint_hits.bam"
+BREAKPOINT_LOG_FILE = "breakpoint_alignment.log"
+
+# spanning bam files
+SPANNING_SAM_FILE = "spanning_reads.sam"
+SPANNING_BAM_FILE = "spanning_reads.bam"
+SORTED_SPANNING_BAM_FILE = "spanning_reads.srt.bam"
+SPANNING_CLUSTER_PAIR_FILE = "spanning_cluster_pairs.txt"
+
 # output files
 UNFILTERED_CHIMERA_BEDPE_FILE = "chimeras.unfiltered.bedpe"
 CHIMERA_BEDPE_FILE = "chimeras.bedpe"
