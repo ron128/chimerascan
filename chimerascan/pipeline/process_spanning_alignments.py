@@ -1,4 +1,10 @@
 '''
+Created on Sep 10, 2012
+
+@author: mkiyer
+'''
+
+'''
 Created on Jul 8, 2012
 
 @author: mkiyer
@@ -95,15 +101,15 @@ def _parse_bam_by_cluster_pair(bamfh):
     current_pair_id = None
     for r in bamfh:
         pair_id, qname = r.qname.split(':')
+        pair_id = int(pair_id)
         r.qname = qname
-        if (pair_id != current_pair_id):
-            current_pair_id = pair_id
-            if len(reads) > 0:
-                yield reads
-                reads = []
+        if (pair_id != current_pair_id) and (len(reads) > 0):
+            yield current_pair_id, reads
+            reads = []
+        current_pair_id = pair_id
         reads.append(r)
     if len(reads) > 0:
-        yield reads
+        yield current_pair_id, reads
         reads = []
 
 def _test_read_in_cluster(r, rname, cluster):
@@ -142,50 +148,59 @@ def nominate_spanning_reads(cluster_pair, cluster_shelve, bamfh, cluster_reads):
                 break
     return spanning_reads
 
-def realign_across_breakpoints(index_dir, 
-                               discordant_bam_file,
-                               unpaired_bam_file,
-                               cluster_shelve_file, 
-                               cluster_pair_file, 
-                               breakpoint_bam_file,
-                               log_dir,
-                               tmp_dir,
-                               num_processors):
+def process_spanning_alignments(cluster_shelve_file, 
+                                cluster_pair_file,
+                                bam_file, 
+                                output_sam_file,
+                                output_cluster_pair_file):
     # load cluster database file
     cluster_shelve = shelve.open(cluster_shelve_file, 'r')
-    # open discordant reads file
-    discordant_bamfh = pysam.Samfile(discordant_bam_file, "rb")
-    unpaired_bamfh = pysam.Samfile(unpaired_bam_file, "rb")
-    # create tmp dir if it does not exist
-    fastq_file = os.path.join(tmp_dir, config.BREAKPOINT_FASTQ_FILE)
-    fastq_fh = open(fastq_file, 'w')
-    # iterate through cluster pairs and get breakpoint reads
-    logging.debug("Extracting breakpoint spanning sequences")
-    num_seqs = 0
-    for cluster_pair in parse_discordant_cluster_pair_file(open(cluster_pair_file)):
-        for fastq_line in _get_cluster_breakpoint_fastq(cluster_pair, 
-                                                        cluster_shelve, 
-                                                        discordant_bamfh, 
-                                                        unpaired_bamfh):
-            print >>fastq_fh, fastq_line
-            num_seqs += 1
-    fastq_fh.close()        
-    discordant_bamfh.close()
-    unpaired_bamfh.close()
-    logging.debug("\tFound %d putative breakpoint spanning sequences" % (num_seqs))
-    # use bowtie2 local alignment to find spanning reads 
-    transcriptome_index = os.path.join(index_dir, config.TRANSCRIPTOME_INDEX)
-    genome_index = os.path.join(index_dir, config.GENOME_INDEX)
-    transcript_file = os.path.join(index_dir, config.TRANSCRIPT_FEATURE_FILE)
-    log_file = os.path.join(log_dir, config.BREAKPOINT_LOG_FILE)
-    logging.debug("Realigning breakpoint spanning sequences")
-    bowtie2_align_local(transcriptome_index,
-                        genome_index,
-                        transcript_file,                                   
-                        fastq_file,
-                        breakpoint_bam_file,
-                        log_file,
-                        num_processors=num_processors)
+    # parse breakpoint alignments and output spanning reads
+    bamfh = pysam.Samfile(bam_file, "rb")
+    outsamfh = pysam.Samfile(output_sam_file, "wh", template=bamfh)
+    outfh = open(output_cluster_pair_file, "w")
+    cluster_pair_iter = parse_discordant_cluster_pair_file(open(cluster_pair_file))
+    # get cluster reads from BAM file
+    num_spanning_reads = 0
+    for pair_id, cluster_reads in _parse_bam_by_cluster_pair(bamfh):
+        # synch with cluster pair file
+        cluster_pair = cluster_pair_iter.next()
+        while pair_id != cluster_pair.pair_id:
+            # no spanning reads here
+            print >>outfh, '\t'.join(map(str, [cluster_pair.pair_id, 
+                                               cluster_pair.id5p, 
+                                               cluster_pair.id3p, 
+                                               ','.join(cluster_pair.qnames),
+                                               '']))            
+            cluster_pair = cluster_pair_iter.next()
+        # get spanning read alignments
+        spanning_reads = nominate_spanning_reads(cluster_pair, 
+                                                 cluster_shelve, 
+                                                 bamfh,
+                                                 cluster_reads)
+        spanning_qnames = sorted(set(r5p.qname for r5p,r3p in spanning_reads))
+        # write new cluster pair file
+        print >>outfh, '\t'.join(map(str, [cluster_pair.pair_id, 
+                                           cluster_pair.id5p, 
+                                           cluster_pair.id3p, 
+                                           ','.join(cluster_pair.qnames),
+                                           ','.join(spanning_qnames)]))
+        # write spanning reads to SAM file
+        for r5p,r3p in spanning_reads:
+            outsamfh.write(r5p)
+            outsamfh.write(r3p)
+        num_spanning_reads += len(spanning_reads)
+    # finish outputting remaining clusters
+    for cluster_pair in cluster_pair_iter:
+        print >>outfh, '\t'.join(map(str, [cluster_pair.pair_id, 
+                                           cluster_pair.id5p, 
+                                           cluster_pair.id3p, 
+                                           ','.join(cluster_pair.qnames), 
+                                           '']))
+    logging.debug("\tFound %d spanning read alignments" % (num_spanning_reads))
+    outsamfh.close()
+    outfh.close()
+    bamfh.close()
     cluster_shelve.close()
     return config.JOB_SUCCESS
 
@@ -194,26 +209,18 @@ def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
-    parser.add_argument("--tmp-dir", dest="tmp_dir", default="/tmp")
-    parser.add_argument("--log-dir", dest="log_dir", default="/tmp")
-    parser.add_argument("-p", type=int, dest="num_processors", default=config.BASE_PROCESSORS)
-    parser.add_argument("index_dir")
-    parser.add_argument("discordant_bam_file")    
-    parser.add_argument("unpaired_bam_file")    
     parser.add_argument("cluster_shelve_file")
     parser.add_argument("cluster_pair_file")
-    parser.add_argument("breakpoint_bam_file")
+    parser.add_argument("bam_file")
+    parser.add_argument("output_sam_file")
+    parser.add_argument("output_cluster_pair_file")
     args = parser.parse_args()    
     # run main function
-    retcode = realign_across_breakpoints(args.index_dir, 
-                                         args.discordant_bam_file,
-                                         args.unpaired_bam_file,
-                                         args.cluster_shelve_file, 
-                                         args.cluster_pair_file, 
-                                         args.breakpoint_bam_file,
-                                         log_dir=args.log_dir,
-                                         tmp_dir=args.tmp_dir,
-                                         num_processors=args.num_processors)
+    retcode = process_spanning_alignments(args.cluster_shelve_file, 
+                                          args.cluster_pair_file,
+                                          args.bam_file, 
+                                          args.output_sam_file,
+                                          args.output_cluster_pair_file)
     return retcode
 
 if __name__ == "__main__":

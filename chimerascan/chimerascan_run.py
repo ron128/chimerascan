@@ -65,8 +65,9 @@ from chimerascan.pipeline.sam_to_bam import sam_to_bam
 from chimerascan.pipeline.cluster_discordant_reads import cluster_discordant_reads
 from chimerascan.pipeline.pair_clusters import pair_discordant_clusters
 from chimerascan.pipeline.breakpoint_realignment import realign_across_breakpoints
-from chimerascan.pipeline.write_output import write_output
+from chimerascan.pipeline.process_spanning_alignments import process_spanning_alignments
 from chimerascan.pipeline.filter_chimeras import filter_chimeras
+from chimerascan.pipeline.write_output import write_output
 
 # global default parameters
 DEFAULT_NUM_PROCESSORS = config.BASE_PROCESSORS
@@ -827,16 +828,13 @@ def run_chimerascan(runconfig):
     #
     # Perform realignment across putative fusion breakpoints
     #
-    spanning_sam_file = os.path.join(tmp_dir, config.SPANNING_SAM_FILE)
-    spanning_bam_file = os.path.join(tmp_dir, config.SPANNING_BAM_FILE)
-    spanning_cluster_pair_file = os.path.join(tmp_dir, config.SPANNING_CLUSTER_PAIR_FILE)
+    breakpoint_bam_file = os.path.join(tmp_dir, config.BREAKPOINT_BAM_FILE)
     msg = "Realigning to find breakpoint-spanning reads"
     input_files = (sorted_discordant_genome_bam_file, 
                    sorted_unpaired_genome_bam_file, 
                    cluster_shelve_file, 
                    cluster_pair_file)
-    output_files = (spanning_bam_file,
-                    spanning_cluster_pair_file)
+    output_files = (breakpoint_bam_file,)
     skip = True
     for inp in input_files:
         for outp in output_files:
@@ -851,11 +849,42 @@ def run_chimerascan(runconfig):
                                              unpaired_bam_file=sorted_unpaired_genome_bam_file,
                                              cluster_shelve_file=cluster_shelve_file,
                                              cluster_pair_file=cluster_pair_file,
-                                             output_sam_file=spanning_sam_file,
-                                             output_cluster_pair_file=spanning_cluster_pair_file,
+                                             breakpoint_bam_file=breakpoint_bam_file,
                                              log_dir=log_dir,
                                              tmp_dir=tmp_dir,
                                              num_processors=runconfig.num_processors)
+        if retcode != config.JOB_SUCCESS:
+            logging.error("[FAILED] %s" % (msg))
+            for f in output_files:
+                if os.path.exists(f):
+                    os.remove(f)
+    #
+    # Nominate breakpoint spanning reads (split reads)
+    #
+    spanning_sam_file = os.path.join(tmp_dir, config.SPANNING_SAM_FILE)
+    spanning_bam_file = os.path.join(tmp_dir, config.SPANNING_BAM_FILE)
+    spanning_cluster_pair_file = os.path.join(tmp_dir, config.SPANNING_CLUSTER_PAIR_FILE)
+    msg = "Processing breakpoint-spanning alignments"
+    input_files = (sorted_discordant_genome_bam_file, 
+                   sorted_unpaired_genome_bam_file, 
+                   cluster_shelve_file, 
+                   cluster_pair_file)
+    output_files = (spanning_bam_file,
+                    spanning_cluster_pair_file)
+    skip = True
+    for inp in input_files:
+        for outp in output_files:
+            if not up_to_date(outp, inp):
+                skip = False
+    if skip:
+        logging.info("[SKIPPED] %s" % (msg))
+    else:
+        logging.info(msg)
+        retcode = process_spanning_alignments(cluster_shelve_file=cluster_shelve_file,
+                                              cluster_pair_file=cluster_pair_file,
+                                              bam_file=breakpoint_bam_file,
+                                              output_sam_file=spanning_sam_file,
+                                              output_cluster_pair_file=spanning_cluster_pair_file)
         if retcode != config.JOB_SUCCESS:
             logging.error("[FAILED] %s" % (msg))
             for f in output_files:
@@ -868,7 +897,7 @@ def run_chimerascan(runconfig):
                 os.remove(spanning_bam_file)
             return config.JOB_ERROR
         if os.path.exists(spanning_sam_file):
-            os.remove(spanning_sam_file)        
+            os.remove(spanning_sam_file)
     #
     # Sort unpaired reads by position
     #
