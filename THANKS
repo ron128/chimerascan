@@ -9,10 +9,15 @@ every stage of the chimerascan pipeline and facilitated rapid
 prototyping and development of the tool.  We appreciate their 
 efforts to make samtools accessible to the python community.
 
+We would like to thank Ben Langmead, Steven Salzberg, and members
+of the Bowtie and Bowtie2 development team for this excellent 
+alignment tool. The performance of Chimerascan depends heavily upon
+the sensitivity/specificity of the underlying aligner. 
+
 Christopher Maher wrote the original 'chimerascan' in Perl and was 
 among the first to use a high-throughput sequencing approach to 
-discover gene fusions in cancer.  The Perl implementation was used 
-as a basis for this version.
+discover gene fusions in cancer. His Perl implementation was used 
+as a basis for Chimerascan.
 
 Finally, we would like to thank Arul Chinnaiyan and members of the
-Chinnaiyan Lab for their support.  
+Chinnaiyan Lab for their support.

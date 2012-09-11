@@ -41,6 +41,7 @@ def filter_chimeras(input_file, output_file,
     num_chimeras = 0
     num_kept_chimeras = 0    
     f = open(output_file, "w")   
+    print >>f, '#' + '\t'.join(Chimera._fields)
     for c in Chimera.parse(open(input_file)):
         num_chimeras += 1
         # number of fragments

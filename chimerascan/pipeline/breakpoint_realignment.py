@@ -150,7 +150,9 @@ def realign_across_breakpoints(index_dir,
                                breakpoint_bam_file,
                                log_dir,
                                tmp_dir,
-                               num_processors):
+                               num_processors,
+                               local_anchor_length,
+                               local_multihits):
     # load cluster database file
     cluster_shelve = shelve.open(cluster_shelve_file, 'r')
     # open discordant reads file
@@ -185,6 +187,8 @@ def realign_across_breakpoints(index_dir,
                         fastq_file,
                         breakpoint_bam_file,
                         log_file,
+                        local_anchor_length=local_anchor_length,
+                        local_multihits=local_multihits,
                         num_processors=num_processors)
     cluster_shelve.close()
     return config.JOB_SUCCESS
@@ -197,6 +201,12 @@ def main():
     parser.add_argument("--tmp-dir", dest="tmp_dir", default="/tmp")
     parser.add_argument("--log-dir", dest="log_dir", default="/tmp")
     parser.add_argument("-p", type=int, dest="num_processors", default=config.BASE_PROCESSORS)
+    parser.add_argument("--local-anchor-length", type=int, 
+                        dest="local_anchor_length", 
+                        default=config.DEFAULT_LOCAL_ANCHOR_LENGTH)
+    parser.add_argument("--local-multihits", type=int, 
+                        dest="local_multihits", 
+                        default=config.DEFAULT_LOCAL_MULTIHITS)
     parser.add_argument("index_dir")
     parser.add_argument("discordant_bam_file")    
     parser.add_argument("unpaired_bam_file")    
@@ -213,7 +223,9 @@ def main():
                                          args.breakpoint_bam_file,
                                          log_dir=args.log_dir,
                                          tmp_dir=args.tmp_dir,
-                                         num_processors=args.num_processors)
+                                         num_processors=args.num_processors,
+                                         local_anchor_length=args.local_anchor_length,
+                                         local_multihits=args.local_multihits)
     return retcode
 
 if __name__ == "__main__":

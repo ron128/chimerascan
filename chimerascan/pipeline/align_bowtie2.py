@@ -236,6 +236,8 @@ def bowtie2_align_local(transcriptome_index,
                         fastq_file,
                         bam_file,
                         log_file,
+                        local_anchor_length,
+                        local_multihits,
                         num_processors=1):
     """
     align reads to a transcriptome index, convert SAM to BAM,
@@ -248,19 +250,23 @@ def bowtie2_align_local(transcriptome_index,
                         "requires at least 2 cpu cores. Please set "
                         "num_processors >= 2")
         num_processors = 2
+    # seed substrings should be size of local anchor length
+    seed_length = local_anchor_length
+    # minimum score to report and alignment is twice local anchor length
+    score_min = 2*local_anchor_length
     # setup bowtie2 command line args
     args = [config.BOWTIE2_BIN,
             '-q',
             '--phred33',
-            '--reorder',
-            '--local',
-            '-a',
-            '--score-min', 'C,30,0',
-            '-R', '2',
             '-N', '0',
-            '-L', '20',
+            '-L', seed_length,
             '-i', 'C,1,0',
+            '--local',
+            '--score-min', 'C,%d,0' % (score_min),
+            '-k', local_multihits,
+            '-R', '2',
             '-p', num_processors-1,             
+            '--reorder',
             '-x', transcriptome_index,
             '-U', fastq_file]
     args = map(str, args)

@@ -98,6 +98,8 @@ class RunConfig(object):
              ("trim3", int, DEFAULT_TRIM3),
              ("segment_length", int, DEFAULT_SEGMENT_LENGTH),
              ("max_multihits", int, config.DEFAULT_MAX_MULTIHITS),
+             ("local_multihits", int, config.DEFAULT_LOCAL_MULTIHITS),
+             ("local_anchor_length", int, config.DEFAULT_LOCAL_ANCHOR_LENGTH),
              ("filter_num_frags", float, config.DEFAULT_FILTER_FRAGS),
              ("filter_allele_fraction", float, config.DEFAULT_FILTER_ALLELE_FRACTION),
              ("mask_biotypes_file", str, ""),
@@ -233,9 +235,21 @@ class RunConfig(object):
                             dest="max_multihits", 
                             default=config.DEFAULT_MAX_MULTIHITS,
                             metavar="N",
-                            help="Override size of soft-clipped read "
-                            "segments during discordant alignment phase "
-                            "(determined empirically by default)")
+                            help="Maximum alignments allowed for each "
+                            "discordant read")
+        parser.add_argument("--local-multihits", type=int, 
+                            dest="local_multihits", 
+                            default=config.DEFAULT_LOCAL_MULTIHITS,
+                            metavar="N",
+                            help="Maximum alignments allowed for each "
+                            "discordant read")
+        parser.add_argument("--local-anchor-length", type=int, 
+                            dest="local_anchor_length", 
+                            default=config.DEFAULT_LOCAL_ANCHOR_LENGTH,
+                            metavar="N",
+                            help="Number of bases that read must span "
+                            "on each side of a chimera to be considered "
+                            "a valid breakpoint read")
         # filtering options
         group = parser.add_argument_group('Filtering options')
         group.add_argument("--filter-num-frags", type=float,
@@ -324,6 +338,11 @@ class RunConfig(object):
                 logging.error("seed length %d cannot be longer than read length" % 
                               (self.segment_length))
                 config_passed = False
+        # ensure local anchor length is larger than minimum
+        if self.local_anchor_length < config.LOCAL_ANCHOR_LENGTH_MIN:
+            logging.error("Local anchor length of %d < %d" % 
+                          (self.local_anchor_length, config.LOCAL_ANCHOR_LENGTH_MIN))
+            config_passed = False
         # check that output dir is not a regular file
         if os.path.exists(self.output_dir) and (not os.path.isdir(self.output_dir)):
             logging.error("Output directory name '%s' exists and is not a valid directory" % 
@@ -852,7 +871,9 @@ def run_chimerascan(runconfig):
                                              breakpoint_bam_file=breakpoint_bam_file,
                                              log_dir=log_dir,
                                              tmp_dir=tmp_dir,
-                                             num_processors=runconfig.num_processors)
+                                             num_processors=runconfig.num_processors,
+                                             local_anchor_length=runconfig.local_anchor_length,
+                                             local_multihits=runconfig.local_multihits)
         if retcode != config.JOB_SUCCESS:
             logging.error("[FAILED] %s" % (msg))
             for f in output_files:
@@ -922,7 +943,8 @@ def run_chimerascan(runconfig):
     #
     # Write chimera file
     # 
-    unfiltered_chimera_bedpe_file = os.path.join(tmp_dir, config.UNFILTERED_CHIMERA_BEDPE_FILE)
+    unfiltered_chimera_bedpe_file = os.path.join(runconfig.output_dir, 
+                                                 config.UNFILTERED_CHIMERA_BEDPE_FILE)
     msg = "Writing unfiltered chimeras to file %s" % (unfiltered_chimera_bedpe_file)
     if (up_to_date(unfiltered_chimera_bedpe_file, spanning_cluster_pair_file) and
         up_to_date(unfiltered_chimera_bedpe_file, cluster_shelve_file)):                
