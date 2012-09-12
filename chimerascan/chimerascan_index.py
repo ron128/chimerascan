@@ -30,8 +30,9 @@ import sys
 import collections
 import operator
 
+import pysam
+
 # local imports
-import chimerascan.pysam as pysam
 from chimerascan.lib.feature import TranscriptFeature
 from chimerascan.lib.seq import DNA_reverse_complement
 from chimerascan.lib.base import up_to_date, check_executable

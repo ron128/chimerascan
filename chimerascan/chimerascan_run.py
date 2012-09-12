@@ -886,8 +886,7 @@ def run_chimerascan(runconfig):
     spanning_bam_file = os.path.join(tmp_dir, config.SPANNING_BAM_FILE)
     spanning_cluster_pair_file = os.path.join(tmp_dir, config.SPANNING_CLUSTER_PAIR_FILE)
     msg = "Processing breakpoint-spanning alignments"
-    input_files = (sorted_discordant_genome_bam_file, 
-                   sorted_unpaired_genome_bam_file, 
+    input_files = (breakpoint_bam_file,
                    cluster_shelve_file, 
                    cluster_pair_file)
     output_files = (spanning_bam_file,
@@ -903,9 +902,10 @@ def run_chimerascan(runconfig):
         logging.info(msg)
         retcode = process_spanning_alignments(cluster_shelve_file=cluster_shelve_file,
                                               cluster_pair_file=cluster_pair_file,
-                                              bam_file=breakpoint_bam_file,
+                                              bam_file=breakpoint_bam_file,                                              
                                               output_sam_file=spanning_sam_file,
-                                              output_cluster_pair_file=spanning_cluster_pair_file)
+                                              output_cluster_pair_file=spanning_cluster_pair_file,
+                                              local_anchor_length=runconfig.local_anchor_length)
         if retcode != config.JOB_SUCCESS:
             logging.error("[FAILED] %s" % (msg))
             for f in output_files:
@@ -934,7 +934,7 @@ def run_chimerascan(runconfig):
     # Index BAM file
     #
     msg = "Indexing spanning BAM file"
-    sorted_spanning_bam_index_file = sorted_unpaired_genome_bam_file + ".bai"
+    sorted_spanning_bam_index_file = sorted_spanning_bam_file + ".bai"
     if (up_to_date(sorted_spanning_bam_index_file, sorted_spanning_bam_file)):
         logging.info("[SKIPPED] %s" % (msg))
     else:

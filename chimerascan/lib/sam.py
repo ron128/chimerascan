@@ -39,6 +39,18 @@ CIGAR_P = 6 #padding  Padding (silent deletion from the padded reference sequenc
 CIGAR_E = 7 # sequence match
 CIGAR_X = 8 # sequence mismatch
 REF_ADVANCING_CIGAR_CODES = frozenset((CIGAR_M, CIGAR_D, CIGAR_N, CIGAR_E, CIGAR_X))
+SEQ_ADVANCING_CIGAR_CODES = frozenset((CIGAR_M, CIGAR_I, CIGAR_S, CIGAR_E, CIGAR_X))
+
+class CIGAR:
+    M = 0 #match  Alignment match (can be a sequence match or mismatch)
+    I = 1 #insertion  Insertion to the reference
+    D = 2 #deletion  Deletion from the reference
+    N = 3 #skip  Skipped region from the reference
+    S = 4 #softclip  Soft clip on the read (clipped sequence present in <seq>)
+    H = 5 #hardclip  Hard clip on the read (clipped sequence NOT present in <seq>)
+    P = 6 #padding  Padding (silent deletion from the padded reference sequence)
+    E = 7 #sequence match
+    X = 8 #sequence mismatch
 
 def parse_reads_by_qname(samfh):
     """

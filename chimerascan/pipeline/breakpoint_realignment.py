@@ -29,18 +29,28 @@ def _get_cluster_boundary(cluster):
     else:
         return cluster.start
 
-def _fetch_cluster_boundary_reads(bamfh, qnames, cluster):
-    boundary_pos = _get_cluster_boundary(cluster)
+#def _fetch_cluster_boundary_reads(bamfh, qnames, cluster):
+#    boundary_pos = _get_cluster_boundary(cluster)
+#    reads = []
+#    # fetch discordant pair reads in cluster
+#    for r in bamfh.fetch(cluster.rname, cluster.start, cluster.end):
+#        # read must be part of this cluster-pair
+#        if r.qname not in qnames:
+#            continue
+#        # untrimmed read should overlap cluster boundary
+#        padstart, padend = get_clipped_interval(r)
+#        if padstart < boundary_pos < padend:
+#            reads.append(r)
+#    return reads
+
+def _fetch_cluster_reads(bamfh, qnames, cluster):
     reads = []
     # fetch discordant pair reads in cluster
     for r in bamfh.fetch(cluster.rname, cluster.start, cluster.end):
         # read must be part of this cluster-pair
         if r.qname not in qnames:
             continue
-        # untrimmed read should overlap cluster boundary
-        padstart, padend = get_clipped_interval(r)
-        if padstart < boundary_pos < padend:
-            reads.append(r)
+        reads.append(r)
     return reads
 
 def _fetch_unpaired_mates(bamfh, cluster):
@@ -66,8 +76,8 @@ def _get_cluster_breakpoint_fastq(cluster_pair, cluster_shelve,
     # find paired reads overlapping edges
     qnames = set(cluster_pair.qnames)
     reads = []
-    reads.extend(_fetch_cluster_boundary_reads(discordant_bamfh, qnames, cluster5p))
-    reads.extend(_fetch_cluster_boundary_reads(discordant_bamfh, qnames, cluster3p))
+    reads.extend(_fetch_cluster_reads(discordant_bamfh, qnames, cluster5p))
+    reads.extend(_fetch_cluster_reads(discordant_bamfh, qnames, cluster3p))
     # yield fastq strings
     for r in reads:
         qname = "%d:%s" % (cluster_pair.pair_id, r.qname)
@@ -90,57 +100,6 @@ def _get_cluster_breakpoint_fastq(cluster_pair, cluster_shelve,
         qual = r.opt('Q2')
         yield _get_fastq(qname, rnum, seq, qual)
 
-def _parse_bam_by_cluster_pair(bamfh):
-    reads = []
-    current_pair_id = None
-    for r in bamfh:
-        pair_id, qname = r.qname.split(':')
-        r.qname = qname
-        if (pair_id != current_pair_id):
-            current_pair_id = pair_id
-            if len(reads) > 0:
-                yield reads
-                reads = []
-        reads.append(r)
-    if len(reads) > 0:
-        yield reads
-        reads = []
-
-def _test_read_in_cluster(r, rname, cluster):
-    if rname != cluster.rname:
-        return False
-    if (r.pos < cluster.end) and (r.aend > cluster.start):
-        return True
-    return False
-    
-def nominate_spanning_reads(cluster_pair, cluster_shelve, bamfh, cluster_reads):
-    # lookup 5' and 3' clusters
-    cluster5p = cluster_shelve[str(cluster_pair.id5p)]
-    cluster3p = cluster_shelve[str(cluster_pair.id3p)]
-    # iterate through cluster pair reads
-    spanning_reads = []
-    for reads in parse_reads_by_qname(cluster_reads):
-        if len(reads) < 2:
-            continue
-        hits5p = []
-        hits3p = []
-        for r in reads:
-            if r.is_unmapped:
-                continue
-            rname = bamfh.getrname(r.tid)
-            is5p = _test_read_in_cluster(r, rname, cluster5p)
-            is3p = _test_read_in_cluster(r, rname, cluster3p)
-            if is5p and is3p:
-                logging.warning("Read %s has local alignments to both 5' and 3' clusters" % (r.qname))
-            elif is5p:
-                hits5p.append(r)
-            elif is3p:
-                hits3p.append(r)
-            if (len(hits5p) > 0) and (len(hits3p) > 0):
-                # pull out best scoring pair of hits
-                spanning_reads.append((hits5p[0],hits3p[0]))
-                break
-    return spanning_reads
 
 def realign_across_breakpoints(index_dir, 
                                discordant_bam_file,

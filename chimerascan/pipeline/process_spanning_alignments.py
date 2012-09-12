@@ -3,28 +3,20 @@ Created on Sep 10, 2012
 
 @author: mkiyer
 '''
-
-'''
-Created on Jul 8, 2012
-
-@author: mkiyer
-'''
 import argparse
 import logging
-import os
 import sys
 import shelve
+import operator
 
 import pysam
 
 from chimerascan.lib import config
-from chimerascan.lib.chimera import Chimera, \
-    parse_discordant_cluster_pair_file, ORIENTATION_5P, ORIENTATION_3P
-from chimerascan.lib.feature import TranscriptFeature
-from chimerascan.lib.sam import get_clipped_interval, parse_reads_by_qname
+from chimerascan.lib.chimera import parse_discordant_cluster_pair_file, \
+    ORIENTATION_5P, ORIENTATION_3P
+from chimerascan.lib.sam import get_clipped_interval, \
+    parse_reads_by_qname, CIGAR
 from chimerascan.lib.seq import DNA_reverse_complement
-from chimerascan.pipeline.align_bowtie2 import bowtie2_align_local
-
 import chimerascan.pipeline
 _pipeline_dir = chimerascan.pipeline.__path__[0]
 
@@ -118,8 +110,73 @@ def _test_read_in_cluster(r, rname, cluster):
     if (r.pos < cluster.end) and (r.aend > cluster.start):
         return True
     return False
-    
-def nominate_spanning_reads(cluster_pair, cluster_shelve, bamfh, cluster_reads):
+
+def _get_best_aligned_seq_interval(read):
+    start = 0
+    end = 0
+    best_interval = None
+    best_length = 0
+    # account for reverse complemented alignments    
+    cigar = list(read.cigar)
+    if read.is_reverse:
+        cigar.reverse()
+    for op,bp in read.cigar:
+        if ((op == CIGAR.M) or (op == CIGAR.I) or 
+            (op == CIGAR.E) or (op == CIGAR.X)):
+            end += bp
+        elif op == CIGAR.S:
+            length = (end - start)
+            if (best_interval is None) or (length > best_length):
+                best_interval = (start,end)
+                best_length = length
+            start = end + bp
+            end = start
+    length = (end - start)
+    if (best_interval is None) or (length > best_length):
+        best_interval = (start, end)
+        best_length = length
+    return best_interval
+
+def _test_interval_overlap(start5p, end5p, start3p, end3p,
+                           min_interval_length):
+    # test if intervals overlap
+    if (start5p < end3p) and (end5p > start3p):
+        left, right = sorted((start5p, end5p, start3p, end3p))[1:3]
+        overlap = right - left
+        # check smallest of two intervals
+        trim5p = (end5p - start5p) - overlap
+        trim3p = (end3p - start3p) - overlap
+        if ((trim5p < min_interval_length) or 
+            (trim3p < min_interval_length)):
+            return True
+    return False
+        
+def _find_compatible_split_reads(hits5p, hits3p, local_anchor_length):
+    pairs = []
+    for r5p in hits5p:
+        # get 5' aligned interval
+        interval5p = _get_best_aligned_seq_interval(r5p)
+        if interval5p is None:
+            continue
+        start5p, end5p = interval5p
+        score5p = r5p.opt('AS')
+        for r3p in hits3p:
+            # get 3' aligned interval
+            interval3p = _get_best_aligned_seq_interval(r3p)
+            if interval3p is None:
+                continue
+            start3p, end3p = interval3p
+            score3p = r3p.opt('AS')
+            if _test_interval_overlap(start5p, end5p, start3p, end3p,
+                                      local_anchor_length):
+                continue
+            # TODO: modify the alignment records!
+            pairs.append((score5p + score3p, r5p, r3p))
+    pairs.sort(key=operator.itemgetter(0), reverse=True)
+    return [(r5p,r3p) for (score,r5p,r3p) in pairs]
+
+def nominate_spanning_reads(cluster_pair, cluster_shelve, bamfh, 
+                            cluster_reads, local_anchor_length):
     # lookup 5' and 3' clusters
     cluster5p = cluster_shelve[str(cluster_pair.id5p)]
     cluster3p = cluster_shelve[str(cluster_pair.id3p)]
@@ -128,6 +185,7 @@ def nominate_spanning_reads(cluster_pair, cluster_shelve, bamfh, cluster_reads):
     for reads in parse_reads_by_qname(cluster_reads):
         if len(reads) < 2:
             continue
+        # group reads by cluster
         hits5p = []
         hits3p = []
         for r in reads:
@@ -142,17 +200,18 @@ def nominate_spanning_reads(cluster_pair, cluster_shelve, bamfh, cluster_reads):
                 hits5p.append(r)
             elif is3p:
                 hits3p.append(r)
-            if (len(hits5p) > 0) and (len(hits3p) > 0):
-                # pull out best scoring pair of hits
-                spanning_reads.append((hits5p[0],hits3p[0]))
-                break
+        # find compatible pairs of split reads
+        pairs = _find_compatible_split_reads(hits5p, hits3p, local_anchor_length)
+        if len(pairs) > 0:
+            spanning_reads.append(pairs[0])
     return spanning_reads
 
 def process_spanning_alignments(cluster_shelve_file, 
                                 cluster_pair_file,
                                 bam_file, 
                                 output_sam_file,
-                                output_cluster_pair_file):
+                                output_cluster_pair_file,
+                                local_anchor_length):
     # load cluster database file
     cluster_shelve = shelve.open(cluster_shelve_file, 'r')
     # parse breakpoint alignments and output spanning reads
@@ -177,7 +236,8 @@ def process_spanning_alignments(cluster_shelve_file,
         spanning_reads = nominate_spanning_reads(cluster_pair, 
                                                  cluster_shelve, 
                                                  bamfh,
-                                                 cluster_reads)
+                                                 cluster_reads,
+                                                 local_anchor_length)
         spanning_qnames = sorted(set(r5p.qname for r5p,r3p in spanning_reads))
         # write new cluster pair file
         print >>outfh, '\t'.join(map(str, [cluster_pair.pair_id, 
@@ -209,6 +269,9 @@ def main():
     logging.basicConfig(level=logging.DEBUG,
                         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
+    parser.add_argument("--local-anchor-length", type=int, 
+                        dest="local_anchor_length", 
+                        default=config.DEFAULT_LOCAL_ANCHOR_LENGTH)
     parser.add_argument("cluster_shelve_file")
     parser.add_argument("cluster_pair_file")
     parser.add_argument("bam_file")
@@ -220,7 +283,8 @@ def main():
                                           args.cluster_pair_file,
                                           args.bam_file, 
                                           args.output_sam_file,
-                                          args.output_cluster_pair_file)
+                                          args.output_cluster_pair_file,
+                                          args.local_anchor_length)
     return retcode
 
 if __name__ == "__main__":

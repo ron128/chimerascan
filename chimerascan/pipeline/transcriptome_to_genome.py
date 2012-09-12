@@ -16,7 +16,8 @@ from chimerascan.lib import config
 from chimerascan.lib.seq import DNA_reverse_complement
 from chimerascan.lib.base import check_executable, LibraryTypes
 from chimerascan.lib.feature import TranscriptFeature
-from chimerascan.lib.sam import copy_read, parse_pe_reads, group_read_pairs, pair_reads
+from chimerascan.lib.sam import copy_read, parse_pe_reads, \
+    group_read_pairs, pair_reads, REF_ADVANCING_CIGAR_CODES, CIGAR_N
 
 def get_references_from_bowtie2_index(index):
     # extract sequence names and lengths from bowtie reference
@@ -77,20 +78,6 @@ def get_read_strand(is_read2, is_reverse, negstrand, library_type):
         rnum = int(is_read2)
         strand = _library_type_strand_map[rnum][library_type][is_reverse]
     return strand 
-
-#
-# constants used for CIGAR alignments
-#
-CIGAR_M = 0 #match  Alignment match (can be a sequence match or mismatch)
-CIGAR_I = 1 #insertion  Insertion to the reference
-CIGAR_D = 2 #deletion  Deletion from the reference
-CIGAR_N = 3 #skip  Skipped region from the reference
-CIGAR_S = 4 #softclip  Soft clip on the read (clipped sequence present in <seq>)
-CIGAR_H = 5 #hardclip  Hard clip on the read (clipped sequence NOT present in <seq>)
-CIGAR_P = 6 #padding  Padding (silent deletion from the padded reference sequence)
-CIGAR_E = 7 # sequence match
-CIGAR_X = 8  # sequence mismatch
-REF_ADVANCING_CIGAR_CODES = frozenset((CIGAR_M, CIGAR_D, CIGAR_N, CIGAR_E, CIGAR_X))
 
 def convert_pos(pos, negstrand, exons):
     """
